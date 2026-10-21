@@ -61,7 +61,7 @@ func feedXML() string {
 <channel><title>Hostile Feed</title><link>http://example.com/</link>
 <item><title>The inline article</title><link>http://example.com/inline</link><guid>inline</guid>
 <description>A short summary.</description>
-<content:encoded><![CDATA[` + words + hostile + `]]></content:encoded></item>
+<content:encoded><![CDATA[` + words + hostile + `<img src="/pic-relative.png" alt="A relative picture">` + `]]></content:encoded></item>
 <item><title>The extracted article</title><link>http://example.com/article</link><guid>page</guid>
 <description><![CDATA[` + hostile + `]]></description></item>
 <item><title>The pending article</title><link>http://example.com/pending</link><guid>pending</guid>
@@ -92,7 +92,7 @@ func newServer(t *testing.T) *server {
 		case "/article":
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			fmt.Fprint(w, articlePage)
-		case "/pic.png":
+		case "/pic.png", "/pic-relative.png":
 			w.Header().Set("Content-Type", "image/png")
 			_, _ = w.Write(png)
 		default:
@@ -234,6 +234,11 @@ func TestHostileFeedAndArticle(t *testing.T) {
 				}
 				if !strings.Contains(it.ContentHTML, "blob:") {
 					t.Fatalf("the stored article has no blob image:\n%s", it.ContentHTML)
+				}
+				// The inline path's image is fetched too, even though the
+				// feed gave its source as a relative path.
+				if strings.Contains(it.ContentHTML, `src="http`) {
+					t.Fatalf("the stored article keeps a remote image:\n%s", it.ContentHTML)
 				}
 			}
 			// The page around it may hold its own style and meta; it holds

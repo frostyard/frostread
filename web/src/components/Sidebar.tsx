@@ -92,7 +92,7 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
             {/* The manage button shows on hover and on keyboard focus,
                 and always where the pointer is coarse: a phone has no
                 hover. */}
-            <span className="absolute right-0.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100">
+            <span className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 [@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100">
               <IconButton label={`Manage ${source.title}`} icon={Ellipsis} onClick={() => setManagingId(source.id)} />
             </span>
           </li>
@@ -123,7 +123,7 @@ function Row(props: { title: string; count: number; current: boolean; onClick: (
       type="button"
       aria-current={props.current ? "page" : undefined}
       onClick={props.onClick}
-      className={`flex h-7 w-full items-center gap-2 rounded-md pl-2 pr-8 text-left text-sidebar-row ${
+      className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row ${
         props.current ? "bg-selection-sidebar text-primary" : "text-secondary hover:bg-selection-inactive"
       }`}
     >
@@ -142,7 +142,7 @@ export function SourceRow(props: { source: Source; unread: number; current: bool
       aria-current={props.current ? "page" : undefined}
       onClick={props.onClick}
       title={lastError === "" ? props.source.url : lastError}
-      className={`flex h-7 w-full items-center gap-2 rounded-md pl-2 pr-8 text-left text-sidebar-row ${
+      className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row ${
         props.current ? "bg-selection-sidebar text-primary" : "text-secondary hover:bg-selection-inactive"
       }`}
     >

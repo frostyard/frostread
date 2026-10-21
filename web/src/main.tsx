@@ -7,13 +7,14 @@ import { applyScheme, followLodge } from "@frostyard/lodge-ui/theme";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./app.css";
+import { connectLodgeAPI } from "@frostyard/lodge-client/rpc";
 import { App } from "./components/App.js";
 import { StoreProvider } from "./components/context.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { parseRoute } from "./lib/routes.js";
 import { setLodge } from "./lodge.js";
-import { readAPI } from "./rpc/api.js";
-import { connectLodgeAPI } from "./rpc/lodge.js";
+import { CLIENT, PROTOCOL, readAPI } from "./rpc/api.js";
+import { watchChanges } from "./rpc/events.js";
 import { createReadStore } from "./store.js";
 
 const host = document.getElementById("root");
@@ -45,7 +46,7 @@ async function start(): Promise<void> {
     store.getState().setScheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
     const { createMockTransport } = await import("./rpc/mock.js");
     const transport = createMockTransport();
-    transport.onEvent(() => void store.getState().changed());
+    watchChanges(transport, () => void store.getState().changed());
     await store.getState().connect(readAPI(transport));
     await store.getState().setRoute(startRoute);
     return;
@@ -57,8 +58,10 @@ async function start(): Promise<void> {
   // The article's frame follows the same scheme; a theme change reloads it.
   lodge.on("theme", ({ scheme }) => store.getState().setScheme(scheme));
   lodge.on("navigate", ({ route }) => void store.getState().setRoute(parseRoute(route)));
-  const transport = await connectLodgeAPI(lodge.apiURL());
-  transport.onEvent(() => void store.getState().changed());
+  // readd answers every method but rpc.hello with notReady until it has
+  // succeeded, so the transport sends it after each open.
+  const transport = await connectLodgeAPI(lodge, { hello: { protocol: PROTOCOL, client: CLIENT } });
+  watchChanges(transport, () => void store.getState().changed());
   await store.getState().connect(readAPI(transport));
   await store.getState().setRoute(startRoute);
 }
