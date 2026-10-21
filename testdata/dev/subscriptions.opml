@@ -4,9 +4,9 @@
      same document with the address that readdev was given. -->
 <opml version="2.0"><head><title>Development feeds</title></head><body>
 <outline text="Development" title="Development">
-<outline type="rss" text="Example Development Journal" xmlUrl="http://127.0.0.1:8088/rss.xml" htmlUrl="http://127.0.0.1:8088/"/>
-<outline type="rss" text="Example Development Atoms" xmlUrl="http://127.0.0.1:8088/atom.xml" htmlUrl="http://127.0.0.1:8088/"/>
-<outline type="rss" text="Example Development Feeds" xmlUrl="http://127.0.0.1:8088/feed.json" htmlUrl="http://127.0.0.1:8088/"/>
-<outline type="rss" text="Example Development Broken" xmlUrl="http://127.0.0.1:8088/broken.xml" htmlUrl="http://127.0.0.1:8088/"/>
-<outline type="rss" text="Example Development Busy" xmlUrl="http://127.0.0.1:8088/busy.xml" htmlUrl="http://127.0.0.1:8088/"/>
+<outline type="rss" text="Dev Journal (RSS)" xmlUrl="http://127.0.0.1:8088/rss.xml" htmlUrl="http://127.0.0.1:8088/"/>
+<outline type="rss" text="Dev Atoms (Atom)" xmlUrl="http://127.0.0.1:8088/atom.xml" htmlUrl="http://127.0.0.1:8088/"/>
+<outline type="rss" text="Dev Feeds (JSON)" xmlUrl="http://127.0.0.1:8088/feed.json" htmlUrl="http://127.0.0.1:8088/"/>
+<outline type="rss" text="Dev Broken (500)" xmlUrl="http://127.0.0.1:8088/broken.xml" htmlUrl="http://127.0.0.1:8088/"/>
+<outline type="rss" text="Dev Busy (429)" xmlUrl="http://127.0.0.1:8088/busy.xml" htmlUrl="http://127.0.0.1:8088/"/>
 </outline></body></opml>

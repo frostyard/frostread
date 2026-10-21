@@ -98,7 +98,7 @@ func (e *Engine) ExtractItem(ctx context.Context, id int64) error {
 		feedContent = it.SummaryHTML
 	}
 	if feedContent != "" && len([]rune(it.Text)) >= FullArticle {
-		content, images, err := e.o.Extractor.Inline(ctx, feedContent, it.URL)
+		content, images, err := e.o.Extractor.Inline(ctx, feedContent, it.URL, it.Title)
 		if err != nil {
 			return e.extractFailed(ctx, id, err)
 		}

@@ -70,7 +70,7 @@ func (e *Extractor) Extract(ctx context.Context, body []byte, pageURL string) (A
 	if err := art.RenderHTML(&buf); err != nil {
 		return Article{}, fmt.Errorf("extract %s: render: %w", pageURL, err)
 	}
-	clean := sanitize.HTML(absolutize(buf.String(), pageURL))
+	clean := sanitize.HTML(Absolutize(buf.String(), pageURL))
 	text := sanitize.PlainText(clean)
 	if len([]rune(text)) < MinText {
 		return Article{}, fmt.Errorf("extract %s: %d characters: %w", pageURL, len([]rune(text)), ErrNoArticle)
@@ -88,6 +88,9 @@ func (e *Extractor) Extract(ctx context.Context, body []byte, pageURL string) (A
 		Text:      text,
 		Excerpt:   excerpt(text),
 	}
+	// The body's own heading, when it only repeats the title, is dropped:
+	// the reader and the content page show the title above it.
+	clean = DropLeadingTitle(clean, title)
 	out.ContentHTML, out.Images, err = e.Images(ctx, clean, pageURL)
 	if err != nil {
 		return Article{}, err
@@ -97,15 +100,18 @@ func (e *Extractor) Extract(ctx context.Context, body []byte, pageURL string) (A
 
 // Inline cleans an article the feed already gave in full: it sanitizes the
 // HTML, and its images are stored and rewritten as Extract's are.
-func (e *Extractor) Inline(ctx context.Context, untrusted, pageURL string) (content string, images []store.Blob, err error) {
-	clean := sanitize.HTML(absolutize(untrusted, pageURL))
+func (e *Extractor) Inline(ctx context.Context, untrusted, pageURL, title string) (content string, images []store.Blob, err error) {
+	clean := sanitize.HTML(Absolutize(untrusted, pageURL))
+	clean = DropLeadingTitle(clean, title)
 	return e.Images(ctx, clean, pageURL)
 }
 
-// absolutize resolves every relative URL an article keeps against its
+// Absolutize resolves every relative URL an article keeps against its
 // page, before the sanitizer sees them: the policy admits absolute http
-// and https URLs only, so a relative source would be dropped.
-func absolutize(untrusted, pageURL string) string {
+// and https URLs only, so a relative source would be dropped. A feed's
+// content needs it before it is stored, because its images must survive
+// the store's sanitizing to be fetched later.
+func Absolutize(untrusted, pageURL string) string {
 	base, err := url.Parse(pageURL)
 	if err != nil {
 		return untrusted
@@ -156,25 +162,38 @@ func (e *Extractor) Images(ctx context.Context, cleanHTML, pageURL string) (stri
 	var images []store.Blob
 	seen := map[string]string{} // url -> hash
 	var total int64
-	var walk func(n *html.Node)
-	walk = func(n *html.Node) {
+	// Every image is collected before any is rewritten: wrapping one in a
+	// link moves it, and a walk that rewrote as it went would skip the
+	// image that followed.
+	var nodes []*html.Node
+	var collect func(n *html.Node)
+	collect = func(n *html.Node) {
 		if n.Type == html.ElementNode && n.Data == "img" {
+			nodes = append(nodes, n)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			collect(c)
+		}
+	}
+	collect(doc)
+	for _, n := range nodes {
+		{
 			src, alt := attr(n, "src"), attr(n, "alt")
 			if src == "" || ctx.Err() != nil {
-				return
+				continue
 			}
 			// Resolve the source, and admit only http and https.
 			ref, err := url.Parse(src)
 			if err != nil {
 				replaceWithAlt(n, alt)
-				return
+				continue
 			}
 			if base != nil {
 				ref = base.ResolveReference(ref)
 			}
 			if ref.Scheme != "http" && ref.Scheme != "https" {
 				replaceWithAlt(n, alt)
-				return
+				continue
 			}
 			hash, ok := seen[ref.String()]
 			var blob store.Blob
@@ -183,16 +202,16 @@ func (e *Extractor) Images(ctx context.Context, cleanHTML, pageURL string) (stri
 			} else {
 				if len(images) >= MaxImages {
 					replaceWithAlt(n, alt)
-					return
+					continue
 				}
 				b, err := e.fetchImage(ctx, ref.String())
 				if err != nil || b.Hash == "" {
 					replaceWithAlt(n, alt)
-					return
+					continue
 				}
 				if total+b.Size > fetch.MaxItemImages {
 					replaceWithAlt(n, alt)
-					return
+					continue
 				}
 				total += b.Size
 				seen[ref.String()] = b.Hash
@@ -205,11 +224,7 @@ func (e *Extractor) Images(ctx context.Context, cleanHTML, pageURL string) (stri
 				wrapInAnchor(n, ref.String())
 			}
 		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
-		}
 	}
-	walk(doc)
 	var out strings.Builder
 	for c := doc.FirstChild; c != nil; c = c.NextSibling {
 		if err := html.Render(&out, c); err != nil {

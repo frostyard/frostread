@@ -231,7 +231,7 @@ var page = template.Must(template.New("article").Parse(`<!doctype html>
 func rss(base string) string {
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
-<title>Example Development Journal</title>
+<title>Dev Journal (RSS)</title>
 <link>` + base + `/</link>
 <description>Made-up articles for frostread's development check.</description>
 <item><title>` + html.EscapeString(articles[0].title) + `</title>
@@ -250,7 +250,7 @@ func rss(base string) string {
 func atom(base string) string {
 	return `<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
-<title>Example Development Atoms</title><link href="` + base + `/"/>
+<title>Dev Atoms (Atom)</title><link href="` + base + `/"/>
 <id>tag:example.org,2026:dev</id>
 <entry><title>` + html.EscapeString(articles[2].title) + `</title>
 <link href="` + base + `/articles/3"/><id>` + base + `/articles/3</id>
@@ -288,7 +288,7 @@ func jsonFeed(base string) string {
 // items to lose when it is unsubscribed.
 func brokenFeed(base string) string {
 	return `<?xml version="1.0"?><rss version="2.0"><channel>
-<title>Example Development Broken</title><link>` + base + `/broken</link>
+<title>Dev Broken (500)</title><link>` + base + `/broken</link>
 <item><title>A broken feed's one article</title><link>` + base + `/articles/3</link><guid>` + base + `/broken/1</guid>
 <pubDate>Tue, 20 Oct 2026 15:00:00 GMT</pubDate>
 <description>A feed that will fail its next poll.</description></item></channel></rss>
@@ -298,7 +298,7 @@ func brokenFeed(base string) string {
 // busyFeed is the feed that answers 429 with a Retry-After.
 func busyFeed(base string) string {
 	return `<?xml version="1.0"?><rss version="2.0"><channel>
-<title>Example Development Busy</title><link>` + base + `/busy</link>
+<title>Dev Busy (429)</title><link>` + base + `/busy</link>
 <item><title>A busy feed's one article</title><link>` + base + `/articles/4</link><guid>` + base + `/busy/1</guid>
 <pubDate>Tue, 20 Oct 2026 16:00:00 GMT</pubDate>
 <description>A feed that will ask the reader to wait.</description></item></channel></rss>
@@ -310,11 +310,11 @@ func opmlDocument(base string) string {
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Development feeds</title></head><body>
 <outline text="Development" title="Development">
-<outline type="rss" text="Example Development Journal" xmlUrl="` + base + `/rss.xml" htmlUrl="` + base + `/"/>
-<outline type="rss" text="Example Development Atoms" xmlUrl="` + base + `/atom.xml" htmlUrl="` + base + `/"/>
-<outline type="rss" text="Example Development Feeds" xmlUrl="` + base + `/feed.json" htmlUrl="` + base + `/"/>
-<outline type="rss" text="Example Development Broken" xmlUrl="` + base + `/broken.xml" htmlUrl="` + base + `/"/>
-<outline type="rss" text="Example Development Busy" xmlUrl="` + base + `/busy.xml" htmlUrl="` + base + `/"/>
+<outline type="rss" text="Dev Journal (RSS)" xmlUrl="` + base + `/rss.xml" htmlUrl="` + base + `/"/>
+<outline type="rss" text="Dev Atoms (Atom)" xmlUrl="` + base + `/atom.xml" htmlUrl="` + base + `/"/>
+<outline type="rss" text="Dev Feeds (JSON)" xmlUrl="` + base + `/feed.json" htmlUrl="` + base + `/"/>
+<outline type="rss" text="Dev Broken (500)" xmlUrl="` + base + `/broken.xml" htmlUrl="` + base + `/"/>
+<outline type="rss" text="Dev Busy (429)" xmlUrl="` + base + `/busy.xml" htmlUrl="` + base + `/"/>
 </outline></body></opml>
 `
 }

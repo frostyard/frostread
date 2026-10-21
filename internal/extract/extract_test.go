@@ -113,7 +113,7 @@ func TestInline(t *testing.T) {
 		"https://example.com/tomato.png": {body: png, typ: "image/png"},
 	}}
 	content, images, err := x.Inline(t.Context(), `<p>Full text.</p><img src="tomato.png" alt="A tomato">`,
-		"https://example.com/feed-entry")
+		"https://example.com/feed-entry", "")
 	if err != nil {
 		t.Fatal(err)
 	}
