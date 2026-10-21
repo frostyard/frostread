@@ -76,7 +76,7 @@ func (s *Store) Put(ctx context.Context, r io.Reader, mime string) (string, erro
 		_ = tmp.Close()
 		_ = os.Remove(tmp.Name())
 	}()
-	var src io.Reader = r
+	src := io.Reader(r)
 	if s.MaxBytes > 0 {
 		src = io.LimitReader(r, s.MaxBytes+1)
 	}
