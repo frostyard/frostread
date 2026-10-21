@@ -15,7 +15,8 @@ ticked as its work lands.
 - The repository surface: `AGENTS.md` with its symlinks, `README.md`,
   `LICENSE`, `mise.toml` and `mise.lock`, `.golangci.yml`, and the CI
   workflow.
-- The founding documents, all Proposed on 2026-10-21:
+- The founding documents, written on 2026-10-21 (ADR-0001 to ADR-0005 Accepted, Brian,
+  2026-10-21):
   [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md),
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),

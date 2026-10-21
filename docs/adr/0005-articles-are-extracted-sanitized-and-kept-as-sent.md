@@ -1,6 +1,6 @@
 # 0005 — Articles are extracted, sanitized, and kept as sent
 
-- **Status:** Proposed
+- **Status:** Accepted (Brian, 2026-10-21)
 - **Date:** 2026-10-21
 
 ## Context

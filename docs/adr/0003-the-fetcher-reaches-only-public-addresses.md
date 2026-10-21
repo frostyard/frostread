@@ -1,6 +1,6 @@
 # 0003 — The fetcher reaches only public addresses
 
-- **Status:** Proposed
+- **Status:** Accepted (Brian, 2026-10-21)
 - **Date:** 2026-10-21
 
 ## Context
