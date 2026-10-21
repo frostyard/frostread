@@ -1,0 +1,4 @@
+# The store stays inside the nsl machine (lodge's dev/nsl/provision.sh);
+# without this pnpm puts it beside the project, in the host's home.
+storeDir: /var/tmp/lodge/pnpm-store
+packageImportMethod: copy

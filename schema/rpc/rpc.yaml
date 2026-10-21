@@ -1,0 +1,33 @@
+# The rpc domain: connection setup, as both of lodge's first apps have it.
+# api/rpc.go is what a generator writes from these files, by hand until
+# the app adopts one (the new-lodge-app skill says how).
+domain: rpc
+protocol: 1
+callers: [local, session, agent]
+doc: >-
+  Connection setup. A client calls rpc.hello first on every connection; the
+  server answers any other method with notReady until hello succeeds.
+enums:
+  - name: CallerKind
+    doc: Who a connection serves. A method a connection's caller may not use answers methodNotFound.
+    values:
+      - {name: local, doc: "readd's private socket: its own clients on the same machine."}
+      - {name: session, doc: "A browser session through lodge's /app/read/api."}
+      - {name: agent, doc: "An MCP session through lodge's /mcp/read."}
+types:
+  - name: Hello
+    doc: Server identity, the negotiated protocol, and who the connection serves.
+    fields:
+      - {name: protocol, type: int, doc: "Protocol major version the server speaks."}
+      - {name: server, type: string, doc: "Server name and version, for logs."}
+      - {name: caller, type: CallerKind, doc: "The connection's caller."}
+methods:
+  - name: hello
+    doc: Negotiate the protocol major version. Changes within a major version are additive only.
+    params:
+      - {name: protocol, type: int, doc: "Protocol major version the client speaks."}
+      - {name: client, type: string, doc: "Client name and version, for logs."}
+    result: Hello
+    errors: [protocolMismatch]
+  - name: ping
+    doc: Do nothing; a web client calls it at least every 30 s while visible, so lodge keeps its session.

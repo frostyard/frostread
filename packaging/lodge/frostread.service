@@ -1,0 +1,38 @@
+# Read's daemon, lodge's read app (lodge's app-contract.md). It runs as
+# its own system user, in group lodge-apps for inference and never in
+# group lodge, and listens on no network.
+[Unit]
+Description=Read, behind lodge
+Requires=frostread.socket
+After=frostread.socket
+
+[Service]
+Type=exec
+User=frostread
+Group=frostread
+SupplementaryGroups=lodge-apps
+ExecStart=/usr/local/bin/readd
+StateDirectory=frostread
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
