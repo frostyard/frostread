@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -171,7 +170,7 @@ func (e *Engine) nextPoll(now time.Time, failures int, retryAfter time.Duration)
 	}
 	// ±10%, so a hundred sources do not poll in one minute, and never
 	// past the longest wait.
-	jitter := time.Duration(float64(d) * (rand.Float64()*0.2 - 0.1))
+	jitter := time.Duration(float64(d) * (e.o.Rand()*0.2 - 0.1))
 	next := now.Add(min(d+jitter, MaxBackoff))
 	if retryAfter > next.Sub(now) {
 		next = now.Add(min(retryAfter, MaxBackoff))

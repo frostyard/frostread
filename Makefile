@@ -1,4 +1,4 @@
-.PHONY: help build fmt vet lint lint-version-check test race cross tidy-check verify check ci web-build web-check web-fmt lodge-package dev-seed dev-lodge clean
+.PHONY: help build fmt vet lint lint-version-check test race cross tidy-check verify check ci contract-update web-build web-check web-fmt lodge-package dev-seed dev-lodge clean
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -50,6 +50,13 @@ verify: tidy-check vet lint test dev-check ## The gate without formatting: tidy,
 dev-check:
 	go vet -tags 'devfetch devfeeds' ./...
 	go test -tags 'devfetch devfeeds' ./cmd/readdev/ ./internal/fetch/
+
+# The daemon's answers are the web app's contract: internal/readapi's
+# contract test writes them to web/src/rpc/testdata, and the web app's
+# Vitest test checks them against its types and components. `make check`
+# fails when a golden is stale; this rewrites them.
+contract-update: ## Rewrite web/src/rpc/testdata from the daemon's seeded answers
+	go test ./internal/readapi -run TestContract -update
 
 check: fmt verify ## Format, then verify
 

@@ -174,3 +174,28 @@ func TestPublishedTime(t *testing.T) {
 		t.Fatalf("published = %v, want %v", got.Published, want)
 	}
 }
+
+// A page whose heading is its title does not repeat it in the extracted
+// text: the reader shows the title above the text.
+func TestExtractDropsTheHeading(t *testing.T) {
+	page := `<!doctype html><html><head><title>Keeping a reading list</title></head><body>
+<article><h1>Keeping a reading list</h1>` + strings.Repeat("A list is a small kindness to your later self, and it works best when it is short. ", 6) +
+		`</article></body></html>`
+	x := &Extractor{Blobs: blobs.New(t.TempDir()), Fetch: pages{}}
+	got, err := x.Extract(t.Context(), []byte(page), "https://example.com/list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "Keeping a reading list" {
+		t.Fatalf("title = %q", got.Title)
+	}
+	if strings.HasPrefix(got.Text, "Keeping a reading list") {
+		t.Fatalf("the text starts with the title:\n%s", got.Text)
+	}
+	if !strings.HasPrefix(got.Text, "A list is a small kindness") {
+		t.Fatalf("the text lost its first words:\n%s", got.Text)
+	}
+	if !strings.HasPrefix(got.Excerpt, "A list") {
+		t.Fatalf("excerpt = %q", got.Excerpt)
+	}
+}

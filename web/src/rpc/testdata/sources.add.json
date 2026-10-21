@@ -1,0 +1,11 @@
+{
+  "source": {
+    "id": 5,
+    "url": "https://third.example/feed.xml",
+    "siteUrl": "https://third.example/",
+    "title": "Third Feed",
+    "unread": 0,
+    "polledAt": "2026-10-20T12:00:00Z",
+    "nextPollAt": "2026-10-20T12:20:00Z"
+  }
+}

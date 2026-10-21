@@ -321,6 +321,8 @@ vets and tests both.
 | `api/*.go` | follows this spec by hand until the app adopts a generator |
 | `schema/rpc/*.yaml` | the JSON-RPC contract; `api/` follows it by hand |
 | `readctl` | the private socket's methods |
+| `web/src/rpc/testdata/*.json` | the daemon's answers: `internal/readapi`'s contract test writes them for a seeded store, and `make check` fails when one is stale. `make contract-update` rewrites them |
+| `web/src/rpc/api.ts` | follows the Go types, `omitzero` included; the goldens' Vitest check fails when it does not |
 
 ## References
 

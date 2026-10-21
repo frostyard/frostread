@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net/url"
 	"strings"
 	"sync"
@@ -51,7 +52,10 @@ type Options struct {
 	OnChange func(views []string)
 	// Now is the clock, for tests.
 	Now func() time.Time
-	Log *slog.Logger
+	// Rand is a source of [0, 1) for the polls' jitter, for tests; it is
+	// math/rand/v2's when nil.
+	Rand func() float64
+	Log  *slog.Logger
 }
 
 // Engine is readd's logic.
@@ -72,6 +76,9 @@ type Engine struct {
 func New(o Options) *Engine {
 	if o.Now == nil {
 		o.Now = time.Now
+	}
+	if o.Rand == nil {
+		o.Rand = rand.Float64
 	}
 	if o.Log == nil {
 		o.Log = slog.New(slog.DiscardHandler)
@@ -349,7 +356,9 @@ func (e *Engine) Body(ctx context.Context, id int64) (string, error) {
 	if text == "" {
 		text = sanitize.PlainText(it.SummaryHTML + " " + it.ContentHTML)
 	}
-	return text, nil
+	// An item stored before the extractor stripped the heading keeps it;
+	// the title is above the text here too.
+	return extract.StripTitle(text, it.Title), nil
 }
 
 // Search returns the items that match query, best match first.
@@ -395,12 +404,14 @@ func sourceName(names map[int64]string, id *int64) string {
 	return names[*id]
 }
 
-// excerpt is an item's summary as text, at most 300 characters.
+// excerpt is an item's summary as text, at most 300 characters, and
+// without a leading copy of the title: the list shows the title itself.
 func excerpt(it store.Item) string {
 	text := it.Text
 	if strings.TrimSpace(text) == "" {
 		text = sanitize.PlainText(it.SummaryHTML)
 	}
+	text = extract.StripTitle(text, it.Title)
 	text = strings.Join(strings.Fields(text), " ")
 	if r := []rune(text); len(r) > 300 {
 		cut := string(r[:300])

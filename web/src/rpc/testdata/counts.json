@@ -1,0 +1,15 @@
+{
+  "views": {
+    "all": 5,
+    "archive": 1,
+    "later": 1,
+    "starred": 0,
+    "unread": 4
+  },
+  "sources": [
+    {
+      "sourceId": 1,
+      "unread": 3
+    }
+  ]
+}

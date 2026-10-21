@@ -1,0 +1,16 @@
+{
+  "id": 2,
+  "title": "A page that fails",
+  "sourceTitle": "Example Journal",
+  "published": "2026-10-20T09:00:00Z",
+  "excerpt": "A short summary.",
+  "read": false,
+  "starred": false,
+  "archived": false,
+  "saved": false,
+  "url": "https://example.com/fails",
+  "contentPath": "/content/item/2/contract-mac",
+  "extractState": "failed",
+  "extractError": "the page answers 500",
+  "originalHash": "838485e01e095157c3023445252559256e2a26220b0192ff585382ded9d8caae"
+}

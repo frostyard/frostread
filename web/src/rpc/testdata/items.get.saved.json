@@ -1,0 +1,12 @@
+{
+  "id": 5,
+  "title": "example.org",
+  "published": "2026-10-20T12:00:00Z",
+  "read": false,
+  "starred": false,
+  "archived": false,
+  "saved": true,
+  "url": "https://example.org/later-reading",
+  "contentPath": "/content/item/5/contract-mac",
+  "extractState": "pending"
+}

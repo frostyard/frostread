@@ -74,7 +74,11 @@ counterpart of something those repositories do, read their file.
   it before claiming any change complete, docs included.
 - `make race` runs the tests under the race detector, and `make cross`
   builds linux/amd64 and linux/arm64. `make ci` adds the web bundle's
-  checks.
+  checks (`make web-check`, nsl).
+- The daemon's wire answers are the web app's contract:
+  `internal/readapi`'s contract test writes `web/src/rpc/testdata`, and
+  `make check` fails when a golden is stale. After a change to `api/` or
+  the engine's types, run `make contract-update`, then `make web-check`.
 - Never run pnpm, node or cargo on the host. `web/` builds in the nsl
   machine `lodge` (`make web-build`), as lodge's apps do.
 - Fix a lint finding rather than loosening `.golangci.yml`.
