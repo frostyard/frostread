@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The development feeds cmd/readdev serves on 127.0.0.1:8088, for the
+     live check. `go run -tags devfeeds ./cmd/readdev -opml` prints the
+     same document with the address that readdev was given. -->
+<opml version="2.0"><head><title>Development feeds</title></head><body>
+<outline text="Development" title="Development">
+<outline type="rss" text="Example Development Journal" xmlUrl="http://127.0.0.1:8088/rss.xml" htmlUrl="http://127.0.0.1:8088/"/>
+<outline type="rss" text="Example Development Atoms" xmlUrl="http://127.0.0.1:8088/atom.xml" htmlUrl="http://127.0.0.1:8088/"/>
+<outline type="rss" text="Example Development Feeds" xmlUrl="http://127.0.0.1:8088/feed.json" htmlUrl="http://127.0.0.1:8088/"/>
+</outline></body></opml>

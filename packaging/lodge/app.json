@@ -1,0 +1,12 @@
+{
+  "contract": 1,
+  "id": "read",
+  "name": "Read",
+  "icon": "icon.svg",
+  "version": "0.0.0-dev",
+  "key": "r",
+  "user": "frostread",
+  "content": true,
+  "contentLinks": true,
+  "mcp": true
+}

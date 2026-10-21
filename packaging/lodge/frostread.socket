@@ -1,0 +1,16 @@
+# Read's lodge socket (lodge's app-contract.md, Install layout). systemd
+# creates it, owned by frostread and group lodge, 0660, and passes it to
+# readd, which the kit's lodgeapp.Env.Listen accepts.
+[Unit]
+Description=Read's lodge socket
+
+[Socket]
+ListenStream=/run/lodge/apps/read.sock
+FileDescriptorName=read
+SocketUser=frostread
+SocketGroup=lodge
+SocketMode=0660
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,5 @@
+/build/
+node_modules/
+web/node_modules/
+.envrc
+.mcp.json
