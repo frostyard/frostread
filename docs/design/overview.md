@@ -57,18 +57,22 @@ schedules the next poll: the configured interval with ±10% jitter after a
 success, and a doubling backoff after an error, up to 24 hours, with a
 `Retry-After` honoured. The error is stored on the source and shown on it.
 
-**Extraction.** A new item whose feed text is under 600 characters is
-queued for extraction; one with more is already a full article, so its feed
-content is sanitized and used. Two workers take the queue. Extraction runs
-readability, sanitizes, fetches the images into the blob store and rewrites
-their sources to `blob:<hash>`
+**Extraction.** Every new item is queued for extraction. An item whose feed
+text is under 600 characters is fetched from its page; one with more is
+already a full article, so its feed content is used and its page is never
+fetched. Two workers take the queue, and each also sweeps the store every
+30 seconds, so an item whose enqueue was dropped is not lost. Extraction
+runs readability, sanitizes, fetches the images into the blob store and
+rewrites their sources to `blob:<hash>`
 ([ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)).
 The original body is stored as sent.
 
 **The engine.** `internal/engine` is the app's logic over the store,
 fetcher, feed parser, extractor and notes client. Every change sends a
-notification that the RPC server forwards to browser sessions as
-`items.changed`.
+notification that the RPC server forwards to the connections that called
+`events.subscribe`, as the kit's event envelope whose event is
+`items.changed`. `internal/readapi` turns the engine's errors into the
+contract's codes.
 
 **The API.** `api/` and `internal/rpcserver` serve JSON-RPC 2.0 on
 `kit/jsonrpc`: `/api` for a browser session, the private socket for

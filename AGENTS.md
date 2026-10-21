@@ -45,9 +45,11 @@ counterpart of something those repositories do, read their file.
 - `internal/sanitize`: the article policy, on `bluemonday`.
 - `internal/extract`: readability extraction, on
   `codeberg.org/readeck/go-readability/v2`, and the images it inlines.
-- `internal/poller`: one goroutine that polls due sources, and the
-  extraction queue.
-- `internal/engine`: the app's logic over the packages above.
+- `internal/engine`: the app's logic over the packages above, the polls
+  themselves, and the extraction queue.
+- `internal/poller`: the poll loop's timing alone.
+- `internal/readapi`: the JSON-RPC contract over the engine, and the codes
+  its errors become.
 - `internal/content`: the `lodgeapp.Server` content handler.
 - `internal/mcpserver`: MCP, on the MCP SDK, with the token's scope.
 - `internal/notes`: save-as-note, through notes' MCP on lodge's agent

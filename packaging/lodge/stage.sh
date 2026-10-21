@@ -1,8 +1,8 @@
 #!/bin/sh
 # Stage readd as lodge's read app under DESTDIR, in lodge's install
-# layout (lodge's app-contract.md, Install layout): the daemon, the manifest
-# with VERSION, the web build when BUILD/web holds one, the units and the
-# sysusers.d entry. make lodge-package runs it.
+# layout (lodge's app-contract.md, Install layout): the daemon, readctl, the
+# manifest with VERSION, the web build when BUILD/web holds one, the units
+# and the sysusers.d entry. make lodge-package runs it.
 #
 #   packaging/lodge/stage.sh DESTDIR VERSION [BUILD]
 #
@@ -29,6 +29,7 @@ esac
 app=$dest/usr/share/lodge/apps/read
 rm -rf -- "$app"
 install -Dm755 "$build/readd" "$dest/usr/local/bin/readd"
+install -Dm755 "$build/readctl" "$dest/usr/local/bin/readctl"
 install -d "$app"
 sed "s/\"version\": \"[^\"]*\"/\"version\": \"$version\"/" "$here/app.json" > "$app/app.json"
 if [ -d "$build/web" ]; then cp -R "$build/web" "$app/web"; fi

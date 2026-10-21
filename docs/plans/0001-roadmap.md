@@ -23,7 +23,7 @@ ticked as its work lands.
   [specs/api.md](../specs/api.md), and this plan.
 - **Done when:** `make check` passes on the scaffold alone.
 
-## Phase 2 — The daemon
+## Phase 2 — The daemon (built 2026-10-21)
 
 - `internal/store`: SQLite with WAL and foreign keys, migrations by
   `user_version`, the tables of
@@ -46,7 +46,7 @@ ticked as its work lands.
 - **Done when:** two test feeds on an `httptest` server poll, extract,
   index and search in a test, and a `127.0.0.1` fetch is refused.
 
-## Phase 3 — API, readctl, MCP
+## Phase 3 — API, readctl, MCP (built 2026-10-21)
 
 - `schema/rpc` and `api/`: every method of
   [specs/api.md](../specs/api.md#json-rpc-api).
@@ -60,7 +60,7 @@ ticked as its work lands.
   work against a running `readd`, and an MCP client with `read` cannot
   save a URL.
 
-## Phase 4 — Save as a note
+## Phase 4 — Save as a note (built 2026-10-21)
 
 - `internal/notes`: HTML to Markdown, the path rules, the frontmatter, the
   rooted link, and `create_note` over lodge's agent socket

@@ -107,6 +107,7 @@ what search returns too, unless a query says otherwise.
 | `later.save` | `{url}` | `{item: ItemSummary}` | saves a link to read later; saving it twice returns the same item |
 | `counts` | none | `{views: {unread, starred, later, archive, all}, sources: [{sourceId, unread}]}` | the sidebar's counts |
 | `notes.setToken` | `{token}` | `{}` | caller `local` only: writes the notes token, 0600, and uses it at once |
+| `events.subscribe` | none | `{subscribed}` | makes this connection receive `items.changed`, from the answer on |
 
 Times are RFC 3339 in UTC, with `omitzero`. A cursor is opaque to the
 client: it names the last item of the page it came with, and `items.list`
@@ -120,16 +121,19 @@ or notes is not reachable) and `internal`.
 #### Notifications
 
 After any change (an item arrives, is marked read, starred, archived or
-saved, a source is added or removed, a note is written), every `session`
-connection receives:
+saved, a source is added or removed, a note is written), every connection
+that called `events.subscribe` receives the kit's event envelope, its
+event named `items.changed`:
 
 ```json
-{"jsonrpc":"2.0","method":"items.changed","params":{"views":["unread","later"]}}
+{"jsonrpc":"2.0","method":"event","params":{"event":"items.changed","data":{"views":["unread","later"]}}}
 ```
 
-`views` names the views the change affects. A client refetches the counts
-and the list it shows. A notification goes to sessions only: `readctl` does
-not receive them.
+`data.views` names the views the change affects. A client refetches the
+counts and the list it shows. `readctl` does not subscribe, so it receives
+no events. A notification may reach a client before the answer to its own
+`events.subscribe`; a client that ignores one before it has subscribed
+anyway loses nothing, because it refetches on connecting.
 
 ### MCP
 
@@ -216,7 +220,7 @@ the private socket's JSON-RPC as caller `local`.
 | `sources` | lists sources with their unread counts |
 | `import <file.opml>` | imports the file's outlines; `-` reads stdin |
 | `export` | writes the OPML to stdout |
-| `poll` | polls every source now |
+| `poll [source-id]` | polls every source now, or one source |
 | `search <query>` | searches titles, authors and text |
 | `notes-token` | reads the notes token from stdin and sets it |
 | `status` | prints the version and whether save-as-note is ready |
@@ -273,7 +277,11 @@ it names several), mode 0700:
 - A poll error MUST be stored on the source and shown in `Source.lastError`,
   and it MUST NOT stop the poller.
 - Extraction MUST NOT delay the item's arrival: an item is listed with
-  `extractState: "pending"` before it is done.
+  `extractState: "pending"` before it is done, and every new item is
+  queued for it. A feed item whose feed text is 600 characters or more is
+  its own article: its images are fetched and inlined, and its page is
+  never fetched. Any other item's page is fetched once, through the
+  guarded client.
 - `saveAsNote` MUST NOT write the vault's files, and MUST call only notes'
   MCP with frostread's token.
 - No log line, and no error message, may contain a token, a note's text or

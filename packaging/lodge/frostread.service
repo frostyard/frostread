@@ -1,6 +1,12 @@
-# Read's daemon, lodge's read app (lodge's app-contract.md). It runs as
-# its own system user, in group lodge-apps for inference and never in
-# group lodge, and listens on no network.
+# Read's daemon, lodge's read app (lodge's app-contract.md). It runs as its
+# own system user, in group lodge-apps, and in lodge-agents because
+# frostread is an agent of notes on lodge's agent socket for save-as-note
+# (ADR-0004); it is never in group lodge. It reaches the public web itself,
+# as one of the very few app daemons that does, always through the guarded
+# fetcher (ADR-0003). Its private socket is readctl's:
+#   sudo -u frostread readctl sources
+# Its configuration is /etc/frostread/frostread.json, and its state is
+# /var/lib/frostread.
 [Unit]
 Description=Read, behind lodge
 Requires=frostread.socket
@@ -10,10 +16,12 @@ After=frostread.socket
 Type=exec
 User=frostread
 Group=frostread
-SupplementaryGroups=lodge-apps
-ExecStart=/usr/local/bin/readd
+SupplementaryGroups=lodge-apps lodge-agents
+ExecStart=/usr/local/bin/readd --socket /run/frostread/readctl.sock
 StateDirectory=frostread
 StateDirectoryMode=0700
+RuntimeDirectory=frostread
+RuntimeDirectoryMode=0700
 Restart=on-failure
 RestartSec=5s
 UMask=0077
@@ -27,7 +35,10 @@ PrivateDevices=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
-RestrictAddressFamilies=AF_UNIX
+# The lodge socket, the inference socket and the agent socket are Unix
+# sockets; the fetcher reaches the public web over TCP and needs the
+# resolver's netlink requests.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 RestrictNamespaces=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
