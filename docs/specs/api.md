@@ -218,6 +218,7 @@ the private socket's JSON-RPC as caller `local`.
 | `save <url>` | saves a link to read later |
 | `add <feed-url>` | subscribes, discovering the feed from a page |
 | `sources` | lists sources with their unread counts |
+| `note <item-id>` | saves the article as a note, and prints its path and its route in notes |
 | `import <file.opml>` | imports the file's outlines; `-` reads stdin |
 | `export` | writes the OPML to stdout |
 | `poll [source-id]` | polls every source now, or one source |

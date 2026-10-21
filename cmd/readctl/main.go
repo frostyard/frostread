@@ -44,6 +44,7 @@ COMMAND:
   save <url>          save a link to read later
   add <feed-url>      subscribe to a feed, or to the feed a page names
   sources             list the sources and their unread counts
+  note <item-id>      save an article as a note in the notes vault
   import <file.opml>  import an OPML file, or - for stdin
   export              write the OPML to stdout
   poll                poll every source now
@@ -52,6 +53,15 @@ COMMAND:
   status              print the version and whether save-as-note is ready
 
 The socket is --socket, or READ_SOCKET, or ` + DefaultSocket + `.`
+
+// known reports whether command is one readctl has.
+func known(command string) bool {
+	switch command {
+	case "save", "add", "sources", "note", "import", "export", "poll", "search", "notes-token", "status":
+		return true
+	}
+	return false
+}
 
 // run does one command.
 func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer) error {
@@ -72,6 +82,10 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if len(rest) == 0 {
 		fmt.Fprintln(errOut, usage)
 		return errors.New("no command")
+	}
+	if !known(rest[0]) {
+		fmt.Fprintln(errOut, usage)
+		return fmt.Errorf("unknown command %q", rest[0])
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -193,6 +207,20 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return err
 		}
 		fmt.Fprintln(out, "the notes token is set")
+		return nil
+	case "note":
+		if len(args) != 1 {
+			return errors.New("usage: readctl note <item-id>")
+		}
+		var id int64
+		if _, err := fmt.Sscan(args[0], &id); err != nil || id <= 0 {
+			return errors.New("note needs an item id")
+		}
+		path, route, err := read.SaveAsNote(ctx, id)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "saved %s\n%s\n", path, route)
 		return nil
 	case "status":
 		st, err := read.Status(ctx)
