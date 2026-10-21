@@ -132,11 +132,9 @@ export function createReadStore(): StoreApi<ReadStore> {
     busy: false,
 
     async connect(api) {
+      // Live updates are main.tsx's watchChanges: it subscribes to
+      // items.changed now, and again after each reconnect.
       set({ api });
-      // Live updates: readd sends items.changed once a connection subscribes.
-      await api.subscribe().catch((err: unknown) => {
-        set({ error: message(err) });
-      });
       await Promise.all([get().loadStatus(), get().loadCounts(), get().loadSources(), get().load()]);
     },
 

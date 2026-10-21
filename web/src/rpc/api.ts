@@ -1,7 +1,13 @@
 // readd's API, typed by hand from docs/specs/api.md (JSON-RPC API), until
 // the app adopts a generator. Every method here is a session method: the
 // browser never calls notes.setToken, which is the private socket's.
-import type { Transport } from "./transport.js";
+import type { Transport } from "@frostyard/lodge-client/rpc";
+
+/** PROTOCOL is the API major version readd speaks (rpc.hello). */
+export const PROTOCOL = 1;
+
+/** CLIENT names this build in rpc.hello, for readd's logs. */
+export const CLIENT = "read-web";
 
 /** View is one of the sidebar's views (docs/specs/api.md, Views). */
 export type View = "unread" | "starred" | "later" | "archive" | "all";
@@ -127,10 +133,9 @@ export const Code = {
   unavailable: 1005,
 } as const;
 
-/** ReadAPI is readd's methods, typed. */
+/** ReadAPI is readd's methods, typed. The subscription to items.changed is
+ * watchChanges' (events.ts): it is made on each connection. */
 export interface ReadAPI {
-  /** subscribe asks for items.changed from now on (docs/specs/api.md, events.subscribe). */
-  subscribe(): Promise<void>;
   status(): Promise<Status>;
   counts(): Promise<Counts>;
   listSources(): Promise<Source[]>;
@@ -155,9 +160,6 @@ export interface ReadAPI {
 export function readAPI(transport: Transport): ReadAPI {
   const call = <T>(method: string, params: unknown) => transport.call<T>(method, params);
   return {
-    subscribe: async () => {
-      await call("events.subscribe", {});
-    },
     status: () => call<Status>("status", {}),
     counts: () => call<Counts>("counts", {}),
     listSources: () => call<{ sources: Source[] }>("sources.list", {}).then((r) => r.sources),
