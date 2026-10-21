@@ -77,7 +77,7 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
    make web-build                             # in nsl
    make lodge-package                         # stages build/lodge-root
    sudo rm -rf /usr/share/lodge/apps/read     # only Read's own directory
-   sudo cp -a build/lodge-root/usr/. /usr/
+   sudo cp -r build/lodge-root/usr/. /usr/    # not -a: the files must be root's
    ```
 
 2. **Create the user and start the socket.** The sysusers entry makes
@@ -88,8 +88,15 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
    sudo systemd-sysusers /usr/lib/sysusers.d/frostread.conf
    id frostread          # expect lodge-apps and lodge-agents
    sudo systemctl daemon-reload
-   sudo systemctl enable --now frostread.socket
+   sudo systemctl enable --now frostread.socket frostread.service
    ```
+
+   The service is enabled too, so the poller runs from boot, not only
+   after lodge's first request. On a host whose clock is UTC, give readd
+   the owner's zone, as notes' unit does: a drop-in
+   `/etc/systemd/system/frostread.service.d/tz.conf` with
+   `[Service]` and `Environment=TZ=America/New_York`. Saved notes are
+   dated, and article pages show their day, in that zone.
 
 3. **Write the configuration**, `/etc/frostread/frostread.json`, owned by
    root, 0644: no secret is in it. `notes_vault` is the id of the vault
