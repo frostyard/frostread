@@ -113,8 +113,10 @@ func (e *Engine) polled(ctx context.Context, src store.Source, res *fetch.Respon
 	for _, it := range items {
 		// The feed's HTML is untrusted: it is sanitized before the store
 		// holds it, and its bytes are kept as sent, by hash.
-		summary := sanitize.HTML(it.SummaryHTML)
-		content := sanitize.HTML(it.ContentHTML)
+		// A feed's links and image sources are often relative; resolving
+		// them first keeps its images, which the extraction fetches later.
+		summary := sanitize.HTML(extract.Absolutize(it.SummaryHTML, it.URL))
+		content := sanitize.HTML(extract.Absolutize(it.ContentHTML, it.URL))
 		// A feed may give an empty document as its content: store no HTML
 		// when there are no words in it.
 		if sanitize.PlainText(summary) == "" {

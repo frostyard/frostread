@@ -2,8 +2,8 @@
 // (docs/specs/api.md, JSON-RPC API). It holds 3 sources, 30 items and 2
 // saved links in memory, answers every session method, and sends
 // items.changed after a write, as readd does.
+import type { EventEnvelope, Transport } from "@frostyard/lodge-client/rpc";
 import type { Counts, ItemDetail, ItemSummary, ItemsChanged, Source, View } from "./api.js";
-import type { Transport } from "./transport.js";
 
 const DAY = 86_400_000;
 /** NOW is the clock the mock's dates count back from, so the tests are stable. */
@@ -83,13 +83,15 @@ export function createMockTransport(): Transport {
     });
   }
 
-  const events = new Set<(event: ItemsChanged) => void>();
+  const events = new Set<(event: EventEnvelope) => void>();
   const closes = new Set<(reason: string) => void>();
 
-  /** notify sends items.changed after the response, as readd does. */
+  /** notify sends items.changed after the response, as readd does: the
+   * kit's event envelope, its data a Changed. */
   const notify = (...views: string[]) =>
     queueMicrotask(() => {
-      for (const handler of events) handler({ views });
+      const changed: ItemsChanged = { views };
+      for (const handler of events) handler({ event: "items.changed", data: changed });
     });
 
   const byId = (id: number) => items.find((item) => item.id === id);

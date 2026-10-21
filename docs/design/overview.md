@@ -97,9 +97,9 @@ URIs, only from lodge-content. The MAC is `HMAC-SHA256` of `item:<id>`
 under the store's secret, base64url, 22 characters, and the id travels in
 the path after it.
 
-**The web bundle.** `web/` is on `@frostyard/lodge-client` **client/v0.2.0**
-and `@frostyard/lodge-ui` **ui/v0.1.0**: a source column, an item list and
-a reader, with
+**The web bundle.** `web/` is on `@frostyard/lodge-client`
+**client/v0.3.0** and `@frostyard/lodge-ui` **ui/v0.1.0**: a source column,
+an item list and a reader, with
 `j`/`k`, `s` and `m`, and the narrow layout on a phone.
 
 ## Operational notes
