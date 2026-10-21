@@ -185,7 +185,7 @@ func seed(t *testing.T) *seeded {
 	}
 	_ = first
 
-	router, err := api.NewRouter(api.Services{RPC: stubRPC{}, Read: readapi.New(eng), Events: stubEvents{}})
+	router, err := api.NewRouter(api.Services{RPC: stubRPC{}, Read: readapi.New(eng, nil), Events: stubEvents{}})
 	if err != nil {
 		t.Fatal(err)
 	}

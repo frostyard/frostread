@@ -95,6 +95,7 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
           label="Feed or site address"
           placeholder="https://example.com/feed.xml"
           submitLabel="Add"
+          busyLabel="Adding…"
           onSubmit={addSource}
           onClose={() => setAdding(false)}
         />

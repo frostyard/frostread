@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 
@@ -26,6 +27,10 @@ type Handler struct {
 	Store  *store.DB
 	Blobs  *blobs.Store
 	Secret []byte
+	// Location is the time zone an article's date is shown in: the
+	// daemon's own, time.Local, when nil. The app formats the same date in
+	// the reader's zone, so both show one day.
+	Location *time.Location
 }
 
 // Path is an item's content path relative to the content root:
@@ -132,7 +137,7 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 		Date    string
 		Content template.HTML
 	}{
-		Scheme: Scheme(r), Title: it.Title, Byline: it.Author, Site: siteOf(it.URL), Date: published(it),
+		Scheme: Scheme(r), Title: it.Title, Byline: it.Author, Site: siteOf(it.URL), Date: h.published(it),
 		Content: template.HTML(html),
 	}
 	var out strings.Builder
@@ -228,12 +233,17 @@ func siteOf(rawurl string) string {
 	return u.Hostname()
 }
 
-// published is the article's date, or "" when it has none.
-func published(it store.Item) string {
+// published is the article's date in the daemon's time zone, or "" when it
+// has none.
+func (h *Handler) published(it store.Item) string {
 	if it.PublishedAt.IsZero() {
 		return ""
 	}
-	return it.PublishedAt.Format("2 January 2006")
+	loc := h.Location
+	if loc == nil {
+		loc = time.Local
+	}
+	return it.PublishedAt.In(loc).Format("2 January 2006")
 }
 
 // pageTemplate is the article's page. Its style is inline because the

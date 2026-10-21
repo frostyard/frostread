@@ -189,6 +189,8 @@ lodge-content. The manifest sets `"content": true` and
   CSP allows only `img-src data:`.
 - The page has no script, no remote link but the article's own anchors,
   and no remote image.
+- The article's date is shown in the daemon's time zone (`time.Local`),
+  the same day the app's reader shows in the reader's zone.
 - **The theme.** `?scheme=light` or `?scheme=dark` makes the page follow
   the shell's theme, which the web app passes whenever the theme changes
   (and a changed theme reloads the frame). Without the query, the page
@@ -317,6 +319,11 @@ gives. What it needs:
   one transaction. It MUST NOT delete a saved link.
 - A poll error MUST be stored on the source and shown in `Source.lastError`,
   and it MUST NOT stop the poller.
+- A URL the fetcher refuses MUST answer `invalidParams` with one sentence
+  naming the address, such as "Read does not fetch addresses inside your
+  network (192.0.2.1)." The guard's detail, and the address that was
+  refused, go to the log; the MCP `save_url` tool answers the same
+  sentence.
 - Extraction MUST NOT delay the item's arrival: an item is listed with
   `extractState: "pending"` before it is done, and every new item is
   queued for it. A feed item whose feed text is 600 characters or more is

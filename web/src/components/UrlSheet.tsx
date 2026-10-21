@@ -10,11 +10,14 @@ export function UrlSheet(props: {
   label: string;
   placeholder: string;
   submitLabel: string;
+  /** busyLabel is the button's text while the daemon works. */
+  busyLabel: string;
   onSubmit: (url: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -25,11 +28,16 @@ export function UrlSheet(props: {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const url = value.trim();
-    if (url === "") return;
+    if (url === "" || busy) return;
     setBusy(true);
+    setFailure(null);
     try {
       await props.onSubmit(url);
       props.onClose();
+    } catch (err) {
+      // The sheet says what went wrong and stays open, so the address can
+      // be changed and tried again.
+      setFailure(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -48,6 +56,11 @@ export function UrlSheet(props: {
             className="h-8 rounded-md border border-separator bg-window px-2 text-primary outline-none focus-visible:border-accent"
           />
         </label>
+        {failure !== null && (
+          <p role="alert" className="text-sidebar-row text-flag-1">
+            {failure}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <button
             type="button"
@@ -61,7 +74,7 @@ export function UrlSheet(props: {
             disabled={busy || value.trim() === ""}
             className="h-7 rounded-md bg-accent px-3 text-sidebar-row font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
           >
-            {props.submitLabel}
+            {busy ? props.busyLabel : props.submitLabel}
           </button>
         </div>
       </form>

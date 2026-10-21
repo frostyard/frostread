@@ -119,6 +119,22 @@ func call(t *testing.T, sess *mcp.ClientSession, name string, args map[string]an
 	return false
 }
 
+// callError runs a tool and returns the text of its error, or "".
+func callError(t *testing.T, sess *mcp.ClientSession, name string, args map[string]any) string {
+	t.Helper()
+	res, err := sess.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		return err.Error()
+	}
+	var b strings.Builder
+	for _, c := range res.Content {
+		if text, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(text.Text)
+		}
+	}
+	return b.String()
+}
+
 func TestReadScope(t *testing.T) {
 	e := newEngine(t)
 	sess := connect(t, Handler(Options{Engine: e, Version: "test"}), "read")
@@ -191,6 +207,13 @@ func TestWriteScope(t *testing.T) {
 	}
 	if !starred.Starred {
 		t.Fatalf("starred = %+v", starred)
+	}
+	// A save of an inside address is refused in one sentence, as the web
+	// app's later.save says it.
+	if text := callError(t, sess, "save_url", map[string]any{"url": "http://192.0.2.1/page"}); !strings.Contains(
+		text, "Read does not fetch addresses inside your network (192.0.2.1).",
+	) {
+		t.Fatalf("save_url's refusal = %q", text)
 	}
 	// Marking read unread again is admitted too.
 	if call(t, sess, "mark_read", map[string]any{"ids": []int64{1}, "read": false}, nil) {

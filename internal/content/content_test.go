@@ -203,3 +203,43 @@ func TestMissingItemIs404(t *testing.T) {
 		t.Fatalf("an unknown item = %d", res.StatusCode)
 	}
 }
+
+// The article's date is the daemon's local day, which is the day the
+// reader's header shows.
+func TestDateIsTheDaemonsLocal(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(t.Context(), filepath.Join(dir, "read.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	b := blobs.New(filepath.Join(dir, "blobs"))
+	h := &Handler{Store: db, Blobs: b, Secret: []byte("secret"), Location: time.FixedZone("ahead", 2*60*60)}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	src, err := db.AddSource(t.Context(), store.Source{URL: "https://example.com/feed.xml", Title: "Example"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := db.AddItems(t.Context(), src.ID, []store.NewItem{{
+		GUID: "1", Title: "An evening article", URL: "https://example.com/a",
+		Published:   time.Date(2026, 10, 13, 22, 30, 0, 0, time.UTC),
+		SummaryHTML: "<p>Words.</p>",
+	}})
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("items = %v, %v", ids, err)
+	}
+	res, err := http.Get(srv.URL + "/content/" + h.Path(ids[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	// 22:30 UTC is 00:30 the next day in a zone two hours ahead.
+	if !strings.Contains(string(body), "14 October 2026") {
+		t.Fatalf("the page's date is not the local day:\n%s", body)
+	}
+	if strings.Contains(string(body), "13 October 2026") {
+		t.Fatalf("the page keeps the UTC day:\n%s", body)
+	}
+}

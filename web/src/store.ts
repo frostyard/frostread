@@ -257,12 +257,10 @@ export function createReadStore(): StoreApi<ReadStore> {
     async addSource(url) {
       const { api } = get();
       if (api === null) return;
-      try {
-        await api.addSource(url);
-        await Promise.all([get().loadSources(), get().loadCounts()]);
-      } catch (err) {
-        set({ error: message(err) });
-      }
+      // The sheet shows a failure in place; a second error sheet would
+      // cover it.
+      await api.addSource(url);
+      await Promise.all([get().loadSources(), get().loadCounts()]);
     },
 
     async importOPML(xml) {
@@ -292,13 +290,11 @@ export function createReadStore(): StoreApi<ReadStore> {
     async saveLater(url) {
       const { api } = get();
       if (api === null) return;
-      try {
-        const saved = await api.saveLater(url);
-        await Promise.all([get().loadCounts(), get().loadSources()]);
-        await get().open(saved.id);
-      } catch (err) {
-        set({ error: message(err) });
-      }
+      // The sheet shows a failure in place; a second error sheet would
+      // cover it.
+      const saved = await api.saveLater(url);
+      await Promise.all([get().loadCounts(), get().loadSources()]);
+      await get().open(saved.id);
     },
 
     async saveAsNote(id) {

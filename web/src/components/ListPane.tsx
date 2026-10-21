@@ -126,6 +126,7 @@ export function ListPane(props: { searchRef: RefObject<HTMLInputElement | null>;
           label="Address"
           placeholder="https://example.com/an-article"
           submitLabel="Save"
+          busyLabel="Saving…"
           onSubmit={saveLater}
           onClose={() => setSaving(false)}
         />

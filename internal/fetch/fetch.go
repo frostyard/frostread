@@ -47,6 +47,40 @@ var (
 	ErrRefused = errors.New("fetch: the url is refused")
 )
 
+// Refused is a URL this client will not fetch, and why: a scheme other
+// than http or https, a URL that names a user, or an address netguard
+// refuses. URL is the address that was refused, which a redirect may make
+// different from the one the caller gave.
+type Refused struct {
+	URL string
+	// Err is the reason, wrapping ErrRefused or netguard.ErrInside.
+	Err error
+}
+
+func (e *Refused) Error() string { return e.Err.Error() + " (" + e.URL + ")" }
+
+// Unwrap returns the reason, so errors.Is finds ErrRefused or
+// netguard.ErrInside.
+func (e *Refused) Unwrap() error { return e.Err }
+
+// Refusal returns the one sentence a caller shows for err when it is a
+// refusal, and whether it is one. The sentence names the address in the
+// owner's words; the detailed error stays for the log.
+func Refusal(err error) (string, bool) {
+	var r *Refused
+	if !errors.As(err, &r) {
+		return "", false
+	}
+	host := r.URL
+	if u, parseErr := url.Parse(r.URL); parseErr == nil && u.Hostname() != "" {
+		host = u.Hostname()
+	}
+	if errors.Is(r.Err, netguard.ErrInside) {
+		return fmt.Sprintf("Read does not fetch addresses inside your network (%s).", host), true
+	}
+	return fmt.Sprintf("Read fetches only public http and https addresses (%s).", host), true
+}
+
 // Fetcher is the part of Client a caller uses, so a test can stand in
 // for the network.
 type Fetcher interface {
@@ -114,7 +148,7 @@ func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 func Check(rawurl string) error {
 	u, err := url.Parse(rawurl)
 	if err != nil {
-		return fmt.Errorf("parse %s: %w", rawurl, ErrRefused)
+		return &Refused{URL: rawurl, Err: fmt.Errorf("parse: %w", ErrRefused)}
 	}
 	return checkURL(u)
 }
@@ -123,19 +157,23 @@ func Check(rawurl string) error {
 // whose host netguard.Name refuses.
 func checkURL(u *url.URL) error {
 	if u == nil {
-		return fmt.Errorf("no url: %w", ErrRefused)
+		return &Refused{URL: "", Err: fmt.Errorf("no url: %w", ErrRefused)}
 	}
+	refused := &Refused{URL: u.String()}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("scheme %q is not http or https: %w", u.Scheme, ErrRefused)
+		refused.Err = fmt.Errorf("scheme %q is not http or https: %w", u.Scheme, ErrRefused)
+		return refused
 	}
 	if u.User != nil {
-		return fmt.Errorf("a url may not name a user: %w", ErrRefused)
+		refused.Err = fmt.Errorf("a url may not name a user: %w", ErrRefused)
+		return refused
 	}
 	if err := netguard.Name(u.Hostname()); err != nil {
 		// A development build may admit the host READ_DEV_ALLOW names,
 		// and only that host: devAllowed is false in every release.
 		if !devAllowed(u.Host) {
-			return fmt.Errorf("%s: %w", u.Hostname(), err)
+			refused.Err = err
+			return refused
 		}
 	}
 	return nil
@@ -148,10 +186,10 @@ func checkURL(u *url.URL) error {
 func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, error) {
 	u, err := url.Parse(rawurl)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", rawurl, ErrRefused)
+		return nil, &Refused{URL: rawurl, Err: fmt.Errorf("parse: %w", ErrRefused)}
 	}
 	if err := checkURL(u); err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", rawurl, err)
+		return nil, err
 	}
 	max := o.MaxBytes
 	if max <= 0 {
@@ -173,6 +211,11 @@ func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, 
 	}
 	resp, err := c.h.Do(req)
 	if err != nil {
+		// A dial the guard refused, after DNS: the address is public in
+		// name only. The URL that failed is the request's.
+		if errors.Is(err, netguard.ErrInside) {
+			return nil, &Refused{URL: rawurl, Err: err}
+		}
 		return nil, fmt.Errorf("fetch %s: %w", rawurl, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
