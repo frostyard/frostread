@@ -108,6 +108,8 @@ export function createMockTransport(): Transport {
         return { protocol: 1, server: "readd mock", caller: "session" } as T;
       case "rpc.ping":
         return {} as T;
+      case "events.subscribe":
+        return { subscribed: true } as T;
       case "status":
         return {
           version: "mock",

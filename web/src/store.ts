@@ -88,6 +88,10 @@ export function createReadStore(): StoreApi<ReadStore> {
 
     async connect(api) {
       set({ api });
+      // Live updates: readd sends items.changed once a connection subscribes.
+      await api.subscribe().catch((err: unknown) => {
+        set({ error: message(err) });
+      });
       await Promise.all([get().loadStatus(), get().loadCounts(), get().loadSources(), get().load()]);
     },
 

@@ -39,8 +39,18 @@ interface Incoming {
   error?: { code: number; message: string; data?: unknown };
 }
 
-/** NOTIFICATION is the method name of readd's only notification. */
-export const NOTIFICATION = "items.changed";
+/** EVENT_METHOD is the kit's notification method: its params wrap the event (docs/specs/api.md). */
+export const EVENT_METHOD = "event";
+
+/** ITEMS_CHANGED is the event readd sends after any change. */
+export const ITEMS_CHANGED = "items.changed";
+
+/** EventEnvelope is the params of an event notification. */
+interface EventEnvelope {
+  seq?: number;
+  event: string;
+  data?: unknown;
+}
 
 /**
  * JsonRpcSession implements Transport over any line channel: the caller
@@ -97,8 +107,11 @@ export class JsonRpcSession implements Transport {
       return;
     }
     if (msg.id === undefined || msg.id === null) {
-      if (msg.method === NOTIFICATION && msg.params) {
-        const event = msg.params as ItemsChanged;
+      if (msg.method === EVENT_METHOD && msg.params) {
+        const envelope = msg.params as EventEnvelope;
+        if (envelope.event !== ITEMS_CHANGED) return;
+        const data = envelope.data as ItemsChanged | undefined;
+        const event: ItemsChanged = { views: Array.isArray(data?.views) ? data.views : [] };
         for (const h of this.eventHandlers) h(event);
       }
       return;

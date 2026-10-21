@@ -115,6 +115,8 @@ export const Code = {
 
 /** ReadAPI is readd's methods, typed. */
 export interface ReadAPI {
+  /** subscribe asks for items.changed from now on (docs/specs/api.md, events.subscribe). */
+  subscribe(): Promise<void>;
   status(): Promise<Status>;
   counts(): Promise<Counts>;
   listSources(): Promise<Source[]>;
@@ -139,6 +141,9 @@ export interface ReadAPI {
 export function readAPI(transport: Transport): ReadAPI {
   const call = <T>(method: string, params: unknown) => transport.call<T>(method, params);
   return {
+    subscribe: async () => {
+      await call("events.subscribe", {});
+    },
     status: () => call<Status>("status", {}),
     counts: () => call<Counts>("counts", {}),
     listSources: () => call<{ sources: Source[] }>("sources.list", {}).then((r) => r.sources ?? []),
