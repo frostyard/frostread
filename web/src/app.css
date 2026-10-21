@@ -1,0 +1,14 @@
+/* Tailwind, then the shared look: lodge-ui's tokens, theme and base layer
+   (ADR-0018, and @frostyard/lodge-ui's README). The order matters: the
+   theme maps the tokens, and the base layer reads them. */
+@import "tailwindcss";
+@import "@frostyard/lodge-ui/fonts.css";
+@import "@frostyard/lodge-ui/tokens.css";
+/* The domain tokens: the star's and a failed source's flag colours. */
+@import "@frostyard/lodge-ui/accents.css";
+@import "@frostyard/lodge-ui/theme.css";
+@import "@frostyard/lodge-ui/base.css";
+
+/* Tailwind v4 does not scan node_modules, so the utilities the package's
+   components use are found here. */
+@source "../node_modules/@frostyard/lodge-ui/src";
