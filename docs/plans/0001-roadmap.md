@@ -74,7 +74,7 @@ ticked as its work lands.
   `Reading/<date> <title>.md`, and a second save of the same title gets
   ` 2`.
 
-## Phase 5 — The web app
+## Phase 5 — The web app (built 2026-10-21; deployed on lodge's host 2026-10-21)
 
 - The bundle on `@frostyard/lodge-ui`: a source column, an item list, a
   reader, unread, starred and archived views, search, save-as-note, and
@@ -83,6 +83,13 @@ ticked as its work lands.
   the refresh.
 - **Done when:** the owner reads a feed on a phone through lodge, marks it
   read with `m`, and saves it to notes.
+- **Deployed 2026-10-21** on lodge's host, for the owner's daily use, at
+  `b01ee81`, with the steps in the README's "Install on lodge's host". The
+  notes token is `vault=2;write=Reading/` on the owner's real vault. The
+  live check there: the Read tab in lodge, one test feed polled and
+  extracted, and Save as note wrote a note under `Reading/` that synced to
+  the owner's devices; the test note was then deleted. The phone check of
+  this phase's "Done when" is the owner's.
 
 ## Phase 6 — The live check on lodge's development build (built 2026-10-21)
 
