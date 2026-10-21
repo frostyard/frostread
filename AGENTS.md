@@ -25,8 +25,9 @@ its web bundle on `@frostyard/lodge-client` **client/v0.3.0** and on
 `@frostyard/lodge-ui` **ui/v0.1.0**. Built: the daemon and its store, the
 guarded fetcher, feeds and OPML, extraction and the blob store, polling,
 search, the JSON-RPC API, `readctl`, MCP with scoped tokens, save-as-note,
-the content pages, the units, and the development feeds. Next: the web app
-([roadmap](docs/plans/0001-roadmap.md), Phase 5). The founding ADRs, 0001 to
+the content pages, the units, the development feeds and the web app. Phases
+1 to 6 of the [roadmap](docs/plans/0001-roadmap.md) are done, and frostread
+runs on lodge's host for the owner's daily use (2026-10-21). The founding ADRs, 0001 to
 0005, are Accepted (Brian, 2026-10-21).
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
