@@ -148,6 +148,33 @@ func TestPathIsRelativeToTheContentRoot(t *testing.T) {
 	}
 }
 
+// The page follows the scheme the web app passes, and the reader's own
+// preference when it passes none.
+func TestScheme(t *testing.T) {
+	h, _, id := setup(t)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	for _, tc := range []struct {
+		query string
+		want  string
+	}{
+		{"", `<html lang="en">`},
+		{"?scheme=dark", `<html lang="en" data-scheme="dark">`},
+		{"?scheme=light", `<html lang="en" data-scheme="light">`},
+		{"?scheme=sepia", `<html lang="en">`},
+	} {
+		res, err := http.Get(srv.URL + "/content/" + h.Path(id) + tc.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		if !strings.Contains(string(body), tc.want) {
+			t.Fatalf("%q: the page does not start %s", tc.query, tc.want)
+		}
+	}
+}
+
 func TestMAC(t *testing.T) {
 	h := &Handler{Secret: []byte("secret")}
 	a, b := h.mac(1), h.mac(2)

@@ -42,6 +42,7 @@ async function start(): Promise<void> {
     // No shell: the mock, and the system's colour scheme. The import is
     // lazy, so a lodge build carries no mock.
     applyScheme(document.documentElement, null);
+    store.getState().setScheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
     const { createMockTransport } = await import("./rpc/mock.js");
     const transport = createMockTransport();
     transport.onEvent(() => void store.getState().changed());
@@ -52,6 +53,9 @@ async function start(): Promise<void> {
   const lodge = await connectLodge({ app: "read" });
   setLodge(lodge);
   followLodge(lodge);
+  store.getState().setScheme(lodge.theme);
+  // The article's frame follows the same scheme; a theme change reloads it.
+  lodge.on("theme", ({ scheme }) => store.getState().setScheme(scheme));
   lodge.on("navigate", ({ route }) => void store.getState().setRoute(parseRoute(route)));
   const transport = await connectLodgeAPI(lodge.apiURL());
   transport.onEvent(() => void store.getState().changed());

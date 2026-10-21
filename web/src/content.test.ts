@@ -26,6 +26,13 @@ describe("an article's content URL", () => {
     const src = contentSrc("item/3/anExampleMac");
     expect(src).toBe("http://content.example/read/item/3/anExampleMac");
     expect(paths).toEqual(["item/3/anExampleMac"]);
+    // The shell's theme goes to the content page as ?scheme=.
+    expect(contentSrc("item/3/anExampleMac", "dark")).toBe(
+      "http://content.example/read/item/3/anExampleMac?scheme=dark",
+    );
+    expect(contentSrc("item/3/anExampleMac", "light")).toBe(
+      "http://content.example/read/item/3/anExampleMac?scheme=light",
+    );
   });
 
   it("holds a golden's contentPath, which has no leading slash or content/ segment", () => {

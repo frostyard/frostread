@@ -60,6 +60,81 @@ and listens on no network. Its state is `/var/lib/frostread`, and its
 configuration is `/etc/frostread/frostread.json`
 (`docs/specs/api.md`).
 
+## Install on lodge's host
+
+frostread runs as lodge's `read` app, beside lodge and notes, on the same
+host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
+
+1. **Build the bundle and stage the app.** The web bundle builds in an nsl
+   machine; `lodge-package` puts `readd`, `readctl`, the manifest, the
+   bundle, the units and the sysusers entry in lodge's layout.
+
+   ```sh
+   make web-build                                    # in nsl
+   sudo make lodge-package LODGE_DESTDIR=/
+   ```
+
+2. **Create the user and start the socket.** The sysusers entry makes
+   `frostread`, with its home at `/var/lib/frostread`, in group
+   `lodge-apps` and in group `lodge-agents` (the agent socket).
+
+   ```sh
+   sudo systemd-sysusers /usr/lib/sysusers.d/frostread.conf
+   id frostread          # expect lodge-apps and lodge-agents
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now frostread.socket
+   ```
+
+3. **Write the configuration**, `/etc/frostread/frostread.json`, owned by
+   root, 0644: no secret is in it. `notes_vault` is the id of the vault
+   notes serves.
+
+   ```json
+   {
+     "poll_interval": "20m",
+     "lodge_url": "https://LODGE",
+     "notes_folder": "Reading/",
+     "notes_vault": 1
+   }
+   ```
+
+4. **Let frostread reach notes.** Add `frostread` to `agents` in
+   `/etc/lodge/config.json` (the list is at most 16 system users), then
+   reload lodge, which also picks up Read's manifest:
+
+   ```json
+   { "agents": ["frostread"] }
+   ```
+
+   ```sh
+   sudo lodgectl reload
+   sudo lodgectl status     # the agent socket, and frostread among its agents
+   ```
+
+5. **Issue Read's notes token**, scoped to one folder, for the agent
+   socket. It is shown once; pipe it straight into `readctl`, which writes
+   it to `/var/lib/frostread/tokens/notes` (0600) and prints nothing.
+
+   ```sh
+   sudo lodgectl token issue frostread-notes --app notes \
+     --scope 'vault=1;write=Reading/' --agent frostread |
+     sudo -u frostread readctl notes-token
+   ```
+
+   `readctl` speaks readd's private socket, which admits only frostread's
+   own processes; every `readctl` step runs as `sudo -u frostread`.
+
+6. **Subscribe to feeds** from an OPML file, and check the app:
+
+   ```sh
+   sudo -u frostread readctl import feeds.opml
+   sudo -u frostread readctl status     # save as a note: yes, vault 1, folder Reading/
+   sudo -u frostread readctl sources
+   ```
+
+   The web app is at `https://LODGE/read/`, and save-as-note writes into
+   notes under `Reading/`.
+
 ## Docs
 
 - [docs/README.md](docs/README.md): the index.

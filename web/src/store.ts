@@ -28,6 +28,8 @@ export interface ReadState {
   itemLoading: boolean;
   /** noteRoutes are the routes saveAsNote answered in this session. */
   noteRoutes: Record<number, string>;
+  /** scheme is the shell's theme, which the article's frame follows. */
+  scheme: "light" | "dark";
   busy: boolean;
 }
 
@@ -52,6 +54,7 @@ export interface ReadActions {
   saveLater(url: string): Promise<void>;
   saveAsNote(id: number): Promise<void>;
   noteRoute(id: number): string | null;
+  setScheme(scheme: "light" | "dark"): void;
   changed(): Promise<void>;
   clearError(): void;
   loadStatus(): Promise<void>;
@@ -84,6 +87,7 @@ export function createReadStore(): StoreApi<ReadStore> {
     item: null,
     itemLoading: false,
     noteRoutes: {},
+    scheme: "light",
     busy: false,
 
     async connect(api) {
@@ -322,6 +326,10 @@ export function createReadStore(): StoreApi<ReadStore> {
       }
       if (status.notes.vaultId === 0) return null;
       return routeOfNote(item.notePath, status.notes.vaultId);
+    },
+
+    setScheme(scheme) {
+      set({ scheme });
     },
 
     async changed() {

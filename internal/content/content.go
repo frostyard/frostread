@@ -43,6 +43,19 @@ func (h *Handler) mac(id int64) string {
 	return base64.RawURLEncoding.EncodeToString(sum.Sum(nil))[:22]
 }
 
+// Scheme returns the scheme the page follows: "light" or "dark" from the
+// scheme query (the shell's theme, which the web app passes), or "" to
+// follow the reader's own preference.
+func Scheme(r *http.Request) string {
+	switch r.URL.Query().Get("scheme") {
+	case "light":
+		return "light"
+	case "dark":
+		return "dark"
+	}
+	return ""
+}
+
 // ServeHTTP answers an article's page. A wrong MAC, an unknown item and a
 // malformed path all answer 404 alike, so a wrong MAC says nothing.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -110,13 +123,14 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 		return uri
 	})
 	data := struct {
+		Scheme  string
 		Title   string
 		Byline  string
 		Site    string
 		Date    string
 		Content template.HTML
 	}{
-		Title: it.Title, Byline: it.Author, Site: siteOf(it.URL), Date: published(it),
+		Scheme: Scheme(r), Title: it.Title, Byline: it.Author, Site: siteOf(it.URL), Date: published(it),
 		Content: template.HTML(html),
 	}
 	var out strings.Builder
@@ -169,32 +183,39 @@ func published(it store.Item) string {
 // pageTemplate is the article's page. Its style is inline because the
 // content policy admits no stylesheet, and it reads well on a phone.
 var pageTemplate = template.Must(template.New("content").Parse(`<!doctype html>
-<html lang="en">
+<html lang="en"{{with .Scheme}} data-scheme="{{.}}"{{end}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
 <style>
-:root { color-scheme: light dark; }
+/* The page follows the shell's theme when the app names it in ?scheme=,
+   and the reader's own preference otherwise. */
+:root { color-scheme: light; --fg: #1a1a1a; --bg: #fdfdfc; --muted: #666; --link: #1a56db;
+  --code: rgba(127,127,127,.12); --line: rgba(127,127,127,.35); }
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; --fg: #e6e6e6; --bg: #17181a; --muted: #a0a4a8; --link: #8ab4f8;
+    --code: rgba(127,127,127,.18); --line: rgba(127,127,127,.45); }
+}
+:root[data-scheme="light"] { color-scheme: light; --fg: #1a1a1a; --bg: #fdfdfc; --muted: #666;
+  --link: #1a56db; --code: rgba(127,127,127,.12); --line: rgba(127,127,127,.35); }
+:root[data-scheme="dark"] { color-scheme: dark; --fg: #e6e6e6; --bg: #17181a; --muted: #a0a4a8;
+  --link: #8ab4f8; --code: rgba(127,127,127,.18); --line: rgba(127,127,127,.45); }
 body { margin: 0 auto; padding: 1.25rem; max-width: 42rem; line-height: 1.6;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  color: #1a1a1a; background: #fdfdfc; }
-@media (prefers-color-scheme: dark) {
-  body { color: #e6e6e6; background: #17181a; }
-  a { color: #8ab4f8; }
-}
-header { border-bottom: 1px solid currentColor; margin-bottom: 1.5rem; padding-bottom: .75rem; }
+  color: var(--fg); background: var(--bg); }
+header { border-bottom: 1px solid var(--line); margin-bottom: 1.5rem; padding-bottom: .75rem; }
 h1 { font-size: 1.6rem; line-height: 1.25; margin: .25rem 0 .5rem; }
-.byline { color: #666; font-size: .9rem; margin: 0; }
+.byline { color: var(--muted); font-size: .9rem; margin: 0; }
 .byline span + span::before { content: " · "; }
 img { max-width: 100%; height: auto; }
 figure { margin: 1.5rem 0; }
-figcaption { font-size: .85rem; color: #666; }
-pre { overflow-x: auto; padding: .75rem; background: rgba(127,127,127,.12); border-radius: .4rem; }
-blockquote { margin: 1.5rem 0; padding-left: 1rem; border-left: 3px solid rgba(127,127,127,.4); }
+figcaption { font-size: .85rem; color: var(--muted); }
+pre { overflow-x: auto; padding: .75rem; background: var(--code); border-radius: .4rem; }
+blockquote { margin: 1.5rem 0; padding-left: 1rem; border-left: 3px solid var(--line); }
 table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid rgba(127,127,127,.35); padding: .35rem .5rem; text-align: left; }
-a { color: #1a56db; }
+th, td { border: 1px solid var(--line); padding: .35rem .5rem; text-align: left; }
+a { color: var(--link); }
 </style>
 </head>
 <body>

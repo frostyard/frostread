@@ -189,6 +189,11 @@ lodge-content. The manifest sets `"content": true` and
   CSP allows only `img-src data:`.
 - The page has no script, no remote link but the article's own anchors,
   and no remote image.
+- **The theme.** `?scheme=light` or `?scheme=dark` makes the page follow
+  the shell's theme, which the web app passes whenever the theme changes
+  (and a changed theme reloads the frame). Without the query, the page
+  follows the reader's own `prefers-color-scheme`. The MAC covers the path
+  alone, so the query changes nothing about what may be read.
 
 ### Fetching
 
@@ -265,6 +270,35 @@ it names several), mode 0700:
 | `frostread.db` | SQLite: sources, items, blobs, the search index, settings |
 | `blobs/sha256/<first two hex digits>/<rest>` | content-addressed bodies and images, 0600 |
 | `tokens/notes` | the notes MCP token, 0600 |
+
+### Installation on lodge's host
+
+The daemon installs as lodge's `read` app, beside lodge and notes, with
+the steps [README.md, Install on lodge's host](../../README.md#install-on-lodges-host)
+gives. What it needs:
+
+| What | Where | Made by |
+| --- | --- | --- |
+| `readd`, `readctl` | `/usr/local/bin` | `make lodge-package LODGE_DESTDIR=/` |
+| manifest and web bundle | `/usr/share/lodge/apps/read/` | the same |
+| `frostread.socket`, `frostread.service` | `/usr/lib/systemd/system/` | the same |
+| the user `frostread`, in `lodge-apps` and `lodge-agents` | `sysusers.d` | `sudo systemd-sysusers /usr/lib/sysusers.d/frostread.conf` |
+| the configuration | `/etc/frostread/frostread.json` | the owner, by hand |
+| the notes token | `STATE/tokens/notes`, 0600 | `readctl notes-token`, from stdin |
+
+- **Group `lodge-agents` and the `agents` list.** Save-as-note calls notes'
+  MCP on lodge's agent socket ([ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md));
+  the sysusers entry puts `frostread` in `lodge-agents`, and `frostread`
+  must also be named in `agents` in `/etc/lodge/config.json`, followed by
+  `sudo lodgectl reload`.
+- **The token is issued for the agent socket:**
+  `sudo lodgectl token issue frostread-notes --app notes --scope
+  'vault=<id>;write=Reading/' --agent frostread`, piped to
+  `sudo -u frostread readctl notes-token`. It is shown once and is never
+  printed again.
+- **`readctl` is same-user only:** it speaks readd's private socket, which
+  admits only frostread's own processes, so every readctl step runs as
+  `sudo -u frostread`.
 
 ## Rules
 

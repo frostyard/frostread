@@ -178,3 +178,45 @@ as a session would receive it.
   `lodge_url` (it must be an https origin). The note's link is the rooted
   `/read/item/1`, which notes follows in lodge. That is by design, and it
   is what the note above holds.
+
+### MCP over the agent socket, 2026-10-21
+
+`make dev-lodge` ran on loopback, with the development build and the
+generated vault. Tokens were issued for app `read`, each with `--agent`
+naming the current user, and were passed to the check through the
+environment; none was printed or committed.
+
+```sh
+LODGE_ROOT=<root> ../lodge/build/lodgectl token issue frostread-live-read  --app read --scope read       --agent <user>
+LODGE_ROOT=<root> ../lodge/build/lodgectl token issue frostread-live-write --app read --scope read\;write --agent <user>
+LODGE_ROOT=<root> ../lodge/build/lodgectl token issue frostread-live-bad   --app read --scope write      --agent <user>
+LODGE_ROOT=<root> READ_LIVE_TOKEN_READ=… READ_LIVE_TOKEN_WRITE=… READ_LIVE_TOKEN_BAD=… \
+  READ_LIVE_SOCKET=<root>/run/frostread/readctl.sock \
+  go test -tags live ./internal/live -run 'TestAgentSocket|TestBadScopeIs403' -v
+```
+
+Seen:
+
+- The read token's tools were `list_sources`, `list_unread`, `read_item`
+  and `search`. `save_url` was not listed, and calling it was refused.
+- `list_sources` answered 3 sources, and `list_unread` 6 items. The search
+  for "heron" found "An autumn walk along the river", and `read_item` on it
+  returned 991 characters.
+- The token whose scope was `write` was refused at `initialize`: 403, "the
+  token's scope does not parse: scope \"write\" is not read or read;write".
+- The write token saved the development article at
+  `http://127.0.0.1:8088/articles/4` as item 7, marked one item read and
+  starred another. The counts a web session reads (`counts`) went from
+  `all 6, later 0, starred 0, unread 6` to `all 7, later 1, starred 1,
+  unread 6`: the saved link is a new unread item, and one was marked read.
+- `lodgectl token revoke frostread-live-write` answered "revoked
+  frostread-live-write". The next `initialize` with that token failed with
+  "Unauthorized".
+
+The content page's theme, by `curl` on its content URL:
+
+| Query | The page's `<html>` |
+| --- | --- |
+| none | `<html lang="en">` |
+| `?scheme=dark` | `<html lang="en" data-scheme="dark">` |
+| `?scheme=light` | `<html lang="en" data-scheme="light">` |
