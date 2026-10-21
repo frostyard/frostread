@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/frostyard/frostread/internal/blobs"
+	"github.com/frostyard/frostread/internal/sanitize"
 	"github.com/frostyard/frostread/internal/store"
 )
 
@@ -79,10 +80,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // page is the article's HTML: the style, the head of the article, and the
 // content with its images inlined.
 func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
+	// The extraction's HTML is already sanitized by the extractor, and its
+	// blob: markers are part of it; it is not sanitized again, which would
+	// drop them. The feed's summary is still untrusted when an item is
+	// read before its extraction, so it is sanitized here.
 	body := template.HTML(it.ContentHTML)
 	if strings.TrimSpace(string(body)) == "" {
-		// Not extracted yet: the feed's summary is what there is.
-		body = template.HTML(it.SummaryHTML)
+		body = template.HTML(sanitize.HTML(it.SummaryHTML))
 	}
 	images, err := h.Store.ItemBlobs(r.Context(), it.ID)
 	if err != nil {

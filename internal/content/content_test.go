@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/frostyard/frostread/internal/blobs"
 	"github.com/frostyard/frostread/internal/store"
@@ -71,6 +72,35 @@ func TestPage(t *testing.T) {
 	}
 	if strings.Contains(page, "<script") {
 		t.Fatalf("page has a script:\n%s", page)
+	}
+}
+
+// An item read before its extraction shows its feed summary, sanitized.
+func TestPendingItemShowsSanitizedSummary(t *testing.T) {
+	h, db, _ := setup(t)
+	src, err := db.AddSource(t.Context(), store.Source{URL: "https://example.org/feed.xml", Title: "Example"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := db.AddItems(t.Context(), src.ID, []store.NewItem{{GUID: "1",
+		Title: "A pending article", URL: "https://example.org/pending",
+		SummaryHTML: `<script>alert(1)</script><p>the summary</p><iframe src="https://evil.example/"></iframe>`}})
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("items = %v, %v", ids, err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	res, err := http.Get(srv.URL + h.Path(ids[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if strings.Contains(string(body), "<script") || strings.Contains(string(body), "<iframe") {
+		t.Fatalf("the page keeps hostile HTML:\n%s", body)
+	}
+	if !strings.Contains(string(body), "the summary") {
+		t.Fatalf("the page lacks the summary:\n%s", body)
 	}
 }
 
