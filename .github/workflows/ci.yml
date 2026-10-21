@@ -1,0 +1,85 @@
+# CI: the jobs of `make ci`, which runs the same gates on a developer's
+# machine. Actions are pinned to full commit SHAs and jobs get only the
+# permissions they need (frostyard/core ADR-0021); tools come from go.mod
+# and mise.lock (ADR-0043).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  merge_group:
+  schedule:
+    - cron: "17 6 * * *" # nightly, so upstream drift surfaces within a day
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: Verify (make verify)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The locked golangci-lint, checksum-verified, as `mise install` does.
+      - uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          install: true
+          install_args: golangci-lint
+          cache: true
+      - name: Tidy, vet, format, lint and tests
+        run: make verify
+
+  race:
+    name: Race detector and cross-builds (make race cross)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Race detector
+        run: make race
+      - name: linux/amd64 and linux/arm64 builds
+        run: make cross
+
+  web:
+    name: web bundle (make web-check)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      NODE_VERSION: "24.21.0"
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # pnpm comes from corepack, pinned with its hash by web/package.json.
+      # The bundle's one git dependency, @frostyard/lodge-client, is in the
+      # public frostyard/lodge repository, so no token is needed.
+      - run: corepack enable
+      - name: Typecheck
+        run: make web-check IN_NSL='sh -c'

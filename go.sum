@@ -1,4 +1,4 @@
 github.com/coder/websocket v1.8.15 h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNUA=
 github.com/coder/websocket v1.8.15/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
-github.com/frostyard/lodge/kit v0.2.0 h1:sUPgQiiTcCpEsPArh9odHyShFrKSm4QaVzfUfoZtQSI=
-github.com/frostyard/lodge/kit v0.2.0/go.mod h1:yUmjbBwrliFAxmFPf/kUAi7Vlxa1mtICAiSRkFsTHec=
+github.com/frostyard/lodge/kit v0.2.1-0.20261021100231-fbbe1b5f3985 h1:laW8SAGCg5b5kLlBaOhVgL4VKTo//r7suevSB5YSN4A=
+github.com/frostyard/lodge/kit v0.2.1-0.20261021100231-fbbe1b5f3985/go.mod h1:yUmjbBwrliFAxmFPf/kUAi7Vlxa1mtICAiSRkFsTHec=
