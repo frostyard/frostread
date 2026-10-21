@@ -5,5 +5,8 @@
   "icon": "icon.svg",
   "version": "0.0.0-dev",
   "key": "r",
-  "user": "frostread"
+  "user": "frostread",
+  "content": true,
+  "contentLinks": true,
+  "mcp": true
 }

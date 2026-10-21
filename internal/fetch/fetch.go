@@ -47,6 +47,12 @@ var (
 	ErrRefused = errors.New("fetch: the url is refused")
 )
 
+// Fetcher is the part of Client a caller uses, so a test can stand in
+// for the network.
+type Fetcher interface {
+	Get(ctx context.Context, url string, o Options) (*Response, error)
+}
+
 // Options are one request's.
 type Options struct {
 	// ETag and LastModified make the request conditional.
@@ -100,6 +106,17 @@ func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 		return fmt.Errorf("more than %d redirects: %w", MaxRedirects, ErrRefused)
 	}
 	return checkURL(req.URL)
+}
+
+// Check reports whether this client may fetch rawurl: an http or https
+// scheme, no userinfo, and a name netguard.Name admits. It makes no
+// request, so a caller can refuse a URL before it is stored.
+func Check(rawurl string) error {
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", rawurl, ErrRefused)
+	}
+	return checkURL(u)
 }
 
 // checkURL refuses a URL that is not http or https, that names a user, or

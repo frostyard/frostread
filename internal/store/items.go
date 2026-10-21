@@ -237,6 +237,37 @@ func (d *DB) ListItems(ctx context.Context, o ListOptions) ([]Item, string, erro
 	return out, next, nil
 }
 
+// Unread returns the unread items of one source or all, published since a
+// time when it is not zero, newest first.
+func (d *DB) Unread(ctx context.Context, sourceID *int64, since time.Time, limit int) ([]Item, error) {
+	where := "read_at IS NULL AND archived = 0"
+	var args []any
+	if sourceID != nil {
+		where += " AND source_id = ?"
+		args = append(args, *sourceID)
+	}
+	if !since.IsZero() {
+		where += " AND published_at >= ?"
+		args = append(args, timeString(since))
+	}
+	args = append(args, limit)
+	rows, err := d.db.QueryContext(ctx, `SELECT `+itemColumns+` FROM items WHERE `+where+
+		` ORDER BY published_at DESC, id DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list unread: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := []Item{}
+	for rows.Next() {
+		var it Item
+		if err := scanItem(rows, &it); err != nil {
+			return nil, fmt.Errorf("list unread: %w", err)
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
 // viewClause is a view's WHERE clause, and its arguments.
 func viewClause(view string) (string, []any) {
 	switch view {
@@ -347,6 +378,8 @@ type Blob struct {
 type Extraction struct {
 	// Title, Author and Text replace the item's when not empty.
 	Title, Author, Text string
+	// Published replaces the item's published time when it is not zero.
+	Published time.Time
 	// ContentHTML is the sanitized article, with blob: markers.
 	ContentHTML string
 	// State is ExtractDone or ExtractFailed; Error says why it failed.
@@ -365,8 +398,10 @@ func (d *DB) SetExtraction(ctx context.Context, id int64, e Extraction) error {
 			title = CASE WHEN ? = '' THEN title ELSE ? END,
 			author = CASE WHEN ? = '' THEN author ELSE ? END,
 			content_html = ?, text = CASE WHEN ? = '' THEN text ELSE ? END,
+			published_at = CASE WHEN ? IS NULL THEN published_at ELSE ? END,
 			extract_state = ?, extract_error = ? WHERE id = ?`,
-			e.Title, e.Title, e.Author, e.Author, e.ContentHTML, e.Text, e.Text, e.State, e.Error, id); err != nil {
+			e.Title, e.Title, e.Author, e.Author, e.ContentHTML, e.Text, e.Text,
+			timeString(e.Published), timeString(e.Published), e.State, e.Error, id); err != nil {
 			return fmt.Errorf("store extraction: %w", err)
 		}
 		for _, b := range e.Images {
@@ -381,6 +416,11 @@ func (d *DB) SetExtraction(ctx context.Context, id int64, e Extraction) error {
 		}
 		return nil
 	})
+}
+
+// SetOriginal records the hash of an item's body as sent.
+func (d *DB) SetOriginal(ctx context.Context, id int64, hash string) error {
+	return d.execOne(ctx, `UPDATE items SET original_hash = ? WHERE id = ?`, "record an original", hash, id)
 }
 
 // ItemBlobs returns the blobs an item's extraction stored, by hash.
