@@ -16,6 +16,8 @@ export function Reader(props: { onBack?: () => void }) {
   const scheme = useRead((state) => state.scheme);
   const selectedId = useRead((state) => state.selectedId);
   const noteRoute = useRead((state) => (selectedId === null ? null : state.noteRoute(selectedId)));
+  const noteState = useRead((state) => (selectedId === null ? undefined : state.noteStates[selectedId]));
+  const checkNote = useRead((state) => state.checkNote);
   const toggleStar = useRead((state) => state.toggleStar);
   const toggleRead = useRead((state) => state.toggleRead);
   const archive = useRead((state) => state.archive);
@@ -30,6 +32,15 @@ export function Reader(props: { onBack?: () => void }) {
     );
   }
 
+  // A note that is gone makes the button Save as note again; notes that
+  // cannot be asked keep the link and say why.
+  const hasNote = (item.notePath ?? "") !== "" && noteState?.state !== "missing";
+  const openNotes = async () => {
+    const st = await checkNote(item.id);
+    if (st === null || st.state === "missing" || st.state === "unreachable") return;
+    const target = st.route ?? noteRoute;
+    if (target !== null) openRoute(target);
+  };
   const meta = [item.sourceTitle, item.author, headerDate(item.published)]
     .filter((part): part is string => part !== undefined && part !== "")
     .join(" · ");
@@ -77,12 +88,12 @@ export function Reader(props: { onBack?: () => void }) {
         disabled={!configured || busy}
         title={configured ? undefined : "Notes is not set up: see readctl notes-token"}
         onClick={() => {
-          if (noteRoute !== null) openRoute(noteRoute);
+          if (hasNote) void openNotes();
           else void saveAsNote(item.id);
         }}
         className="ml-1 h-7 rounded-md border border-separator px-2 text-sidebar-row text-primary hover:bg-selection-inactive disabled:opacity-40 disabled:hover:bg-transparent"
       >
-        {noteRoute !== null ? "Open in Notes" : "Save as note"}
+        {hasNote ? "Open in Notes" : "Save as note"}
       </button>
     </>
   );
@@ -107,6 +118,12 @@ export function Reader(props: { onBack?: () => void }) {
             {rest}
           </div>
         </header>
+      )}
+
+      {noteState?.state === "unreachable" && (
+        <p role="alert" className="border-b border-separator px-[var(--pad-x)] py-1 text-sidebar-row text-flag-1">
+          Notes could not be reached: {noteState.error ?? "no answer"}.
+        </p>
       )}
 
       <div className="min-h-0 flex-1">

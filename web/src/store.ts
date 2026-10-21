@@ -3,7 +3,7 @@
 // ask for. It holds no DOM, so the tests drive it directly.
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { type Route, noteRoute as routeOfNote, UNREAD } from "./lib/routes.js";
-import type { Counts, ItemDetail, ItemSummary, ReadAPI, Source, Status, View } from "./rpc/api.js";
+import type { Counts, ItemDetail, ItemSummary, NoteStatus, ReadAPI, Source, Status, View } from "./rpc/api.js";
 
 /** EMPTY_COUNTS is the counts before the first answer. */
 const EMPTY_COUNTS: Counts = { views: { unread: 0, starred: 0, later: 0, archive: 0, all: 0 }, sources: [] };
@@ -28,6 +28,8 @@ export interface ReadState {
   itemLoading: boolean;
   /** noteRoutes are the routes saveAsNote answered in this session. */
   noteRoutes: Record<number, string>;
+  /** noteStates are what notes last said about each item's note. */
+  noteStates: Record<number, NoteStatus>;
   /** scheme is the shell's theme, which the article's frame follows. */
   scheme: "light" | "dark";
   /** markAllPrompt asks before many items change at once; null does not. */
@@ -60,6 +62,10 @@ export interface ReadActions {
   exportOPML(): Promise<string>;
   saveLater(url: string): Promise<void>;
   saveAsNote(id: number): Promise<void>;
+  /** checkNote asks notes where an item's note is, and keeps note_path
+   * true: a missing note clears it, a moved one records its path, and an
+   * unreachable notes keeps it. It answers the status, or null. */
+  checkNote(id: number): Promise<NoteStatus | null>;
   noteRoute(id: number): string | null;
   setScheme(scheme: "light" | "dark"): void;
   changed(): Promise<void>;
@@ -127,6 +133,7 @@ export function createReadStore(): StoreApi<ReadStore> {
     item: null,
     itemLoading: false,
     noteRoutes: {},
+    noteStates: {},
     scheme: "light",
     markAllPrompt: null,
     busy: false,
@@ -159,6 +166,8 @@ export function createReadStore(): StoreApi<ReadStore> {
       try {
         const detail = await api.getItem(id);
         set({ item: detail, itemLoading: false });
+        // A note the item names may have moved or gone since it was saved.
+        if (detail.notePath !== undefined && detail.notePath !== "") void get().checkNote(id);
         // Opening an item marks it read (docs/specs/api.md, and the brief).
         if (!detail.read) await get().markRead(id, true);
       } catch (err) {
@@ -380,10 +389,34 @@ export function createReadStore(): StoreApi<ReadStore> {
         set((state) => ({
           busy: false,
           noteRoutes: { ...state.noteRoutes, [id]: note.route },
+          noteStates: { ...state.noteStates, [id]: { state: "present", path: note.path, route: note.route } },
           item: state.item !== null && state.item.id === id ? { ...state.item, notePath: note.path } : state.item,
         }));
       } catch (err) {
         set({ busy: false, error: message(err) });
+      }
+    },
+
+    async checkNote(id) {
+      const { api } = get();
+      if (api === null) return null;
+      try {
+        const st = await api.noteStatus(id);
+        set((state) => {
+          let item = state.item;
+          if (item !== null && item.id === id) {
+            const next = { ...item };
+            if (st.state === "missing") delete next.notePath;
+            else if (st.path !== undefined) next.notePath = st.path;
+            item = next;
+          }
+          return { noteStates: { ...state.noteStates, [id]: st }, item };
+        });
+        return st;
+      } catch (err) {
+        const st: NoteStatus = { state: "unreachable", error: message(err) };
+        set((state) => ({ noteStates: { ...state.noteStates, [id]: st } }));
+        return st;
       }
     },
 

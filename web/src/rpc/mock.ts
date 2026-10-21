@@ -275,6 +275,16 @@ export function createMockTransport(): Transport {
         notify("all");
         return { path: item.notePath, route: `/notes/1/Reading/${encodeURIComponent(file)}` } as T;
       }
+      case "items.noteStatus": {
+        const item = byId(Number(params.id));
+        if (item === undefined) throw new MockError(1001, "no such item");
+        if (item.notePath === "") return { state: "missing" } as T;
+        const route = `/notes/1/${item.notePath
+          .split("/")
+          .map((segment) => encodeURIComponent(segment))
+          .join("/")}`;
+        return { state: "present", path: item.notePath, route } as T;
+      }
       case "later.save": {
         const url = String(params.url ?? "");
         const existing = items.find((item) => item.saved && item.url === url);

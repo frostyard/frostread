@@ -74,6 +74,24 @@ type saver struct {
 	mu   sync.Mutex
 	arts []notes.Article
 	err  error
+	// find is what Find answers; present at the path when State is empty.
+	find notes.Status
+}
+
+func (s *saver) Find(_ context.Context, path string, _ int64) notes.Status {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.find.State != "" {
+		st := s.find
+		if st.Path == "" {
+			st.Path = path
+		}
+		return st
+	}
+	if path == "" {
+		return notes.Status{State: notes.StateMissing}
+	}
+	return notes.Status{State: notes.StatePresent, Path: path}
 }
 
 func (s *saver) Save(_ context.Context, a notes.Article) (string, error) {
@@ -300,6 +318,67 @@ func TestSaveURLIsIdempotent(t *testing.T) {
 	c, err := e.Counts(t.Context())
 	if err != nil || c.Views[store.ViewLater] != 1 {
 		t.Fatalf("counts = %+v, %v", c, err)
+	}
+}
+
+// items.noteStatus: a present note stays, a moved one records its path, a
+// missing one clears the link, and notes out of reach keeps it.
+func TestNoteStatus(t *testing.T) {
+	e, _, s, _ := setup(t)
+	if _, err := e.AddSource(t.Context(), "https://example.com/"); err != nil {
+		t.Fatal(err)
+	}
+	items, _, _ := e.ListItems(t.Context(), store.ListOptions{View: store.ViewUnread, Limit: 50})
+	if err := e.ExtractItem(t.Context(), items[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	path, _, err := e.SaveAsNote(t.Context(), items[1].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := e.NoteStatus(t.Context(), items[1].ID)
+	if err != nil || st.State != notes.StatePresent || st.Path != path {
+		t.Fatalf("present = %+v, %v", st, err)
+	}
+
+	s.mu.Lock()
+	s.find = notes.Status{State: notes.StateMoved, Path: "Reading/1 - moved.md"}
+	s.mu.Unlock()
+	st, err = e.NoteStatus(t.Context(), items[1].ID)
+	if err != nil || st.State != notes.StateMoved {
+		t.Fatalf("moved = %+v, %v", st, err)
+	}
+	if got, _ := e.Item(t.Context(), items[1].ID); got.NotePath != "Reading/1 - moved.md" {
+		t.Fatalf("the moved path was not recorded: %q", got.NotePath)
+	}
+	if route := e.NoteRoute(st.Path); route != "/notes/1/Reading/1%20-%20moved.md" {
+		t.Fatalf("route = %q", route)
+	}
+
+	s.mu.Lock()
+	s.find = notes.Status{State: notes.StateMissing}
+	s.mu.Unlock()
+	if st, err = e.NoteStatus(t.Context(), items[1].ID); err != nil || st.State != notes.StateMissing {
+		t.Fatalf("missing = %+v, %v", st, err)
+	}
+	if got, _ := e.Item(t.Context(), items[1].ID); got.NotePath != "" {
+		t.Fatalf("the missing note's path stayed: %q", got.NotePath)
+	}
+
+	// Saving again writes a new note, and notes out of reach keeps it.
+	if _, _, err := e.SaveAsNote(t.Context(), items[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.find = notes.Status{State: notes.StateUnreachable, Error: "notes is down"}
+	s.mu.Unlock()
+	st, err = e.NoteStatus(t.Context(), items[1].ID)
+	if err != nil || st.State != notes.StateUnreachable || st.Error == "" {
+		t.Fatalf("unreachable = %+v, %v", st, err)
+	}
+	if got, _ := e.Item(t.Context(), items[1].ID); got.NotePath == "" {
+		t.Fatal("an unreachable notes dropped the link")
 	}
 }
 

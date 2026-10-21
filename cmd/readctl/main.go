@@ -45,6 +45,7 @@ COMMAND:
   add <feed-url>      subscribe to a feed, or to the feed a page names
   sources             list the sources and their unread counts
   note <item-id>      save an article as a note in the notes vault
+  note-status <id>    say where an item's note is: present, moved, missing or unreachable
   import <file.opml>  import an OPML file, or - for stdin
   export              write the OPML to stdout
   poll                poll every source now
@@ -57,7 +58,7 @@ The socket is --socket, or READ_SOCKET, or ` + DefaultSocket + `.`
 // known reports whether command is one readctl has.
 func known(command string) bool {
 	switch command {
-	case "save", "add", "sources", "note", "import", "export", "poll", "search", "notes-token", "status":
+	case "save", "add", "sources", "note", "note-status", "import", "export", "poll", "search", "notes-token", "status":
 		return true
 	}
 	return false
@@ -221,6 +222,27 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return err
 		}
 		fmt.Fprintf(out, "saved %s\n%s\n", path, route)
+		return nil
+	case "note-status":
+		if len(args) != 1 {
+			return errors.New("usage: readctl note-status <item-id>")
+		}
+		var id int64
+		if _, err := fmt.Sscan(args[0], &id); err != nil || id <= 0 {
+			return errors.New("note-status needs an item id")
+		}
+		st, err := read.NoteStatus(ctx, id)
+		if err != nil {
+			return err
+		}
+		line := string(st.State)
+		if st.Path != "" {
+			line += " " + st.Path
+		}
+		if st.Error != "" {
+			line += " (" + st.Error + ")"
+		}
+		fmt.Fprintln(out, line)
 		return nil
 	case "status":
 		st, err := read.Status(ctx)

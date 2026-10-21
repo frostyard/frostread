@@ -168,6 +168,6 @@ var Methods = []string{
 	"status", "sources.list", "sources.add", "sources.remove", "sources.rename", "sources.refresh",
 	"opml.import", "opml.export",
 	"items.list", "items.get", "items.search", "items.setRead", "items.markAllRead",
-	"items.setStarred", "items.setArchived", "items.saveAsNote",
+	"items.setStarred", "items.setArchived", "items.saveAsNote", "items.noteStatus",
 	"later.save", "counts", "notes.setToken",
 }

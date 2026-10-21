@@ -119,6 +119,20 @@ export interface ImportResult {
   skipped: number;
 }
 
+/** NoteState is where an item's note is (docs/specs/api.md, items.noteStatus). */
+export type NoteState = "present" | "moved" | "missing" | "unreachable";
+
+/** NoteStatus is what notes says about an item's note. */
+export interface NoteStatus {
+  state: NoteState;
+  /** The note's path, when it is present or moved. */
+  path?: string;
+  /** The note's route in lodge, when it is present or moved. */
+  route?: string;
+  /** Why notes could not answer, when state is unreachable. */
+  error?: string;
+}
+
 /** ItemsChanged is readd's notification: the views a change affects. */
 export interface ItemsChanged {
   views: string[];
@@ -153,6 +167,7 @@ export interface ReadAPI {
   setStarred(id: number, starred: boolean): Promise<void>;
   setArchived(id: number, archived: boolean): Promise<void>;
   saveAsNote(id: number): Promise<Note>;
+  noteStatus(id: number): Promise<NoteStatus>;
   saveLater(url: string): Promise<ItemSummary>;
 }
 
@@ -198,6 +213,7 @@ export function readAPI(transport: Transport): ReadAPI {
       await call("items.setArchived", { id, archived });
     },
     saveAsNote: (id) => call<Note>("items.saveAsNote", { id }),
+    noteStatus: (id) => call<NoteStatus>("items.noteStatus", { id }),
     saveLater: (url) => call<{ item: ItemSummary }>("later.save", { url }).then((r) => r.item),
   };
 }

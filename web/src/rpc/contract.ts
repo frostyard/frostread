@@ -220,6 +220,23 @@ export function validateCounts(v: unknown): Problems {
   return p;
 }
 
+/** validateNoteStatus checks items.noteStatus's result. */
+export function validateNoteStatus(v: unknown): Problems {
+  const p: Problems = [];
+  if (!object(v, "noteStatus", ["state", "path", "route", "error"], p)) return p;
+  field(
+    v,
+    "state",
+    "noteStatus",
+    p,
+    (state) => state === "present" || state === "moved" || state === "missing" || state === "unreachable",
+  );
+  field(v, "path", "noteStatus", p, isString, true);
+  field(v, "route", "noteStatus", p, isString, true);
+  field(v, "error", "noteStatus", p, isString, true);
+  return p;
+}
+
 /** validateNote checks items.saveAsNote's result. */
 export function validateNote(v: unknown): Problems {
   const p: Problems = [];
