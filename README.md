@@ -10,6 +10,9 @@ shell, as app `read`.
   backoff.
 - **Read later.** Save a link from the app, from `readctl save <url>`, or
   from an agent with a `read;write` token.
+- **From your phone.** A bookmarklet opens Read's save page with the
+  page's address and title. Read shows both and saves only when you tap
+  Save, so it works in iOS Safari and needs no token.
 - **Articles.** The main content is extracted, sanitized, and its images
   are fetched into a content-addressed store and inlined, so the browser
   loads nothing remote. The original bytes are kept as sent.

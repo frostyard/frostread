@@ -131,9 +131,12 @@ type NoteResult struct {
 	Route string `json:"route"`
 }
 
-// SaveParams holds the params of later.save.
+// SaveParams holds the params of later.save. Title is the page's title,
+// which the bookmarklet sends; it is other people's words, so the daemon
+// cleans it and cuts it to 300 runes.
 type SaveParams struct {
-	URL string `json:"url"`
+	URL   string `json:"url"`
+	Title string `json:"title,omitzero"`
 }
 
 // ItemResult is later.save's result.
@@ -199,7 +202,7 @@ type ReadService interface {
 	SetArchived(ctx context.Context, id int64, archived bool) error
 	SaveAsNote(ctx context.Context, id int64) (path, route string, err error)
 	NoteStatus(ctx context.Context, id int64) (NoteStatusResult, error)
-	SaveURL(ctx context.Context, url string) (engine.Summary, error)
+	SaveURL(ctx context.Context, url, title string) (engine.Summary, error)
 	Counts(ctx context.Context) (Counts, error)
 	SetNotesToken(ctx context.Context, token string) error
 }
@@ -347,7 +350,7 @@ func registerRead(r *Router, s ReadService) {
 		if err := decodeParams(raw, &p, []string{"url"}); err != nil {
 			return nil, err
 		}
-		it, err := s.SaveURL(ctx, p.URL)
+		it, err := s.SaveURL(ctx, p.URL, p.Title)
 		if err != nil {
 			return nil, err
 		}
@@ -490,10 +493,10 @@ func (x ReadClient) NoteStatus(ctx context.Context, id int64) (NoteStatusResult,
 	return out, err
 }
 
-// SaveURL calls later.save.
-func (x ReadClient) SaveURL(ctx context.Context, url string) (engine.Summary, error) {
+// SaveURL calls later.save, with the title when there is one.
+func (x ReadClient) SaveURL(ctx context.Context, url, title string) (engine.Summary, error) {
 	var out ItemResult
-	err := x.c.Call(ctx, "later.save", SaveParams{URL: url}, &out)
+	err := x.c.Call(ctx, "later.save", SaveParams{URL: url, Title: title}, &out)
 	return out.Item, err
 }
 

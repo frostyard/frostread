@@ -105,10 +105,19 @@ what search returns too, unless a query says otherwise.
 | `items.setArchived` | `{id, archived}` | `{}` | |
 | `items.saveAsNote` | `{id}` | `{path, route}` | writes the article into notes; `route` is `/notes/<vaultId>/<path segments, encoded>`, for lodge-client's `open` |
 | `items.noteStatus` | `{id}` | `NoteStatus` | asks notes where the item's note is; `present`, `moved` (and records the new path), `missing` (and clears `note_path`) or `unreachable` (keeping it), within 5 seconds |
-| `later.save` | `{url}` | `{item: ItemSummary}` | saves a link to read later; saving it twice returns the same item |
+| `later.save` | `{url, title?}` | `{item: ItemSummary}` | saves a link to read later, with the page's title when there is one; saving it twice returns the same item |
 | `counts` | none | `{views: {unread, starred, later, archive, all}, sources: [{sourceId, unread}]}` | the sidebar's counts |
 | `notes.setToken` | `{token}` | `{}` | caller `local` only: writes the notes token, 0600, and uses it at once |
 | `events.subscribe` | none | `{subscribed}` | makes this connection receive `items.changed`, from the answer on |
+
+`later.save`'s `title` is the saved page's title, which the bookmarklet
+sends ([ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)).
+It is other people's words, so it is data: the daemon MUST remove control
+characters that are not white space, collapse each run of white space (a
+line break included) to one space, trim it, and cut it to 300 runes. An empty title after that MUST become the URL's host name.
+The URL MUST be checked with `fetch.Check` before it is stored, so a refused
+address answers `invalidParams` ([ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md)).
+Saving the same URL twice returns the same item, and keeps its title.
 
 Times are RFC 3339 in UTC, with `omitzero`. A cursor is opaque to the
 client: it names the last item of the page it came with, and `items.list`
@@ -234,6 +243,56 @@ lodge-content. The manifest sets `"content": true` and
   (and a changed theme reloads the frame). Without the query, the page
   follows the reader's own `prefers-color-scheme`. The MAC covers the path
   alone, so the query changes nothing about what may be read.
+
+### Web routes
+
+The web bundle's frame routes, which lodge-client's `frameRoute` reads from
+the frame's own address: the shell shows `/read/<route>` for a frame at
+`/app/read/<route>`, its query and fragment included
+([lodge's shell.md](https://github.com/frostyard/lodge/blob/main/docs/specs/shell.md#addresses-and-history)).
+
+| Route | What it shows |
+| --- | --- |
+| `/` | the unread view |
+| `/view/<view>` | `unread`, `starred`, `later`, `archive` or `all` |
+| `/source/<id>` | one source's items |
+| `/item/<id>` | one item, in the reader |
+| `/save?url=<encoded>&title=<encoded>` | the save page: the page to save, and Save and Cancel |
+| `/bookmarklet` | the bookmarklet, its code, and how to install it |
+
+Anything else is the unread view.
+
+**The save page** is what the bookmarklet opens
+([ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)):
+
+- It MUST NOT save without the owner's action. Any site can navigate a
+  browser to this route, so a tap on Save is the only thing that saves.
+- It MUST show the page's title and URL as text, never as HTML, and the
+  URL's host. An address that does not parse is shown as text too, and the
+  daemon refuses it.
+- Save calls `later.save` with the URL and the title, over the app's own
+  lodge session. A refusal is shown in the page, which keeps its Save
+  button.
+- Saving the same URL twice returns the same item, and keeps its title.
+- Cancel, Escape and "Back to Read" go to `/`. After a save, the page
+  shows the item's title, "Open in Read" (`/item/<id>`), "Read later"
+  (`/view/later`), and that the browser's Back button returns to the page.
+- The route is reported to the shell as it arrived, so the shell records no
+  new history entry for it. A route over 2,048 characters is not reported:
+  that is the shell's limit (lodge-client's `MAX_ROUTE`).
+
+**The bookmarklet** navigates the top-level window to the save page with
+the page's address and title. It holds no token, and it never calls the
+API. `LODGE` is lodge's origin, which the bundle reads from its own frame,
+so no host is written down:
+
+```
+javascript:(function(){var u=encodeURIComponent(location.href),t=encodeURIComponent((document.title||'').slice(0,200));if(u.length+t.length>1900)t='';location.href='https://LODGE/read/save?url='+u+(t?'&title='+t:'');})();
+```
+
+The title is cut to 200 characters, and left out when the encoded address
+and title together pass 1,900 characters, so the route stays under the
+shell's limit.
 
 ### Fetching
 
@@ -418,6 +477,7 @@ vets and tests both.
 
 - Rationale: [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md),
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
-  [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)
+  [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
+  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
 - Context: [design/overview.md](../design/overview.md)
 - Built in: [roadmap](../plans/0001-roadmap.md)

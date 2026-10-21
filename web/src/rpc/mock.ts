@@ -291,9 +291,10 @@ export function createMockTransport(): Transport {
         if (existing !== undefined) return { item: summary(existing) } as T;
         const source = sources[0];
         if (source === undefined) throw new MockError(1005, "no source");
+        const title = params.title === undefined ? "" : String(params.title);
         const item: MockItem = {
           ...mockItem(items.length + 1, null, true),
-          title: hostOf(url),
+          title: title === "" ? hostOf(url) : title,
           url,
           saved: true,
           read: false,

@@ -156,3 +156,42 @@ describe("mark all read", () => {
     ).toBeNull();
   });
 });
+
+describe("the save and bookmarklet pages", () => {
+  it("take the whole frame without opening an item or changing the list", async () => {
+    const store = await connected();
+    const first = store.getState().items[0];
+    expect(first).toBeDefined();
+    if (first === undefined) return;
+    await store.getState().open(first.id);
+    const listRoute = store.getState().listRoute;
+
+    await store.getState().setRoute({ kind: "bookmarklet" });
+    expect(store.getState().route).toEqual({ kind: "bookmarklet" });
+    expect(store.getState().listRoute).toEqual(listRoute);
+    expect(store.getState().selectedId).toBeNull();
+    expect(store.getState().item).toBeNull();
+    expect(markAllPromptFor(store.getState().route, store.getState().counts)).toBeNull();
+
+    await store.getState().setRoute({
+      kind: "save",
+      url: "https://example.com/from-my-phone",
+      title: "A page from my phone",
+      path: "/save?url=https%3A%2F%2Fexample.com%2Ffrom-my-phone&title=A%20page%20from%20my%20phone",
+    });
+    expect(store.getState().route.kind).toBe("save");
+    expect(store.getState().listRoute).toEqual(listRoute);
+    expect(store.getState().selectedId).toBeNull();
+    expect(markAllPromptFor(store.getState().route, store.getState().counts)).toBeNull();
+  });
+
+  it("saves a page with its title, from the save page", async () => {
+    const store = await connected();
+    const before = store.getState().counts.views.later;
+    const saved = await store.getState().saveFromPage("https://example.com/from-my-phone", "A page from my phone");
+    expect(saved.saved).toBe(true);
+    expect(saved.title).toBe("A page from my phone");
+    expect(store.getState().counts.views.later).toBe(before + 1);
+    expect(store.getState().item).toBeNull();
+  });
+});

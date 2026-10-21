@@ -66,7 +66,7 @@ func TestARefusalIsOneSentence(t *testing.T) {
 			t.Fatalf("code = %v, message = %q; want invalidParams and %q", got, message, want)
 		}
 	}
-	if _, err := s.SaveURL(t.Context(), "http://192.0.2.1/page"); err == nil {
+	if _, err := s.SaveURL(t.Context(), "http://192.0.2.1/page", ""); err == nil {
 		t.Fatal("saving an inside link succeeded")
 	} else {
 		want := "Read does not fetch addresses inside your network (192.0.2.1)."
@@ -74,7 +74,7 @@ func TestARefusalIsOneSentence(t *testing.T) {
 			t.Fatalf("message = %q, code %v; want %q", message, got, want)
 		}
 	}
-	if _, err := s.SaveURL(t.Context(), "file:///etc/passwd"); err == nil {
+	if _, err := s.SaveURL(t.Context(), "file:///etc/passwd", ""); err == nil {
 		t.Fatal("saving a file: link succeeded")
 	} else if _, message := apiError(t, err); !strings.HasPrefix(message, "Read fetches only public http and https addresses") {
 		t.Fatalf("message = %q", message)

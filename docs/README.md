@@ -24,6 +24,7 @@ The contract it follows is lodge's
 - [0003 — The fetcher reaches only public addresses](adr/0003-the-fetcher-reaches-only-public-addresses.md)
 - [0004 — Save as a note goes through notes' MCP on the agent socket](adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md)
 - [0005 — Articles are extracted, sanitized, and kept as sent](adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)
+- [0006 — Save from another page through a confirm page a bookmarklet opens](adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
 
 ### Design
 
@@ -34,13 +35,14 @@ The contract it follows is lodge's
 ### Specs
 
 - [The Read app's interface](specs/api.md): the JSON-RPC methods, the MCP
-  tools and scope, the content routes, `readctl`, the configuration, the
-  state layout, and what the fetcher may do
+  tools and scope, the content routes, the web routes, `readctl`, the
+  configuration, the state layout, and what the fetcher may do
 
 ### Plans
 
 - [0001: Roadmap](plans/0001-roadmap.md): the scaffold and docs, the
-  daemon, the API and MCP, save-as-note, the web app, and the live check
+  daemon, the API and MCP, save-as-note, the web app, the live check, and
+  save from the phone
 
 ## Conventions
 

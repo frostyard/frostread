@@ -185,8 +185,8 @@ func (s *Service) NoteStatus(ctx context.Context, id int64) (api.NoteStatusResul
 }
 
 // SaveURL implements later.save.
-func (s *Service) SaveURL(ctx context.Context, url string) (engine.Summary, error) {
-	it, err := s.Engine.SaveURL(ctx, write, url)
+func (s *Service) SaveURL(ctx context.Context, url, title string) (engine.Summary, error) {
+	it, err := s.Engine.SaveURL(ctx, write, url, title)
 	if err != nil {
 		return engine.Summary{}, s.fail(err)
 	}

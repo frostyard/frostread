@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -290,7 +291,7 @@ func TestExtractionFailure(t *testing.T) {
 func TestScopeGuardsWrites(t *testing.T) {
 	e, _, _, _ := setup(t)
 	read := Scope{}
-	if _, err := e.SaveURL(t.Context(), read, "https://example.org/later"); !errors.Is(err, ErrReadOnly) {
+	if _, err := e.SaveURL(t.Context(), read, "https://example.org/later", ""); !errors.Is(err, ErrReadOnly) {
 		t.Fatalf("save with a read scope = %v, want ErrReadOnly", err)
 	}
 	if err := e.SetRead(t.Context(), read, []int64{1}, true); !errors.Is(err, ErrReadOnly) {
@@ -299,21 +300,82 @@ func TestScopeGuardsWrites(t *testing.T) {
 	if err := e.SetStarred(t.Context(), read, 1, true); !errors.Is(err, ErrReadOnly) {
 		t.Fatalf("star with a read scope = %v", err)
 	}
-	if _, err := e.SaveURL(t.Context(), Scope{Write: true}, "http://127.0.0.1/inside"); err == nil {
+	if _, err := e.SaveURL(t.Context(), Scope{Write: true}, "http://127.0.0.1/inside", ""); err == nil {
 		t.Fatal("an inside url was saved")
+	}
+}
+
+// A saved page's URL is checked before it is stored: loopback, an address
+// netguard refuses, a tailnet name, a homelab name and a scheme that is
+// not http or https are all refused (ADR-0003).
+func TestSaveURLRefusesAnAddressInsideTheNetwork(t *testing.T) {
+	e, _, _, _ := setup(t)
+	for _, rawurl := range []string{
+		"http://127.0.0.1/inside",
+		"http://192.0.2.1/page",
+		"http://[::1]/page",
+		"http://lodge.example.ts.net/page",
+		"http://nas.local/page",
+		"http://router/page",
+		"javascript:alert(1)",
+	} {
+		if _, err := e.SaveURL(t.Context(), Scope{Write: true}, rawurl, ""); err == nil {
+			t.Errorf("saving %q succeeded, want a refusal", rawurl)
+		}
+	}
+	c, err := e.Counts(t.Context())
+	if err != nil || c.Views[store.ViewLater] != 0 {
+		t.Fatalf("later = %d, %v; want 0, so nothing refused was stored", c.Views[store.ViewLater], err)
+	}
+}
+
+// A title from a page is other people's words: control characters go, runs
+// of white space become one space, and it is cut to 300 runes. An empty
+// title becomes the URL's host.
+func TestSaveURLCleansTheTitle(t *testing.T) {
+	e, _, _, _ := setup(t)
+	write := Scope{Write: true}
+	cases := []struct {
+		name  string
+		title string
+		want  string
+	}{
+		{"plain", "A page about feeds", "A page about feeds"},
+		{"white space", "  A \t page \n about   feeds ", "A page about feeds"},
+		{"control characters", "A\x00 page\x07 about feeds", "A page about feeds"},
+		{"line break", "A page\nfrom my phone", "A page from my phone"},
+		{"empty", "", "example.org"},
+		{"white space only", " \t\n ", "example.org"},
+		{"cut", strings.Repeat("é", 301), strings.Repeat("é", 300)},
+	}
+	for i, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			it, err := e.SaveURL(t.Context(), write, fmt.Sprintf("https://example.org/title-%d", i), c.title)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if it.Title != c.want {
+				t.Fatalf("title = %q, want %q", it.Title, c.want)
+			}
+		})
 	}
 }
 
 func TestSaveURLIsIdempotent(t *testing.T) {
 	e, _, _, _ := setup(t)
 	write := Scope{Write: true}
-	first, err := e.SaveURL(t.Context(), write, "https://example.org/read-later")
+	first, err := e.SaveURL(t.Context(), write, "https://example.org/read-later", "The page's title")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := e.SaveURL(t.Context(), write, "https://example.org/read-later")
+	second, err := e.SaveURL(t.Context(), write, "https://example.org/read-later", "Another title")
 	if err != nil || first.ID != second.ID {
 		t.Fatalf("second save = %+v, %v", second, err)
+	}
+	// A second save keeps the item's title: the owner's first save is what
+	// the item is called.
+	if second.Title != "The page's title" || first.Title != second.Title {
+		t.Fatalf("title after a second save = %q, want %q", second.Title, first.Title)
 	}
 	c, err := e.Counts(t.Context())
 	if err != nil || c.Views[store.ViewLater] != 1 {

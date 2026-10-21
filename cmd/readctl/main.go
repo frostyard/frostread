@@ -102,7 +102,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if len(args) != 1 {
 			return errors.New("usage: readctl save <url>")
 		}
-		it, err := read.SaveURL(ctx, args[0])
+		it, err := read.SaveURL(ctx, args[0], "")
 		if err != nil {
 			return err
 		}

@@ -155,6 +155,8 @@ function emptyText(query: string, route: Route, sources: { id: number; title: st
       return source === undefined ? "No items in this source" : `No items in ${source.title}`;
     }
     case "item":
+    case "save":
+    case "bookmarklet":
       return "No items";
   }
 }

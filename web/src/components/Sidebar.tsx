@@ -5,7 +5,7 @@ import { IconButton } from "@frostyard/lodge-ui/react";
 import { AlertTriangle, ArrowLeft, Download, Ellipsis, Plus, RefreshCw, Upload } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
 import { downloadOPML } from "../lib/download.js";
-import type { Route } from "../lib/routes.js";
+import { BOOKMARKLET, type Route } from "../lib/routes.js";
 import { type Source, VIEW_TITLES, VIEWS } from "../rpc/api.js";
 import { useRead } from "./context.js";
 import { SourceSheet } from "./SourceSheet.js";
@@ -98,6 +98,16 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
           </li>
         ))}
       </ul>
+
+      <div className="mt-auto border-t border-separator px-1 py-2">
+        <button
+          type="button"
+          onClick={() => go(BOOKMARKLET)}
+          className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row text-secondary hover:bg-selection-inactive"
+        >
+          <span className="min-w-0 flex-1 truncate">Save from your phone</span>
+        </button>
+      </div>
 
       {managing !== null && <SourceSheet source={managing} onClose={() => setManagingId(null)} />}
 
