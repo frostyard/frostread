@@ -26,8 +26,8 @@ its web bundle on `@frostyard/lodge-client` **client/v0.3.0** and on
 guarded fetcher, feeds and OPML, extraction and the blob store, polling,
 search, the JSON-RPC API, `readctl`, MCP with scoped tokens, save-as-note,
 the content pages, the units, and the development feeds. Next: the web app
-([roadmap](docs/plans/0001-roadmap.md), Phase 5). The founding documents are
-Proposed (2026-10-21).
+([roadmap](docs/plans/0001-roadmap.md), Phase 5). The founding ADRs, 0001 to
+0005, are Accepted (Brian, 2026-10-21).
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -168,8 +168,8 @@ new doc starts from its category's `TEMPLATE.md`** and follows its
 structure:
 
 - `docs/adr/`: why we decided. Immutable once Accepted; a reversal is a new
-  ADR that marks the old one Superseded. The founding ADRs are Proposed
-  (2026-10-21) and may be edited in place until they are accepted.
+  ADR that marks the old one Superseded. The founding ADRs, 0001 to
+  0005, are Accepted (Brian, 2026-10-21).
 - `docs/design/`: how it fits together. Living, and updated to match
   reality.
 - `docs/specs/`: exact contracts. They change only alongside implementing

@@ -1,6 +1,6 @@
 # 0004 — Save as a note goes through notes' MCP on the agent socket
 
-- **Status:** Proposed
+- **Status:** Accepted (Brian, 2026-10-21)
 - **Date:** 2026-10-21
 
 ## Context
