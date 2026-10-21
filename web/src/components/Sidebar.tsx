@@ -2,7 +2,7 @@
 // and the buttons that add, import, export and refresh. A source that
 // failed its last poll shows a warning, and its error in the tooltip.
 import { IconButton } from "@frostyard/lodge-ui/react";
-import { AlertTriangle, Download, Plus, RefreshCw, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, Plus, RefreshCw, Upload } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
 import { downloadOPML } from "../lib/download.js";
 import type { Route } from "../lib/routes.js";
@@ -11,7 +11,7 @@ import { useRead } from "./context.js";
 import { UrlSheet } from "./UrlSheet.js";
 
 /** Sidebar is the left pane, or the narrow window's first pane. */
-export function Sidebar(props: { onNavigate?: () => void }) {
+export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void }) {
   const sources = useRead((state) => state.sources);
   const counts = useRead((state) => state.counts);
   const listRoute = useRead((state) => state.listRoute);
@@ -45,6 +45,7 @@ export function Sidebar(props: { onNavigate?: () => void }) {
   return (
     <nav aria-label="Views and sources" className="flex h-full flex-col overflow-y-auto bg-sidebar">
       <div className="flex items-center justify-end gap-0.5 px-[var(--pad-x)] pb-1 pt-2">
+        {props.onBack !== undefined && <IconButton label="Back" icon={ArrowLeft} onClick={props.onBack} />}
         <IconButton label="Add a source" icon={Plus} onClick={() => setAdding(true)} />
         <IconButton label="Import OPML" icon={Upload} onClick={() => file.current?.click()} />
         <input

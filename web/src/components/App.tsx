@@ -112,7 +112,7 @@ export function App() {
     return (
       <div className="flex h-full flex-col bg-window text-primary">
         {sidebarOpen ? (
-          <Sidebar onNavigate={() => setSidebarOpen(false)} />
+          <Sidebar onNavigate={() => setSidebarOpen(false)} onBack={() => setSidebarOpen(false)} />
         ) : selectedId !== null ? (
           <Reader onBack={() => store.getState().closeItem()} />
         ) : (
