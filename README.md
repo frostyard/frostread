@@ -66,12 +66,16 @@ frostread runs as lodge's `read` app, beside lodge and notes, on the same
 host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
 
 1. **Build the bundle and stage the app.** The web bundle builds in an nsl
-   machine; `lodge-package` puts `readd`, `readctl`, the manifest, the
-   bundle, the units and the sysusers entry in lodge's layout.
+   machine. `lodge-package` stages `readd`, `readctl`, the manifest, the
+   bundle, the units and the sysusers entry under `build/lodge-root`; it
+   refuses a whole root, so copy the staged `usr/` over the host's, with
+   the app's own directory replaced whole.
 
    ```sh
-   make web-build                                    # in nsl
-   sudo make lodge-package LODGE_DESTDIR=/
+   make web-build                             # in nsl
+   make lodge-package                         # stages build/lodge-root
+   sudo rm -rf /usr/share/lodge/apps/read     # only Read's own directory
+   sudo cp -a build/lodge-root/usr/. /usr/
    ```
 
 2. **Create the user and start the socket.** The sysusers entry makes

@@ -279,7 +279,7 @@ gives. What it needs:
 
 | What | Where | Made by |
 | --- | --- | --- |
-| `readd`, `readctl` | `/usr/local/bin` | `make lodge-package LODGE_DESTDIR=/` |
+| `readd`, `readctl` | `/usr/local/bin` | `make lodge-package`, then the staged `usr/` copied over the host's |
 | manifest and web bundle | `/usr/share/lodge/apps/read/` | the same |
 | `frostread.socket`, `frostread.service` | `/usr/lib/systemd/system/` | the same |
 | the user `frostread`, in `lodge-apps` and `lodge-agents` | `sysusers.d` | `sudo systemd-sysusers /usr/lib/sysusers.d/frostread.conf` |
