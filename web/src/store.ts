@@ -312,7 +312,9 @@ export function createReadStore(): StoreApi<ReadStore> {
       const { item, noteRoutes, status } = get();
       const known = noteRoutes[id];
       if (known !== undefined) return known;
-      if (item === null || item.id !== id || item.notePath === "" || status === null) return null;
+      if (item === null || item.id !== id || item.notePath === undefined || item.notePath === "" || status === null) {
+        return null;
+      }
       if (status.notes.vaultId === 0) return null;
       return routeOfNote(item.notePath, status.notes.vaultId);
     },

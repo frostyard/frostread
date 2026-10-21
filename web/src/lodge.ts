@@ -35,10 +35,11 @@ export function openOutside(url: string): void {
   window.open(url, "_blank", "noopener");
 }
 
-/** contentSrc is an item's article as lodge's content URL, or null outside lodge. */
-export function contentSrc(contentPath: string): string | null {
+/** contentSrc is an item's article as lodge's content URL, or null outside
+ * lodge and for an item the daemon has no content route for. */
+export function contentSrc(contentPath: string | undefined): string | null {
   const shell = lodge();
-  if (shell === null) return null;
+  if (shell === null || contentPath === undefined) return null;
   // lodge-client's contentURL takes the path without its leading slash.
   return shell.contentURL(contentPath.replace(/^\//, ""));
 }

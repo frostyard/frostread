@@ -12,7 +12,8 @@ export const ROW_HEIGHT = 84;
 /** ItemRow is one row; the list owns focus, selection and virtualization. */
 export function ItemRow(props: { item: ItemSummary; selected: boolean; onSelect: () => void }) {
   const { item, selected } = props;
-  const meta = [item.sourceTitle === "" ? "Saved link" : item.sourceTitle, listDate(item.published)]
+  const sourceTitle = item.sourceTitle ?? "";
+  const meta = [sourceTitle === "" ? "Saved link" : sourceTitle, listDate(item.published)]
     .filter((part) => part !== "")
     .join(" · ");
   return (
@@ -51,7 +52,7 @@ export function ItemRow(props: { item: ItemSummary; selected: boolean; onSelect:
       </div>
       <div className="truncate text-list-date text-secondary">{meta}</div>
       <div className="line-clamp-2 text-list-preview text-secondary">
-        <Snippet text={item.snippet ?? item.excerpt} />
+        <Snippet text={item.snippet ?? item.excerpt ?? ""} />
       </div>
     </div>
   );

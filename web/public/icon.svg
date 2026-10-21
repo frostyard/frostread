@@ -1,1 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12h8M12 8v8"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>Read</title>
+  <desc>An open ice-blue book with ruled pages on a chamfered midnight-blue tile, its spine a dark fold.</desc>
+  <!-- Frostyard core .agents/skills/frostyard-design/tokens/colors.css:
+       ink #06111d, deep #081b2d, panel #0d263b, ice #aee9ff,
+       sky #47b8ef, blue #168bd0, text-body #edf8ff, line-strong #2c6380.
+       Frame geometry matches Frostmail's and Frostnotes' sibling icons. -->
+  <defs>
+    <linearGradient id="tile" x1="32" y1="32" x2="480" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0d2d45"/>
+      <stop offset="1" stop-color="#071827"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="112" y1="150" x2="400" y2="392" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#edf8ff"/>
+      <stop offset="1" stop-color="#aee9ff"/>
+    </linearGradient>
+    <linearGradient id="cover" x1="96" y1="360" x2="416" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#47b8ef"/>
+      <stop offset="1" stop-color="#168bd0"/>
+    </linearGradient>
+  </defs>
+  <!-- The same cut-corner frame, padding and hairline as its siblings. -->
+  <path d="M64 16H448L496 64V448L448 496H64L16 448V64Z" fill="#06111d"/>
+  <path d="M66 20H446L492 66V446L446 492H66L20 446V66Z" fill="url(#tile)" stroke="#2c6380" stroke-width="2"/>
+  <!-- The open covers, seen below and beside the pages. -->
+  <path d="M92 168Q176 136 252 176V396Q176 354 92 386Z" fill="url(#cover)"/>
+  <path d="M420 168Q336 136 260 176V396Q336 354 420 386Z" fill="url(#cover)"/>
+  <!-- The page blocks meet at the fold, their inner edges a hair darker. -->
+  <path d="M110 176Q184 148 250 186V380Q184 348 110 374Z" fill="url(#paper)"/>
+  <path d="M402 176Q328 148 262 186V380Q328 348 402 374Z" fill="url(#paper)"/>
+  <path d="M250 186V380" stroke="#47b8ef" stroke-width="3"/>
+  <path d="M262 186V380" stroke="#47b8ef" stroke-width="3"/>
+  <path d="M256 184V382" stroke="#081b2d" stroke-width="8" stroke-linecap="round"/>
+  <!-- Ruled lines: four on each page, the last shorter, as an open book
+       lies. Drawn as paths, so no font is needed. -->
+  <g stroke="#2c6380" stroke-width="6" stroke-linecap="round">
+    <path d="M136 222H222"/>
+    <path d="M136 252H226"/>
+    <path d="M136 282H214"/>
+    <path d="M136 312H190"/>
+    <path d="M290 222H376"/>
+    <path d="M286 252H376"/>
+    <path d="M298 282H376"/>
+    <path d="M322 312H376"/>
+  </g>
+  <!-- A ribbon marks the reader's place, in the suite's ice blue. -->
+  <path d="M336 186H364V262L350 248L336 262Z" fill="#aee9ff"/>
+  <path d="M336 186H364V204H336Z" fill="#47b8ef"/>
+</svg>

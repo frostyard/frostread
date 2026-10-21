@@ -121,20 +121,21 @@ function Row(props: { title: string; count: number; current: boolean; onClick: (
 }
 
 /** SourceRow is one source: its title, its unread count, and its last error. */
-function SourceRow(props: { source: Source; unread: number; current: boolean; onClick: () => void }) {
+export function SourceRow(props: { source: Source; unread: number; current: boolean; onClick: () => void }) {
+  const lastError = props.source.lastError ?? "";
   return (
     <button
       type="button"
       aria-current={props.current ? "page" : undefined}
       onClick={props.onClick}
-      title={props.source.lastError === "" ? props.source.url : props.source.lastError}
+      title={lastError === "" ? props.source.url : lastError}
       className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row ${
         props.current ? "bg-selection-sidebar text-primary" : "text-secondary hover:bg-selection-inactive"
       }`}
     >
       <span className="min-w-0 flex-1 truncate">{props.source.title}</span>
-      {props.source.lastError !== "" && (
-        <span role="img" className="shrink-0 text-flag-2" aria-label={`Last error: ${props.source.lastError}`}>
+      {lastError !== "" && (
+        <span role="img" className="shrink-0 text-flag-2" aria-label={`Last error: ${lastError}`}>
           <AlertTriangle size={12} aria-hidden="true" />
         </span>
       )}

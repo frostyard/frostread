@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import "./app.css";
 import { App } from "./components/App.js";
 import { StoreProvider } from "./components/context.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { parseRoute } from "./lib/routes.js";
 import { setLodge } from "./lodge.js";
 import { readAPI } from "./rpc/api.js";
@@ -22,7 +23,9 @@ const store = createReadStore();
 createRoot(host).render(
   <StrictMode>
     <StoreProvider store={store}>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StoreProvider>
   </StrictMode>,
 );
