@@ -2,12 +2,13 @@
 // and the buttons that add, import, export and refresh. A source that
 // failed its last poll shows a warning, and its error in the tooltip.
 import { IconButton } from "@frostyard/lodge-ui/react";
-import { AlertTriangle, ArrowLeft, Download, Plus, RefreshCw, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, Ellipsis, Plus, RefreshCw, Upload } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
 import { downloadOPML } from "../lib/download.js";
 import type { Route } from "../lib/routes.js";
 import { type Source, VIEW_TITLES, VIEWS } from "../rpc/api.js";
 import { useRead } from "./context.js";
+import { SourceSheet } from "./SourceSheet.js";
 import { UrlSheet } from "./UrlSheet.js";
 
 /** Sidebar is the left pane, or the narrow window's first pane. */
@@ -21,6 +22,7 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
   const importOPML = useRead((state) => state.importOPML);
   const exportOPML = useRead((state) => state.exportOPML);
   const [adding, setAdding] = useState(false);
+  const [managingId, setManagingId] = useState<number | null>(null);
   const file = useRef<HTMLInputElement>(null);
 
   const go = (route: Route) => {
@@ -41,6 +43,8 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
   };
 
   const unreadOf = (id: number) => counts.sources.find((row) => row.sourceId === id)?.unread ?? 0;
+  // The sheet reads the freshest copy, so a poll or a rename shows in it.
+  const managing = managingId === null ? null : (sources.find((source) => source.id === managingId) ?? null);
 
   return (
     <nav aria-label="Views and sources" className="flex h-full flex-col overflow-y-auto bg-sidebar">
@@ -78,16 +82,24 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
       </h2>
       <ul className="px-1 pb-4">
         {sources.map((source) => (
-          <li key={source.id}>
+          <li key={source.id} className="group relative">
             <SourceRow
               source={source}
               unread={unreadOf(source.id)}
               current={listRoute.kind === "source" && listRoute.id === source.id}
               onClick={() => go({ kind: "source", id: source.id })}
             />
+            {/* The manage button shows on hover and on keyboard focus,
+                and always where the pointer is coarse: a phone has no
+                hover. */}
+            <span className="absolute right-0.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100">
+              <IconButton label={`Manage ${source.title}`} icon={Ellipsis} onClick={() => setManagingId(source.id)} />
+            </span>
           </li>
         ))}
       </ul>
+
+      {managing !== null && <SourceSheet source={managing} onClose={() => setManagingId(null)} />}
 
       {adding && (
         <UrlSheet
@@ -111,7 +123,7 @@ function Row(props: { title: string; count: number; current: boolean; onClick: (
       type="button"
       aria-current={props.current ? "page" : undefined}
       onClick={props.onClick}
-      className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row ${
+      className={`flex h-7 w-full items-center gap-2 rounded-md pl-2 pr-8 text-left text-sidebar-row ${
         props.current ? "bg-selection-sidebar text-primary" : "text-secondary hover:bg-selection-inactive"
       }`}
     >
@@ -130,7 +142,7 @@ export function SourceRow(props: { source: Source; unread: number; current: bool
       aria-current={props.current ? "page" : undefined}
       onClick={props.onClick}
       title={lastError === "" ? props.source.url : lastError}
-      className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row ${
+      className={`flex h-7 w-full items-center gap-2 rounded-md pl-2 pr-8 text-left text-sidebar-row ${
         props.current ? "bg-selection-sidebar text-primary" : "text-secondary hover:bg-selection-inactive"
       }`}
     >

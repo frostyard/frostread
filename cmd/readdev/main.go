@@ -114,6 +114,16 @@ var articles = []article{
 
 func handler(base string) http.Handler {
 	mux := http.NewServeMux()
+	// broken answers its feed once, so a subscription succeeds, and fails
+	// its polls after: the owner sees a source with an error marker.
+	var mu sync.Mutex
+	requests := map[string]int{}
+	once := func(path string) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		requests[path]++
+		return requests[path] == 1
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -133,6 +143,21 @@ func handler(base string) http.Handler {
 	mux.HandleFunc("/rss.xml", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, rss(base)) })
 	mux.HandleFunc("/atom.xml", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, atom(base)) })
 	mux.HandleFunc("/feed.json", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, jsonFeed(base)) })
+	mux.HandleFunc("/broken.xml", func(w http.ResponseWriter, _ *http.Request) {
+		if !once("/broken.xml") {
+			http.Error(w, "the development feed is broken on purpose", http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprint(w, brokenFeed(base))
+	})
+	mux.HandleFunc("/busy.xml", func(w http.ResponseWriter, _ *http.Request) {
+		if !once("/busy.xml") {
+			w.Header().Set("Retry-After", "120")
+			http.Error(w, "the development feed is busy on purpose", http.StatusTooManyRequests)
+			return
+		}
+		fmt.Fprint(w, busyFeed(base))
+	})
 	mux.HandleFunc("/articles/", articlePage)
 	mux.HandleFunc("/img/", illustration)
 	return mux
@@ -259,7 +284,28 @@ func jsonFeed(base string) string {
 `
 }
 
-// opmlDocument is the three feeds as an OPML document, for readctl import.
+// brokenFeed is the feed that fails its polls: one item, so its source has
+// items to lose when it is unsubscribed.
+func brokenFeed(base string) string {
+	return `<?xml version="1.0"?><rss version="2.0"><channel>
+<title>Example Development Broken</title><link>` + base + `/broken</link>
+<item><title>A broken feed's one article</title><link>` + base + `/articles/3</link><guid>` + base + `/broken/1</guid>
+<pubDate>Tue, 20 Oct 2026 15:00:00 GMT</pubDate>
+<description>A feed that will fail its next poll.</description></item></channel></rss>
+`
+}
+
+// busyFeed is the feed that answers 429 with a Retry-After.
+func busyFeed(base string) string {
+	return `<?xml version="1.0"?><rss version="2.0"><channel>
+<title>Example Development Busy</title><link>` + base + `/busy</link>
+<item><title>A busy feed's one article</title><link>` + base + `/articles/4</link><guid>` + base + `/busy/1</guid>
+<pubDate>Tue, 20 Oct 2026 16:00:00 GMT</pubDate>
+<description>A feed that will ask the reader to wait.</description></item></channel></rss>
+`
+}
+
+// opmlDocument is the five feeds as an OPML document, for readctl import.
 func opmlDocument(base string) string {
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Development feeds</title></head><body>
@@ -267,6 +313,8 @@ func opmlDocument(base string) string {
 <outline type="rss" text="Example Development Journal" xmlUrl="` + base + `/rss.xml" htmlUrl="` + base + `/"/>
 <outline type="rss" text="Example Development Atoms" xmlUrl="` + base + `/atom.xml" htmlUrl="` + base + `/"/>
 <outline type="rss" text="Example Development Feeds" xmlUrl="` + base + `/feed.json" htmlUrl="` + base + `/"/>
+<outline type="rss" text="Example Development Broken" xmlUrl="` + base + `/broken.xml" htmlUrl="` + base + `/"/>
+<outline type="rss" text="Example Development Busy" xmlUrl="` + base + `/busy.xml" htmlUrl="` + base + `/"/>
 </outline></body></opml>
 `
 }

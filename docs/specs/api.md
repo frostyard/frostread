@@ -347,8 +347,12 @@ no such code: the tag guards a file whose symbol a test proves absent from
 a release build with `go tool nm`.
 
 `cmd/readdev`, built with the `devfeeds` tag, serves on `127.0.0.1:8088` a
-generated RSS feed, Atom feed and JSON Feed, six made-up article pages with
-one image, and `/subscriptions.opml`; `-opml` prints the OPML and stops.
+generated RSS feed, Atom feed and JSON Feed, two more that answer their
+feed once and then fail their polls (500, and 429 with `Retry-After: 120`),
+six made-up article pages with one image, and `/subscriptions.opml`;
+`-opml` prints the OPML and stops. The OPML names all five feeds, so the
+owner sees sources with an error marker and the message in a source's
+sheet.
 `testdata/dev/subscriptions.opml` is the same document, for a check that
 does not want to run readdev first. `make dev-seed` prints it. The live check is:
 

@@ -64,9 +64,9 @@ func TestDevelopmentFeeds(t *testing.T) {
 	if len(data) < 1000 {
 		t.Fatalf("the image is %d bytes: not a drawn picture", len(data))
 	}
-	// The OPML names three feeds that this server serves.
+	// The OPML names five feeds that this server serves.
 	feeds, err := opml.Import(strings.NewReader(opmlDocument(srv.URL)))
-	if err != nil || len(feeds) != 3 {
+	if err != nil || len(feeds) != 5 {
 		t.Fatalf("opml = %v, %v", feeds, err)
 	}
 	for _, f := range feeds {
@@ -77,6 +77,46 @@ func TestDevelopmentFeeds(t *testing.T) {
 		_ = res.Body.Close()
 		if res.StatusCode != http.StatusOK {
 			t.Fatalf("%s = %d", f.XMLURL, res.StatusCode)
+		}
+	}
+}
+
+// Two development feeds fail their polls, so the owner sees a source with
+// an error marker and its message: one answers 500, and one 429 with a
+// Retry-After. Each answers its feed once first, so subscribing works.
+func TestFailingFeeds(t *testing.T) {
+	srv := httptest.NewServer(handler("http://127.0.0.1:8088"))
+	defer srv.Close()
+	for _, tc := range []struct {
+		path   string
+		status int
+		retry  string
+	}{
+		{"/broken.xml", http.StatusInternalServerError, ""},
+		{"/busy.xml", http.StatusTooManyRequests, "120"},
+	} {
+		first, err := http.Get(srv.URL + tc.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(first.Body)
+		_ = first.Body.Close()
+		if first.StatusCode != http.StatusOK {
+			t.Fatalf("%s's first answer = %d", tc.path, first.StatusCode)
+		}
+		if f, err := feed.Parse(body, srv.URL+tc.path); err != nil || len(f.Items) != 1 {
+			t.Fatalf("%s's feed = %v, %v; want 1 item", tc.path, f, err)
+		}
+		second, err := http.Get(srv.URL + tc.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = second.Body.Close()
+		if second.StatusCode != tc.status {
+			t.Fatalf("%s's second answer = %d, want %d", tc.path, second.StatusCode, tc.status)
+		}
+		if got := second.Header.Get("Retry-After"); got != tc.retry {
+			t.Fatalf("%s's Retry-After = %q, want %q", tc.path, got, tc.retry)
 		}
 	}
 }

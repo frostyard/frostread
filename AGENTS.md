@@ -141,9 +141,10 @@ neither is in a release build:
   `READ_DEV_ALLOW` names (such as `127.0.0.1:8088`). Every other address
   stays refused. A test proves with `go tool nm` that a release binary
   lacks the code.
-- **`devfeeds`**: `cmd/readdev` serves a generated RSS feed, Atom feed and
-  JSON Feed with six made-up articles on `127.0.0.1:8088`, and `-opml`
-  prints the OPML that names them. `make dev-seed` prints it.
+- **`devfeeds`**: `cmd/readdev` serves five generated feeds with six made-up
+  articles on `127.0.0.1:8088` (RSS, Atom, JSON Feed, and two that fail
+  their polls with 500 and 429), and `-opml` prints the OPML that names
+  them. `make dev-seed` prints it.
 
 They are documented in [docs/specs/api.md](docs/specs/api.md#development-only),
 and `make check` vets and tests both tags. `make dev-lodge` runs the whole
