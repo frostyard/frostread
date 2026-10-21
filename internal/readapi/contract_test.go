@@ -301,12 +301,27 @@ func TestContract(t *testing.T) {
 }
 
 // A method a session may not call is not part of the contract: the web
-// never calls notes.setToken, and the router refuses it.
+// never calls notes.setToken or blobs.sweep, and the router refuses them.
+// The local caller reaches blobs.sweep.
 func TestNotesTokenIsLocal(t *testing.T) {
 	s := seed(t)
 	ctx := api.WithCaller(t.Context(), api.CallerSession)
-	if _, err := s.router.Dispatch(ctx, "notes.setToken", jsontext.Value(`{"token":"x"}`)); !errors.Is(err, api.ErrMethodNotFound) {
-		t.Fatalf("notes.setToken as a session = %v, want methodNotFound", err)
+	for _, c := range []struct{ method, params string }{
+		{"notes.setToken", `{"token":"x"}`},
+		{"blobs.sweep", `{}`},
+		{"blobs.sweep", `{"dryRun":true}`},
+	} {
+		if _, err := s.router.Dispatch(ctx, c.method, jsontext.Value(c.params)); !errors.Is(err, api.ErrMethodNotFound) {
+			t.Fatalf("%s as a session = %v, want methodNotFound", c.method, err)
+		}
+	}
+	local := api.WithCaller(t.Context(), api.CallerLocal)
+	out, err := s.router.Dispatch(local, "blobs.sweep", jsontext.Value(`{"dryRun":true}`))
+	if err != nil {
+		t.Fatalf("blobs.sweep as local: %v", err)
+	}
+	if res, ok := out.(api.SweepResult); !ok || !res.DryRun {
+		t.Fatalf("blobs.sweep as local = %#v, want a dry run's result", out)
 	}
 }
 

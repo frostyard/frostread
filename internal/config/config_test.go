@@ -28,6 +28,31 @@ func TestDefaults(t *testing.T) {
 	if c.NotesFolder != DefaultFolder || c.LodgeURL != "" || c.NotesVault != 0 {
 		t.Fatalf("defaults = %+v", c)
 	}
+	if c.BlobSweep != SweepOn || c.BlobGraceDays != DefaultGraceDays || DefaultGraceDays != 7 {
+		t.Fatalf("sweep defaults = %q, %d; want on, 7", c.BlobSweep, c.BlobGraceDays)
+	}
+}
+
+func TestBlobSweepSettings(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		mode string
+		days int
+	}{
+		{`{}`, "on", 7},
+		{`{"blob_sweep": "dry-run"}`, "dry-run", 7},
+		{`{"blob_sweep": "off", "blob_grace_days": 30}`, "off", 30},
+		{`{"blob_grace_days": 1}`, "on", 1},
+		{`{"blob_grace_days": 365}`, "on", 365},
+	} {
+		c, err := Load(write(t, tc.body))
+		if err != nil {
+			t.Fatalf("%s: %v", tc.body, err)
+		}
+		if c.BlobSweep != tc.mode || c.BlobGraceDays != tc.days {
+			t.Fatalf("%s = %q, %d; want %q, %d", tc.body, c.BlobSweep, c.BlobGraceDays, tc.mode, tc.days)
+		}
+	}
 }
 
 func TestFull(t *testing.T) {
@@ -60,6 +85,11 @@ func TestRejectsBadValues(t *testing.T) {
 		{"folder climbing out", `{"notes_folder": "../Reading/"}`},
 		{"absolute folder", `{"notes_folder": "/Reading/"}`},
 		{"negative vault", `{"notes_vault": -1}`},
+		{"unknown sweep mode", `{"blob_sweep": "sometimes"}`},
+		{"sweep mode in capitals", `{"blob_sweep": "ON"}`},
+		{"negative grace", `{"blob_grace_days": -1}`},
+		{"grace too long", `{"blob_grace_days": 366}`},
+		{"grace not a number", `{"blob_grace_days": "7"}`},
 		{"malformed json", `{`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

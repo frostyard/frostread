@@ -169,5 +169,5 @@ var Methods = []string{
 	"opml.import", "opml.export",
 	"items.list", "items.get", "items.search", "items.setRead", "items.markAllRead",
 	"items.setStarred", "items.setArchived", "items.saveAsNote", "items.noteStatus",
-	"later.save", "counts", "notes.setToken",
+	"later.save", "counts", "notes.setToken", "blobs.sweep",
 }

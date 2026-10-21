@@ -129,6 +129,7 @@ func run(ctx context.Context, args []string) error {
 	pl := &poller.Poller{Poll: eng.PollDue, Log: log.With("part", "poller")}
 	go pl.Run(ctx)
 	go eng.RunExtraction(ctx, engine.ExtractWorkers)
+	go eng.RunBlobSweep(ctx)
 
 	mcp := mcpsession.New(mcpserver.Handler(mcpserver.Options{Engine: eng, Version: version, Log: log}),
 		mcpsession.Options{CheckScope: mcpserver.CheckScope, Logger: log})

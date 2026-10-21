@@ -27,6 +27,21 @@ const DefaultInterval = 20 * time.Minute
 // names another folder.
 const DefaultFolder = "Reading/"
 
+// The blob sweep's modes and its grace period (docs/adr/0007-*).
+const (
+	// SweepOn sweeps on the daily schedule, and removes.
+	SweepOn = "on"
+	// SweepDryRun sweeps on the schedule, and only logs what it would remove.
+	SweepDryRun = "dry-run"
+	// SweepOff has no schedule; readctl sweep still works.
+	SweepOff = "off"
+	// DefaultGraceDays is how long a blob stays unreferenced before it goes.
+	DefaultGraceDays = 7
+	// MinGraceDays and MaxGraceDays bound blob_grace_days.
+	MinGraceDays = 1
+	MaxGraceDays = 365
+)
+
 // The interval's bounds.
 const (
 	MinInterval = 15 * time.Minute
@@ -44,6 +59,12 @@ type Config struct {
 	NotesFolder string `json:"notes_folder"`
 	// NotesVault is the notes vault's id; save-as-note needs it.
 	NotesVault int64 `json:"notes_vault"`
+	// BlobSweep is the daily blob sweep's mode: "on" (the default),
+	// "dry-run" or "off".
+	BlobSweep string `json:"blob_sweep"`
+	// BlobGraceDays is how many days a blob has no reference before the
+	// sweep removes it: 7 by default, 1 to 365.
+	BlobGraceDays int `json:"blob_grace_days"`
 }
 
 // Load reads the configuration at path, or READ_CONFIG, or DefaultPath. A
@@ -72,6 +93,15 @@ func Load(path string) (Config, error) {
 	if c.NotesFolder == "" {
 		c.NotesFolder = DefaultFolder
 	}
+	if c.BlobSweep == "" {
+		c.BlobSweep = SweepOn
+	}
+	if c.BlobGraceDays == 0 {
+		c.BlobGraceDays = DefaultGraceDays
+	}
+	if err := c.checkSweep(); err != nil {
+		return c, fmt.Errorf("%s: %w", path, err)
+	}
 	if _, err := c.Interval(); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
@@ -99,6 +129,19 @@ func (c Config) Interval() (time.Duration, error) {
 		return 0, fmt.Errorf("poll_interval %q is outside %s to %s", c.PollInterval, MinInterval, MaxInterval)
 	}
 	return d, nil
+}
+
+// checkSweep requires a known mode and a grace period within bounds.
+func (c Config) checkSweep() error {
+	switch c.BlobSweep {
+	case SweepOn, SweepDryRun, SweepOff:
+	default:
+		return fmt.Errorf("blob_sweep %q is not %q, %q or %q", c.BlobSweep, SweepOn, SweepDryRun, SweepOff)
+	}
+	if c.BlobGraceDays < MinGraceDays || c.BlobGraceDays > MaxGraceDays {
+		return fmt.Errorf("blob_grace_days %d is outside %d to %d", c.BlobGraceDays, MinGraceDays, MaxGraceDays)
+	}
+	return nil
 }
 
 // checkLodgeURL requires an https origin with no path.

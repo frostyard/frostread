@@ -118,6 +118,22 @@ ticked as its work lands.
 - **Done when:** the owner installs the bookmarklet in iOS Safari and
   saves one page to read later through it.
 
+## Phase 8 — The blob sweep (built 2026-10-21)
+
+- `blobs.Store`'s read-write lock, `List` and `RemoveIf`, and `Put`
+  touching a blob that exists
+  ([ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)).
+- Migration 2, `blob_orphans`, and the store's mark and record queries.
+- `Engine.SweepBlobs` (mark, scan, record, remove, and a dry run) and
+  `RunBlobSweep`, 10 minutes after start and then every 24 hours.
+- `blobs.sweep`, for caller `local` only, and `readctl sweep [-dry-run]`;
+  the configuration's `blob_sweep` and `blob_grace_days`
+  ([specs/api.md](../specs/api.md)).
+- **Done when:** a source's removal leaves its blobs for the grace
+  period, the sweep after it removes them, a blob another item names stays,
+  and a save that runs beside a sweep keeps its blob, under the race
+  detector.
+
 ## Later / ideas
 
 - Summaries through `kit/inference`, at background priority.
@@ -129,9 +145,6 @@ ticked as its work lands.
 
 ## Open questions
 
-- **A blob sweep:** items' blobs are never removed when an item or a
-  source goes. It is harmless for now; a sweep needs a reference count or
-  a mark-and-scan, decided by Phase 6 or later.
 - **Full-text search's rank in a view:** search covers every item today.
   Whether it should follow the current view is a UI question, decided by
   Phase 5.
@@ -143,7 +156,8 @@ ticked as its work lands.
 - Rationale: [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md),
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
-  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
+  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md),
+  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
 
 ### Phase 6 evidence, 2026-10-21
 

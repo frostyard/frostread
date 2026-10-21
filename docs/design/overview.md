@@ -3,8 +3,9 @@
 Living document. Rationale:
 [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md)
 (fetching), [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md)
-(notes) and [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)
-(articles). Contracts: [specs/api.md](../specs/api.md).
+(notes), [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)
+(articles) and [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
+(the blob sweep). Contracts: [specs/api.md](../specs/api.md).
 
 ## Overview
 
@@ -133,9 +134,18 @@ runes, and the address is checked with `fetch.Check` before it is stored
   URLs only (the app rebuilds them), and does not touch the items.
 - **Logs:** ids, a URL's host, status and duration. Never a token, a note's
   text or an article's text.
-- **Disk:** fetched bodies and images are bounded per item, but the store
-  grows with reading. Removing a source deletes its items by cascade, and
-  their rows with it; the blobs they named stay until a later sweep.
+- **Disk:** a daily sweep removes the blobs no row names
+  ([ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)).
+  It marks the hashes the database names, scans `blobs/`, and records in
+  `blob_orphans` when it first found each unnamed file. A file goes when
+  that record and its modification time are both past the grace period
+  (`blob_grace_days`, 7), after a second check under the store's lock; `Put`
+  touches a blob that exists. It runs 10 minutes after start, then every
+  24 hours (`blob_sweep`), and `readctl sweep [-dry-run]` runs it now.
+- **Restoring an old database:** it may name blobs the sweep removed since
+  the snapshot. A restore inside the grace period is safe; an older one
+  needs the `blobs/` directory from the same snapshot, or its items show
+  a missing image or an original that is gone.
 
 ## References
 
@@ -144,6 +154,7 @@ runes, and the address is checked with `fetch.Check` before it is stored
   [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md),
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
-  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
+  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md),
+  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
 - Contracts: [specs/api.md](../specs/api.md)
-- Built in: [roadmap — Phases 1 to 7](../plans/0001-roadmap.md)
+- Built in: [roadmap — Phases 1 to 8](../plans/0001-roadmap.md)

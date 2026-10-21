@@ -20,8 +20,8 @@ contract says. Two callers exist:
 
 | Caller | Connection | Methods |
 | --- | --- | --- |
-| `session` | lodge's `/app/read/api`, one WebSocket per browser | every method but `notes.setToken` |
-| `local` | `/run/frostread/readctl.sock` | every method, `notes.setToken` included |
+| `session` | lodge's `/app/read/api`, one WebSocket per browser | every method but `notes.setToken` and `blobs.sweep` |
+| `local` | `/run/frostread/readctl.sock` | every method, `notes.setToken` and `blobs.sweep` included |
 
 A method a connection may not call answers `methodNotFound`, as does one
 that does not exist.
@@ -108,6 +108,7 @@ what search returns too, unless a query says otherwise.
 | `later.save` | `{url, title?}` | `{item: ItemSummary}` | saves a link to read later, with the page's title when there is one; saving it twice returns the same item |
 | `counts` | none | `{views: {unread, starred, later, archive, all}, sources: [{sourceId, unread}]}` | the sidebar's counts |
 | `notes.setToken` | `{token}` | `{}` | caller `local` only: writes the notes token, 0600, and uses it at once |
+| `blobs.sweep` | `{dryRun?}` | `SweepResult` | caller `local` only: sweeps the blob store now ([ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)); `dryRun` removes and writes nothing, and reports what a real sweep would remove now; a second call waits for the sweep that runs |
 | `events.subscribe` | none | `{subscribed}` | makes this connection receive `items.changed`, from the answer on |
 
 `later.save`'s `title` is the saved page's title, which the bookmarklet
@@ -136,6 +137,17 @@ or notes is not reachable) and `internal`.
 | `path` | string | the note's path, present or moved, or the old one when notes could not be asked |
 | `route` | string | its route in lodge, present or moved |
 | `error` | string | why notes could not answer, when the state is `unreachable` |
+
+`SweepResult`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `dryRun` | bool | nothing was removed or written |
+| `scanned` | integer | the blob files found |
+| `inUse` | integer | the blobs some row names |
+| `waiting` | integer | the unreferenced blobs still inside the grace period |
+| `removed` | integer | the blobs removed; in a dry run, the blobs a real sweep would remove now |
+| `removedBytes` | integer | the size of the removed blobs |
 
 #### Notifications
 
@@ -334,6 +346,7 @@ the private socket's JSON-RPC as caller `local`.
 | `export` | writes the OPML to stdout |
 | `poll [source-id]` | polls every source now, or one source |
 | `search <query>` | searches titles, authors and text |
+| `sweep [-dry-run]` | sweeps the blob store now through `blobs.sweep`, and prints the totals; `-dry-run` only reports |
 | `notes-token` | reads the notes token from stdin and sets it |
 | `status` | prints the version and whether save-as-note is ready |
 
@@ -349,7 +362,9 @@ unknown member is an error.
   "poll_interval": "20m",
   "lodge_url": "https://lodge.example.ts.net",
   "notes_folder": "Reading/",
-  "notes_vault": 1
+  "notes_vault": 1,
+  "blob_sweep": "on",
+  "blob_grace_days": 7
 }
 ```
 
@@ -359,6 +374,8 @@ unknown member is an error.
 | `lodge_url` | string | empty | an `https` origin, no path, for links in notes |
 | `notes_folder` | string | `Reading/` | a vault path ending in `/`, relative, no `.` or `..` segment |
 | `notes_vault` | integer | 0 | the notes vault id; save-as-note and "Open in Notes" need it |
+| `blob_sweep` | string | `on` | `on`, `dry-run` (the schedule only logs what it would remove) or `off` (no schedule; `readctl sweep` still works) |
+| `blob_grace_days` | integer | 7 | 1 to 365: how long a blob has no reference before the sweep removes it |
 
 ### State
 
@@ -367,9 +384,16 @@ it names several), mode 0700:
 
 | Path | What |
 | --- | --- |
-| `frostread.db` | SQLite: sources, items, blobs, the search index, settings |
+| `frostread.db` | SQLite: sources, items, blobs, `blob_orphans`, the search index, settings |
 | `blobs/sha256/<first two hex digits>/<rest>` | content-addressed bodies and images, 0600 |
 | `tokens/notes` | the notes MCP token, 0600 |
+
+`blob_orphans (hash, since)` records when the sweep first found a blob
+file that no row names; a blob is removed only after `since` and the
+file's modification time are both older than the grace period
+([ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)).
+Its row is deleted when the blob is used again, when its file is gone, and
+when the blob is removed.
 
 ### Installation on lodge's host
 
@@ -415,6 +439,13 @@ gives. What it needs:
   because one is a feed's and the other is the owner's.
 - `sources.remove` MUST delete the source's items and their search rows in
   one transaction. It MUST NOT delete a saved link.
+- The blob sweep MUST remove a blob only when no row names it, and only
+  when both its `blob_orphans.since` and its file's modification time are
+  older than the grace period. It MUST check the file's modification time
+  and the database again while it holds the blob store's lock, and `Put`
+  MUST hold that lock shared while it finds, touches or publishes a file.
+  Any new column that names a blob MUST join the sweep's mark. A dry run
+  MUST NOT remove a file or write a row. Only caller `local` may sweep.
 - A poll error MUST be stored on the source and shown in `Source.lastError`,
   and it MUST NOT stop the poller.
 - A URL the fetcher refuses MUST answer `invalidParams` with one sentence
@@ -478,6 +509,7 @@ vets and tests both.
 - Rationale: [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md),
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
-  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
+  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md),
+  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
 - Context: [design/overview.md](../design/overview.md)
 - Built in: [roadmap](../plans/0001-roadmap.md)
