@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/net/html"
+
 	"github.com/frostyard/frostread/internal/blobs"
 	"github.com/frostyard/frostread/internal/sanitize"
 	"github.com/frostyard/frostread/internal/store"
@@ -101,7 +103,7 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 	// drop them. The feed's summary is still untrusted when an item is
 	// read before its extraction, so it is sanitized here.
 	body := template.HTML(it.ContentHTML)
-	if strings.TrimSpace(string(body)) == "" {
+	if strings.TrimSpace(string(body)) == "" || sanitize.PlainText(string(body)) == "" {
 		body = template.HTML(sanitize.HTML(it.SummaryHTML))
 	}
 	images, err := h.Store.ItemBlobs(r.Context(), it.ID)
@@ -109,7 +111,7 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 		return nil, err
 	}
 	cache := map[string]string{}
-	html := replaceBlobs(string(body), func(hash string) string {
+	html := replaceBlobs(inlineOnly(string(body)), func(hash string) string {
 		if uri, ok := cache[hash]; ok {
 			return uri
 		}
@@ -138,6 +140,60 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 		return nil, err
 	}
 	return []byte(out.String()), nil
+}
+
+// inlineOnly keeps an image only when its source is a stored blob, which
+// replaceBlobs turns into a data: URI: the content policy loads no remote
+// resource, so anything else becomes its alt text.
+func inlineOnly(s string) string {
+	doc, err := html.Parse(strings.NewReader(s))
+	if err != nil {
+		return s
+	}
+	var images []*html.Node
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "img" {
+			if src := attr(n, "src"); !strings.HasPrefix(src, "blob:") {
+				images = append(images, n)
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	for _, n := range images {
+		alt := attr(n, "alt")
+		var replacement *html.Node
+		if alt != "" {
+			replacement = &html.Node{Type: html.ElementNode, Data: "span"}
+			replacement.AppendChild(&html.Node{Type: html.TextNode, Data: alt})
+		} else {
+			replacement = &html.Node{Type: html.TextNode, Data: ""}
+		}
+		if n.Parent != nil {
+			n.Parent.InsertBefore(replacement, n)
+			n.Parent.RemoveChild(n)
+		}
+	}
+	var out strings.Builder
+	for c := doc.FirstChild; c != nil; c = c.NextSibling {
+		if err := html.Render(&out, c); err != nil {
+			return s
+		}
+	}
+	return out.String()
+}
+
+// attr returns n's attribute key, or "".
+func attr(n *html.Node, key string) string {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			return a.Val
+		}
+	}
+	return ""
 }
 
 // replaceBlobs rewrites every blob:<hash> source with what uri answers for

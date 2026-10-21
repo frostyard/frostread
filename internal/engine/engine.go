@@ -506,7 +506,7 @@ func (e *Engine) SaveAsNote(ctx context.Context, id int64) (path, route string, 
 	if err != nil {
 		return "", "", err
 	}
-	if strings.TrimSpace(it.ContentHTML) == "" {
+	if strings.TrimSpace(it.ContentHTML) == "" || sanitize.PlainText(it.ContentHTML) == "" {
 		if it.ExtractState == store.ExtractFailed {
 			return "", "", fmt.Errorf("the article could not be extracted: %s", it.ExtractError)
 		}

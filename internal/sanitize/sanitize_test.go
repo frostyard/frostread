@@ -71,6 +71,26 @@ func TestKeepsTheArticle(t *testing.T) {
 	}
 }
 
+// The text of code, styles, embedded documents and titles is not the
+// page's words: it never reaches the index or an agent.
+func TestPlainTextSkipsSilentElements(t *testing.T) {
+	for _, tag := range []string{"script", "style", "noscript", "template", "svg", "math", "iframe", "object", "title"} {
+		html := "<p>before</p><" + tag + ">SENTINEL</" + tag + "><p>after</p>"
+		got := PlainText(html)
+		if strings.Contains(got, "SENTINEL") {
+			t.Fatalf("%s's text reached the plain text: %q", tag, got)
+		}
+		if got != "before after" {
+			t.Fatalf("%s: %q, want the words around it", tag, got)
+		}
+	}
+	// The tags an article may keep still give their words.
+	got := PlainText(`<p>Keep <strong>this</strong>.</p><pre><code>code words</code></pre>`)
+	if got != "Keep this. code words" {
+		t.Fatalf("kept elements = %q", got)
+	}
+}
+
 func TestPlainText(t *testing.T) {
 	got := PlainText(`<p>One <em>two</em>.</p><p>Three</p>`)
 	if got != "One two. Three" {

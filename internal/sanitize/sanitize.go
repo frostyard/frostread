@@ -73,6 +73,14 @@ var blocks = map[string]bool{
 	"th": true, "thead": true, "tr": true, "ul": true,
 }
 
+// silent are elements whose text is not the page's words: a script's code,
+// a stylesheet, an embedded document, and a title. Plain text never
+// carries them, so neither the search index nor an agent's read does.
+var silent = map[string]bool{
+	"script": true, "style": true, "noscript": true, "template": true,
+	"svg": true, "math": true, "iframe": true, "object": true, "title": true,
+}
+
 // PlainText returns the text of some HTML, a line break between blocks and
 // a space between a block's words: what an excerpt or a search index
 // needs. The result has no line breaks of its own: its words are joined by
@@ -85,6 +93,9 @@ func PlainText(untrusted string) string {
 	var b strings.Builder
 	var walk func(n *html.Node)
 	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && silent[n.Data] {
+			return
+		}
 		block := n.Type == html.ElementNode && blocks[n.Data]
 		if block {
 			b.WriteByte('\n')
