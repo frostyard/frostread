@@ -480,3 +480,27 @@ func TestStatus(t *testing.T) {
 		}
 	}
 }
+
+// A feed that repeats its title in the summary does not put it in the
+// excerpt: the list shows the title itself.
+func TestExcerptDropsTheTitle(t *testing.T) {
+	e, n, _, _ := setup(t)
+	n.pages["https://example.com/repeat.xml"] = answer{body: `<?xml version="1.0"?><rss version="2.0"><channel>
+	<title>Example Journal</title><link>https://example.com/</link>
+	<item><title>The garden in November</title><link>https://example.com/november</link><guid>9</guid>
+	<description>The garden in November The garden in November Pears by the wall, and the last of the quince.</description></item>
+	</channel></rss>`}
+	if _, err := e.AddSource(t.Context(), "https://example.com/repeat.xml"); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := e.ListItems(t.Context(), store.ListOptions{View: store.ViewUnread, Limit: 50})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("items = %+v, %v", items, err)
+	}
+	if strings.Contains(items[0].Excerpt, "The garden in November") {
+		t.Fatalf("the excerpt repeats the title: %q", items[0].Excerpt)
+	}
+	if !strings.HasPrefix(items[0].Excerpt, "Pears by the wall") {
+		t.Fatalf("excerpt = %q", items[0].Excerpt)
+	}
+}

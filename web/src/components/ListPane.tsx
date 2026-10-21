@@ -26,7 +26,7 @@ export function ListPane(props: { searchRef: RefObject<HTMLInputElement | null>;
   const sources = useRead((state) => state.sources);
   const open = useRead((state) => state.open);
   const search = useRead((state) => state.search);
-  const markAllRead = useRead((state) => state.markAllRead);
+  const askMarkAll = useRead((state) => state.askMarkAll);
   const loadMore = useRead((state) => state.loadMore);
   const saveLater = useRead((state) => state.saveLater);
   const [text, setText] = useState(query);
@@ -84,7 +84,7 @@ export function ListPane(props: { searchRef: RefObject<HTMLInputElement | null>;
           className="h-7 min-w-0 flex-1 rounded-md border border-separator bg-window px-2 text-sidebar-row outline-none focus-visible:border-accent"
         />
         <IconButton label="Save a link" icon={BookmarkPlus} onClick={() => setSaving(true)} />
-        <IconButton label="Mark all read" icon={CheckCheck} onClick={() => void markAllRead()} />
+        <IconButton label="Mark all read" icon={CheckCheck} onClick={() => void askMarkAll()} />
       </div>
 
       {items.length === 0 ? (
@@ -126,6 +126,7 @@ export function ListPane(props: { searchRef: RefObject<HTMLInputElement | null>;
           label="Address"
           placeholder="https://example.com/an-article"
           submitLabel="Save"
+          busyLabel="Saving…"
           onSubmit={saveLater}
           onClose={() => setSaving(false)}
         />

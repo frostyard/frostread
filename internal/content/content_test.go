@@ -46,7 +46,7 @@ func TestPage(t *testing.T) {
 	h, _, id := setup(t)
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	res, err := http.Get(srv.URL + h.Path(id))
+	res, err := http.Get(srv.URL + "/content/" + h.Path(id))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestPendingItemShowsSanitizedSummary(t *testing.T) {
 	}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	res, err := http.Get(srv.URL + h.Path(ids[0]))
+	res, err := http.Get(srv.URL + "/content/" + h.Path(ids[0]))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestWrongMACIs404(t *testing.T) {
 	h, _, id := setup(t)
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	good := h.Path(id)
+	good := "/content/" + h.Path(id)
 	for _, path := range []string{
 		strings.TrimSuffix(good, good[len(good)-4:]) + "aaaa", // a wrong MAC
 		"/content/item/99/" + good[len(good)-22:],             // another item
@@ -122,6 +122,55 @@ func TestWrongMACIs404(t *testing.T) {
 		_ = res.Body.Close()
 		if res.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s = %d, want 404", path, res.StatusCode)
+		}
+	}
+}
+
+// The path is relative to the content root, as lodge-client expects: no
+// leading slash, and no "content/" segment, which this handler answers
+// under.
+func TestPathIsRelativeToTheContentRoot(t *testing.T) {
+	h, _, id := setup(t)
+	path := h.Path(id)
+	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, "content/") || !strings.HasPrefix(path, "item/") {
+		t.Fatalf("Path = %q, want item/<id>/<mac>", path)
+	}
+	// The handler answers /content/ and the path.
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/content/" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("/content/%s = %d, want 200", path, res.StatusCode)
+	}
+}
+
+// The page follows the scheme the web app passes, and the reader's own
+// preference when it passes none.
+func TestScheme(t *testing.T) {
+	h, _, id := setup(t)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	for _, tc := range []struct {
+		query string
+		want  string
+	}{
+		{"", `<html lang="en">`},
+		{"?scheme=dark", `<html lang="en" data-scheme="dark">`},
+		{"?scheme=light", `<html lang="en" data-scheme="light">`},
+		{"?scheme=sepia", `<html lang="en">`},
+	} {
+		res, err := http.Get(srv.URL + "/content/" + h.Path(id) + tc.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		if !strings.Contains(string(body), tc.want) {
+			t.Fatalf("%q: the page does not start %s", tc.query, tc.want)
 		}
 	}
 }
@@ -145,12 +194,52 @@ func TestMissingItemIs404(t *testing.T) {
 	h, _, _ := setup(t)
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	res, err := http.Get(srv.URL + h.Path(999))
+	res, err := http.Get(srv.URL + "/content/" + h.Path(999))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = res.Body.Close()
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("an unknown item = %d", res.StatusCode)
+	}
+}
+
+// The article's date is the daemon's local day, which is the day the
+// reader's header shows.
+func TestDateIsTheDaemonsLocal(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(t.Context(), filepath.Join(dir, "read.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	b := blobs.New(filepath.Join(dir, "blobs"))
+	h := &Handler{Store: db, Blobs: b, Secret: []byte("secret"), Location: time.FixedZone("ahead", 2*60*60)}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	src, err := db.AddSource(t.Context(), store.Source{URL: "https://example.com/feed.xml", Title: "Example"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := db.AddItems(t.Context(), src.ID, []store.NewItem{{
+		GUID: "1", Title: "An evening article", URL: "https://example.com/a",
+		Published:   time.Date(2026, 10, 13, 22, 30, 0, 0, time.UTC),
+		SummaryHTML: "<p>Words.</p>",
+	}})
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("items = %v, %v", ids, err)
+	}
+	res, err := http.Get(srv.URL + "/content/" + h.Path(ids[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	// 22:30 UTC is 00:30 the next day in a zone two hours ahead.
+	if !strings.Contains(string(body), "14 October 2026") {
+		t.Fatalf("the page's date is not the local day:\n%s", body)
+	}
+	if strings.Contains(string(body), "13 October 2026") {
+		t.Fatalf("the page keeps the UTC day:\n%s", body)
 	}
 }

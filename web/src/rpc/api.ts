@@ -18,32 +18,43 @@ export const VIEW_TITLES: Record<View, string> = {
   all: "All",
 };
 
-/** Source is a subscribed feed (docs/specs/api.md, Types). */
+/** Source is a subscribed feed (docs/specs/api.md, Types). The Go type's
+ * omitzero fields are optional here: readd leaves a zero one out. */
 export interface Source {
   id: number;
   url: string;
-  siteUrl: string;
+  /** The site's home, when the feed names it. */
+  siteUrl?: string;
   title: string;
   unread: number;
-  errorCount: number;
-  lastError: string;
-  polledAt: string;
-  nextPollAt: string;
+  /** Consecutive failed polls; absent when it has not failed. */
+  errorCount?: number;
+  /** The last poll's error; absent when it did not fail. */
+  lastError?: string;
+  /** RFC 3339 UTC; absent before the first successful poll. */
+  polledAt?: string;
+  /** RFC 3339 UTC; absent when no poll is scheduled. */
+  nextPollAt?: string;
 }
 
 /** ItemSummary is an item in a list or a search result. */
 export interface ItemSummary {
   id: number;
   title: string;
-  sourceTitle: string;
-  author: string;
+  /** Its source's title; absent for a saved link. */
+  sourceTitle?: string;
+  /** Absent when the feed or the page names no author. */
+  author?: string;
+  /** RFC 3339 UTC. */
   published: string;
-  excerpt: string;
+  /** Its summary as text; absent when there is none yet. */
+  excerpt?: string;
   read: boolean;
   starred: boolean;
   archived: boolean;
   saved: boolean;
-  notePath: string;
+  /** The note save-as-note wrote; absent when it wrote none. */
+  notePath?: string;
   /** Search results only: the match, its words between **. */
   snippet?: string;
 }
@@ -54,11 +65,14 @@ export type ExtractState = "pending" | "done" | "failed";
 /** ItemDetail is a summary plus what the reader shows. */
 export interface ItemDetail extends ItemSummary {
   url: string;
-  /** /content/item/<id>/<mac>, for lodge-client's contentURL. */
-  contentPath: string;
+  /** /content/item/<id>/<mac>, for lodge-client's contentURL; absent when
+   * the daemon has no content route for it. */
+  contentPath?: string;
   extractState: ExtractState;
-  extractError: string;
-  originalHash: string;
+  /** Why extraction failed; absent unless extractState is "failed". */
+  extractError?: string;
+  /** The SHA-256 of the body as sent; absent before the page is fetched. */
+  originalHash?: string;
 }
 
 /** Status is the daemon's version and whether save-as-note is ready. */
@@ -146,7 +160,7 @@ export function readAPI(transport: Transport): ReadAPI {
     },
     status: () => call<Status>("status", {}),
     counts: () => call<Counts>("counts", {}),
-    listSources: () => call<{ sources: Source[] }>("sources.list", {}).then((r) => r.sources ?? []),
+    listSources: () => call<{ sources: Source[] }>("sources.list", {}).then((r) => r.sources),
     addSource: (url) => call<{ source: Source }>("sources.add", { url }).then((r) => r.source),
     removeSource: async (id) => {
       await call("sources.remove", { id });
@@ -163,7 +177,7 @@ export function readAPI(transport: Transport): ReadAPI {
     getItem: (id) => call<ItemDetail>("items.get", { id }),
     search: (query, limit) =>
       call<{ items: ItemSummary[] }>("items.search", limit === undefined ? { query } : { query, limit }).then(
-        (r) => r.items ?? [],
+        (r) => r.items,
       ),
     setRead: async (ids, read) => {
       await call("items.setRead", { ids, read });

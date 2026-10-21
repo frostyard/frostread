@@ -1,0 +1,57 @@
+{
+  "items": [
+    {
+      "id": 5,
+      "title": "example.org",
+      "published": "2026-10-20T12:00:00Z",
+      "read": false,
+      "starred": false,
+      "archived": false,
+      "saved": true
+    },
+    {
+      "id": 1,
+      "title": "Planting tomatoes after the last frost",
+      "sourceTitle": "Example Journal",
+      "author": "Ann Author",
+      "published": "2026-10-20T10:00:00Z",
+      "excerpt": "Plant tomatoes after the last frost, water them well, and wait for the fruit. Plant tomatoes after the last frost, water them well, and wait for the fruit. Plant tomatoes after the last frost, water them well, and wait for the fruit. Plant tomatoes after the last frost, water them well, and wait…",
+      "read": false,
+      "starred": false,
+      "archived": false,
+      "saved": false
+    },
+    {
+      "id": 2,
+      "title": "A page that fails",
+      "sourceTitle": "Example Journal",
+      "published": "2026-10-20T09:00:00Z",
+      "excerpt": "A short summary.",
+      "read": false,
+      "starred": false,
+      "archived": false,
+      "saved": false
+    },
+    {
+      "id": 3,
+      "title": "An archived article",
+      "sourceTitle": "Example Journal",
+      "published": "2026-10-20T08:00:00Z",
+      "excerpt": "Another short summary.",
+      "read": false,
+      "starred": true,
+      "archived": true,
+      "saved": false
+    },
+    {
+      "id": 4,
+      "title": "An item with no words",
+      "sourceTitle": "Example Journal",
+      "published": "2026-10-20T07:00:00Z",
+      "read": false,
+      "starred": false,
+      "archived": false,
+      "saved": false
+    }
+  ]
+}

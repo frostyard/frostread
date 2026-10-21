@@ -1,0 +1,30 @@
+{
+  "sources": [
+    {
+      "id": 2,
+      "url": "https://broken.example/feed.xml",
+      "title": "A Broken Feed",
+      "unread": 0,
+      "errorCount": 2,
+      "lastError": "the feed answered 503",
+      "polledAt": "2026-10-20T12:00:00Z",
+      "nextPollAt": "2026-10-20T13:00:00Z"
+    },
+    {
+      "id": 1,
+      "url": "https://example.com/feed.xml",
+      "siteUrl": "https://example.com/",
+      "title": "Example Journal",
+      "unread": 3,
+      "polledAt": "2026-10-20T12:00:00Z",
+      "nextPollAt": "2026-10-20T12:20:00Z"
+    },
+    {
+      "id": 3,
+      "url": "https://nos.example/feed.xml",
+      "title": "No Site",
+      "unread": 0,
+      "nextPollAt": "2026-10-20T13:00:00Z"
+    }
+  ]
+}

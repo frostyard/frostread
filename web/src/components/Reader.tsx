@@ -13,6 +13,7 @@ export function Reader(props: { onBack?: () => void }) {
   const loading = useRead((state) => state.itemLoading);
   const status = useRead((state) => state.status);
   const busy = useRead((state) => state.busy);
+  const scheme = useRead((state) => state.scheme);
   const selectedId = useRead((state) => state.selectedId);
   const noteRoute = useRead((state) => (selectedId === null ? null : state.noteRoute(selectedId)));
   const toggleStar = useRead((state) => state.toggleStar);
@@ -29,9 +30,11 @@ export function Reader(props: { onBack?: () => void }) {
     );
   }
 
-  const meta = [item.sourceTitle, item.author, headerDate(item.published)].filter((part) => part !== "").join(" · ");
+  const meta = [item.sourceTitle, item.author, headerDate(item.published)]
+    .filter((part): part is string => part !== undefined && part !== "")
+    .join(" · ");
   const configured = status?.notes.configured === true;
-  const src = contentSrc(item.contentPath);
+  const src = contentSrc(item.contentPath, scheme);
 
   const title = (
     <div className="min-w-0 flex-1">
@@ -111,14 +114,12 @@ export function Reader(props: { onBack?: () => void }) {
           <p className="p-[var(--pad-x)] text-secondary">Extracting…</p>
         ) : item.extractState === "failed" ? (
           <div className="overflow-y-auto p-[var(--pad-x)]">
-            <p className="text-flag-1">
-              {item.extractError === "" ? "The article could not be extracted." : item.extractError}
-            </p>
-            <p className="mt-3 whitespace-pre-wrap text-reader-body text-secondary">{item.excerpt}</p>
+            <p className="text-flag-1">{item.extractError ?? "The article could not be extracted."}</p>
+            <p className="mt-3 whitespace-pre-wrap text-reader-body text-secondary">{item.excerpt ?? ""}</p>
           </div>
         ) : src === null ? (
           <div className="h-full overflow-y-auto p-[var(--pad-x)]">
-            <p className="whitespace-pre-wrap text-reader-body text-secondary">{item.excerpt}</p>
+            <p className="whitespace-pre-wrap text-reader-body text-secondary">{item.excerpt ?? ""}</p>
           </div>
         ) : (
           <iframe

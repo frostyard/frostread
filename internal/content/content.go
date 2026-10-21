@@ -13,6 +13,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
+
+	"golang.org/x/net/html"
 
 	"github.com/frostyard/frostread/internal/blobs"
 	"github.com/frostyard/frostread/internal/sanitize"
@@ -24,12 +27,19 @@ type Handler struct {
 	Store  *store.DB
 	Blobs  *blobs.Store
 	Secret []byte
+	// Location is the time zone an article's date is shown in: the
+	// daemon's own, time.Local, when nil. The app formats the same date in
+	// the reader's zone, so both show one day.
+	Location *time.Location
 }
 
-// Path is an item's content URL: /content/item/<id>/<mac>. The MAC covers
-// the id, so no other item's page can be asked for.
+// Path is an item's content path relative to the content root:
+// item/<id>/<mac>. It has no leading slash and no "content/" segment,
+// because lodge-client's contentURL puts them there:
+// CONTENT/<app>/<path>. This handler answers /content/<path>. The MAC
+// covers the id, so no other item's page can be asked for.
 func (h *Handler) Path(id int64) string {
-	return "/content/item/" + strconv.FormatInt(id, 10) + "/" + h.mac(id)
+	return "item/" + strconv.FormatInt(id, 10) + "/" + h.mac(id)
 }
 
 // mac is base64url(HMAC-SHA256(secret, "item:<id>")) cut to 22 characters:
@@ -38,6 +48,19 @@ func (h *Handler) mac(id int64) string {
 	sum := hmac.New(sha256.New, h.Secret)
 	sum.Write([]byte("item:" + strconv.FormatInt(id, 10)))
 	return base64.RawURLEncoding.EncodeToString(sum.Sum(nil))[:22]
+}
+
+// Scheme returns the scheme the page follows: "light" or "dark" from the
+// scheme query (the shell's theme, which the web app passes), or "" to
+// follow the reader's own preference.
+func Scheme(r *http.Request) string {
+	switch r.URL.Query().Get("scheme") {
+	case "light":
+		return "light"
+	case "dark":
+		return "dark"
+	}
+	return ""
 }
 
 // ServeHTTP answers an article's page. A wrong MAC, an unknown item and a
@@ -85,7 +108,7 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 	// drop them. The feed's summary is still untrusted when an item is
 	// read before its extraction, so it is sanitized here.
 	body := template.HTML(it.ContentHTML)
-	if strings.TrimSpace(string(body)) == "" {
+	if strings.TrimSpace(string(body)) == "" || sanitize.PlainText(string(body)) == "" {
 		body = template.HTML(sanitize.HTML(it.SummaryHTML))
 	}
 	images, err := h.Store.ItemBlobs(r.Context(), it.ID)
@@ -93,7 +116,7 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 		return nil, err
 	}
 	cache := map[string]string{}
-	html := replaceBlobs(string(body), func(hash string) string {
+	html := replaceBlobs(inlineOnly(string(body)), func(hash string) string {
 		if uri, ok := cache[hash]; ok {
 			return uri
 		}
@@ -107,13 +130,14 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 		return uri
 	})
 	data := struct {
+		Scheme  string
 		Title   string
 		Byline  string
 		Site    string
 		Date    string
 		Content template.HTML
 	}{
-		Title: it.Title, Byline: it.Author, Site: siteOf(it.URL), Date: published(it),
+		Scheme: Scheme(r), Title: it.Title, Byline: it.Author, Site: siteOf(it.URL), Date: h.published(it),
 		Content: template.HTML(html),
 	}
 	var out strings.Builder
@@ -121,6 +145,60 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 		return nil, err
 	}
 	return []byte(out.String()), nil
+}
+
+// inlineOnly keeps an image only when its source is a stored blob, which
+// replaceBlobs turns into a data: URI: the content policy loads no remote
+// resource, so anything else becomes its alt text.
+func inlineOnly(s string) string {
+	doc, err := html.Parse(strings.NewReader(s))
+	if err != nil {
+		return s
+	}
+	var images []*html.Node
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "img" {
+			if src := attr(n, "src"); !strings.HasPrefix(src, "blob:") {
+				images = append(images, n)
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	for _, n := range images {
+		alt := attr(n, "alt")
+		var replacement *html.Node
+		if alt != "" {
+			replacement = &html.Node{Type: html.ElementNode, Data: "span"}
+			replacement.AppendChild(&html.Node{Type: html.TextNode, Data: alt})
+		} else {
+			replacement = &html.Node{Type: html.TextNode, Data: ""}
+		}
+		if n.Parent != nil {
+			n.Parent.InsertBefore(replacement, n)
+			n.Parent.RemoveChild(n)
+		}
+	}
+	var out strings.Builder
+	for c := doc.FirstChild; c != nil; c = c.NextSibling {
+		if err := html.Render(&out, c); err != nil {
+			return s
+		}
+	}
+	return out.String()
+}
+
+// attr returns n's attribute key, or "".
+func attr(n *html.Node, key string) string {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			return a.Val
+		}
+	}
+	return ""
 }
 
 // replaceBlobs rewrites every blob:<hash> source with what uri answers for
@@ -155,43 +233,55 @@ func siteOf(rawurl string) string {
 	return u.Hostname()
 }
 
-// published is the article's date, or "" when it has none.
-func published(it store.Item) string {
+// published is the article's date in the daemon's time zone, or "" when it
+// has none.
+func (h *Handler) published(it store.Item) string {
 	if it.PublishedAt.IsZero() {
 		return ""
 	}
-	return it.PublishedAt.Format("2 January 2006")
+	loc := h.Location
+	if loc == nil {
+		loc = time.Local
+	}
+	return it.PublishedAt.In(loc).Format("2 January 2006")
 }
 
 // pageTemplate is the article's page. Its style is inline because the
 // content policy admits no stylesheet, and it reads well on a phone.
 var pageTemplate = template.Must(template.New("content").Parse(`<!doctype html>
-<html lang="en">
+<html lang="en"{{with .Scheme}} data-scheme="{{.}}"{{end}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
 <style>
-:root { color-scheme: light dark; }
+/* The page follows the shell's theme when the app names it in ?scheme=,
+   and the reader's own preference otherwise. */
+:root { color-scheme: light; --fg: #1a1a1a; --bg: #fdfdfc; --muted: #666; --link: #1a56db;
+  --code: rgba(127,127,127,.12); --line: rgba(127,127,127,.35); }
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; --fg: #e6e6e6; --bg: #17181a; --muted: #a0a4a8; --link: #8ab4f8;
+    --code: rgba(127,127,127,.18); --line: rgba(127,127,127,.45); }
+}
+:root[data-scheme="light"] { color-scheme: light; --fg: #1a1a1a; --bg: #fdfdfc; --muted: #666;
+  --link: #1a56db; --code: rgba(127,127,127,.12); --line: rgba(127,127,127,.35); }
+:root[data-scheme="dark"] { color-scheme: dark; --fg: #e6e6e6; --bg: #17181a; --muted: #a0a4a8;
+  --link: #8ab4f8; --code: rgba(127,127,127,.18); --line: rgba(127,127,127,.45); }
 body { margin: 0 auto; padding: 1.25rem; max-width: 42rem; line-height: 1.6;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  color: #1a1a1a; background: #fdfdfc; }
-@media (prefers-color-scheme: dark) {
-  body { color: #e6e6e6; background: #17181a; }
-  a { color: #8ab4f8; }
-}
-header { border-bottom: 1px solid currentColor; margin-bottom: 1.5rem; padding-bottom: .75rem; }
+  color: var(--fg); background: var(--bg); }
+header { border-bottom: 1px solid var(--line); margin-bottom: 1.5rem; padding-bottom: .75rem; }
 h1 { font-size: 1.6rem; line-height: 1.25; margin: .25rem 0 .5rem; }
-.byline { color: #666; font-size: .9rem; margin: 0; }
+.byline { color: var(--muted); font-size: .9rem; margin: 0; }
 .byline span + span::before { content: " · "; }
 img { max-width: 100%; height: auto; }
 figure { margin: 1.5rem 0; }
-figcaption { font-size: .85rem; color: #666; }
-pre { overflow-x: auto; padding: .75rem; background: rgba(127,127,127,.12); border-radius: .4rem; }
-blockquote { margin: 1.5rem 0; padding-left: 1rem; border-left: 3px solid rgba(127,127,127,.4); }
+figcaption { font-size: .85rem; color: var(--muted); }
+pre { overflow-x: auto; padding: .75rem; background: var(--code); border-radius: .4rem; }
+blockquote { margin: 1.5rem 0; padding-left: 1rem; border-left: 3px solid var(--line); }
 table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid rgba(127,127,127,.35); padding: .35rem .5rem; text-align: left; }
-a { color: #1a56db; }
+th, td { border: 1px solid var(--line); padding: .35rem .5rem; text-align: left; }
+a { color: var(--link); }
 </style>
 </head>
 <body>

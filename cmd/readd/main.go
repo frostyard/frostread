@@ -134,7 +134,7 @@ func run(ctx context.Context, args []string) error {
 		mcpsession.Options{CheckScope: mcpserver.CheckScope, Logger: log})
 	defer func() { _ = mcp.Close() }()
 
-	app, err := newApp(log, &server{rpc: srv, read: readapi.New(eng), content: page, mcp: mcp})
+	app, err := newApp(log, &server{rpc: srv, read: readapi.New(eng, log), content: page, mcp: mcp})
 	if err != nil {
 		return err
 	}

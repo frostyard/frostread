@@ -464,8 +464,8 @@ func (d *DB) PendingExtraction(ctx context.Context, limit int) ([]int64, error) 
 
 // SourceCount is one source's unread count.
 type SourceCount struct {
-	SourceID int64
-	Unread   int
+	SourceID int64 `json:"sourceId"`
+	Unread   int   `json:"unread"`
 }
 
 // Counts returns every view's item count and each source's unread count.

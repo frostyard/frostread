@@ -26,7 +26,8 @@ every listener, and the browser loads nothing remote.
 
 ## Design
 
-**The daemon.** `readd` loads its configuration, opens the store and the
+**The daemon.** `readd`, on lodge's kit **v0.3.0**, loads its
+configuration, opens the store and the
 blob directory, starts the poller and the extraction workers, and serves
 two Unix sockets: lodge's app socket, and its private socket for `readctl`.
 
@@ -90,13 +91,15 @@ The note is Markdown, with frontmatter, and a rooted link back to the
 article.
 
 **Content.** `internal/content` serves
-`/content/item/<mac>` as one HTML page with inline styles and `data:` image
+`/content/item/<id>/<mac>` (the public `CONTENT/read/item/<id>/<mac>`) as one
+HTML page with inline styles and `data:` image
 URIs, only from lodge-content. The MAC is `HMAC-SHA256` of `item:<id>`
 under the store's secret, base64url, 22 characters, and the id travels in
 the path after it.
 
-**The web bundle.** `web/` is on `@frostyard/lodge-client`, and later on
-`@frostyard/lodge-ui`: a source column, an item list and a reader, with
+**The web bundle.** `web/` is on `@frostyard/lodge-client` **client/v0.2.0**
+and `@frostyard/lodge-ui` **ui/v0.1.0**: a source column, an item list and
+a reader, with
 `j`/`k`, `s` and `m`, and the narrow layout on a phone.
 
 ## Operational notes

@@ -1,0 +1,3 @@
+{
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<opml>\n  <body>\n    <outline type=\"rss\" text=\"A Broken Feed\" title=\"A Broken Feed\" xmlUrl=\"https://broken.example/feed.xml\" htmlUrl=\"\"></outline>\n    <outline type=\"rss\" text=\"Example Journal\" title=\"Example Journal\" xmlUrl=\"https://example.com/feed.xml\" htmlUrl=\"https://example.com/\"></outline>\n    <outline type=\"rss\" text=\"No Site\" title=\"No Site\" xmlUrl=\"https://nos.example/feed.xml\" htmlUrl=\"\"></outline>\n  </body>\n</opml>\n"
+}

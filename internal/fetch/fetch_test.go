@@ -196,3 +196,33 @@ func TestRetryAfter(t *testing.T) {
 		t.Fatalf("429 = %+v", res)
 	}
 }
+
+// A refusal is one sentence for the owner, and the typed error carries the
+// address that was refused; the detail stays in the error for the log.
+func TestRefusalSentence(t *testing.T) {
+	c := New("test")
+	_, err := c.Get(t.Context(), "http://127.0.0.1:9/feed.xml", Options{})
+	if err == nil {
+		t.Fatal("127.0.0.1 was fetched")
+	}
+	sentence, ok := Refusal(err)
+	if !ok {
+		t.Fatalf("%v is not a refusal", err)
+	}
+	if want := "Read does not fetch addresses inside your network (127.0.0.1)."; sentence != want {
+		t.Fatalf("sentence = %q, want %q", sentence, want)
+	}
+	var r *Refused
+	if !errors.As(err, &r) || r.URL != "http://127.0.0.1:9/feed.xml" {
+		t.Fatalf("the refusal does not carry the URL: %+v", r)
+	}
+	if !errors.Is(err, netguard.ErrInside) {
+		t.Fatalf("errors.Is(err, netguard.ErrInside) is false: %v", err)
+	}
+
+	_, err = c.Get(t.Context(), "file:///etc/passwd", Options{})
+	sentence, ok = Refusal(err)
+	if !ok || sentence != "Read fetches only public http and https addresses (file:///etc/passwd)." {
+		t.Fatalf("file: refusal = %q, %v", sentence, ok)
+	}
+}

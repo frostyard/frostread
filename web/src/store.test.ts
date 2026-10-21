@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { readAPI } from "./rpc/api.js";
 import { createMockTransport } from "./rpc/mock.js";
-import { createReadStore } from "./store.js";
+import { createReadStore, markAllPromptFor } from "./store.js";
 
 /** connected is a store over a fresh mock. */
 async function connected() {
@@ -86,5 +86,73 @@ describe("the store", () => {
     await store.getState().saveLater("https://example.com/read-this");
     expect(store.getState().item?.saved).toBe(true);
     expect(store.getState().item?.url).toBe("https://example.com/read-this");
+  });
+});
+
+describe("a permalink into the reader", () => {
+  it("opens an item outside the current view, with the All list behind it", async () => {
+    const store = await connected();
+    // An archived article is not in the Unread list the store starts with.
+    const api = store.getState().api;
+    expect(api).not.toBeNull();
+    if (api === null) return;
+    const archived = (await api.listItems({ view: "archive", limit: 5 })).items[0];
+    expect(archived).toBeDefined();
+    if (archived === undefined) return;
+    expect(store.getState().items.some((item) => item.id === archived.id)).toBe(false);
+
+    await store.getState().setRoute({ kind: "item", id: archived.id });
+
+    const state = store.getState();
+    expect(state.route).toEqual({ kind: "item", id: archived.id });
+    expect(state.listRoute).toEqual({ kind: "view", view: "all" });
+    expect(state.items.some((item) => item.id === archived.id)).toBe(true);
+    expect(state.item?.id).toBe(archived.id);
+  });
+});
+
+describe("mark all read", () => {
+  it("asks first over 20 items, and marks them after the answer", async () => {
+    const store = await connected();
+    const before = store.getState().counts.views.unread;
+    expect(before).toBeGreaterThan(20);
+    await store.getState().askMarkAll();
+    expect(store.getState().markAllPrompt).toBe(`Mark ${before} items as read?`);
+
+    store.getState().cancelMarkAll();
+    expect(store.getState().markAllPrompt).toBeNull();
+    expect(store.getState().counts.views.unread).toBe(before);
+
+    await store.getState().askMarkAll();
+    await store.getState().confirmMarkAll();
+    expect(store.getState().markAllPrompt).toBeNull();
+    expect(store.getState().counts.views.unread).toBe(0);
+  });
+
+  it("does not ask for a few, and never runs a mark of a source's own", async () => {
+    const store = await connected();
+    store.setState({ counts: { ...store.getState().counts, views: { ...store.getState().counts.views, unread: 5 } } });
+    await store.getState().askMarkAll();
+    expect(store.getState().markAllPrompt).toBeNull();
+    expect(store.getState().counts.views.unread).toBe(0);
+  });
+
+  it("has one question for the whole count, and one where it cannot know", () => {
+    const counts = {
+      views: { unread: 37, starred: 3, later: 0, archive: 0, all: 40 },
+      sources: [{ sourceId: 1, unread: 21 }],
+    };
+    expect(markAllPromptFor({ kind: "view", view: "unread" }, counts)).toBe("Mark 37 items as read?");
+    expect(markAllPromptFor({ kind: "view", view: "all" }, counts)).toBe("Mark 37 items as read?");
+    expect(markAllPromptFor({ kind: "source", id: 1 }, counts)).toBe("Mark 21 items as read?");
+    expect(markAllPromptFor({ kind: "view", view: "starred" }, counts)).toBe(
+      "Mark every unread item in this view as read?",
+    );
+    expect(
+      markAllPromptFor({ kind: "view", view: "unread" }, { ...counts, views: { ...counts.views, unread: 21 } }),
+    ).toBe("Mark 21 items as read?");
+    expect(
+      markAllPromptFor({ kind: "view", view: "unread" }, { ...counts, views: { ...counts.views, unread: 5 } }),
+    ).toBeNull();
   });
 });

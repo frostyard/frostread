@@ -21,7 +21,9 @@ shell, as app `read`.
   scoped token.
 
 Status: pre-release, private, 2026-10-21. The daemon, its API, `readctl`,
-MCP and save-as-note are built; the web app is next. See the
+MCP, save-as-note and the web app are built. It runs on lodge's kit
+**v0.3.0**, and the bundle on `@frostyard/lodge-client` **client/v0.2.0**
+and `@frostyard/lodge-ui` **ui/v0.1.0**. See the
 [roadmap](docs/plans/0001-roadmap.md).
 
 ## Build
@@ -30,7 +32,14 @@ MCP and save-as-note are built; the web app is next. See the
 make check              # tidy, vet, gofmt, lint and tests
 make build              # build/readd and build/readctl
 make lodge-package      # stage them for lodge under build/lodge-root
+make dev-lodge          # lodge's development build on loopback, with Read and Notes
 ```
+
+`make dev-lodge` starts lodge's development build with frostread and
+frostnotes in it, generated feeds and a generated vault, and frostread's
+scoped notes token, so save-as-note works end to end. It reads `../lodge`
+and `../frostnotes` (`LODGE_DIR`, `NOTES_DIR`) and changes neither. See
+`scripts/dev-lodge.sh`.
 
 The web bundle builds only in an nsl machine with Node, never on the host:
 
@@ -52,6 +61,85 @@ It runs as user `frostread`, in groups `lodge-apps` and `lodge-agents`,
 and listens on no network. Its state is `/var/lib/frostread`, and its
 configuration is `/etc/frostread/frostread.json`
 (`docs/specs/api.md`).
+
+## Install on lodge's host
+
+frostread runs as lodge's `read` app, beside lodge and notes, on the same
+host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
+
+1. **Build the bundle and stage the app.** The web bundle builds in an nsl
+   machine. `lodge-package` stages `readd`, `readctl`, the manifest, the
+   bundle, the units and the sysusers entry under `build/lodge-root`; it
+   refuses a whole root, so copy the staged `usr/` over the host's, with
+   the app's own directory replaced whole.
+
+   ```sh
+   make web-build                             # in nsl
+   make lodge-package                         # stages build/lodge-root
+   sudo rm -rf /usr/share/lodge/apps/read     # only Read's own directory
+   sudo cp -a build/lodge-root/usr/. /usr/
+   ```
+
+2. **Create the user and start the socket.** The sysusers entry makes
+   `frostread`, with its home at `/var/lib/frostread`, in group
+   `lodge-apps` and in group `lodge-agents` (the agent socket).
+
+   ```sh
+   sudo systemd-sysusers /usr/lib/sysusers.d/frostread.conf
+   id frostread          # expect lodge-apps and lodge-agents
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now frostread.socket
+   ```
+
+3. **Write the configuration**, `/etc/frostread/frostread.json`, owned by
+   root, 0644: no secret is in it. `notes_vault` is the id of the vault
+   notes serves.
+
+   ```json
+   {
+     "poll_interval": "20m",
+     "lodge_url": "https://LODGE",
+     "notes_folder": "Reading/",
+     "notes_vault": 1
+   }
+   ```
+
+4. **Let frostread reach notes.** Add `frostread` to `agents` in
+   `/etc/lodge/config.json` (the list is at most 16 system users), then
+   reload lodge, which also picks up Read's manifest:
+
+   ```json
+   { "agents": ["frostread"] }
+   ```
+
+   ```sh
+   sudo lodgectl reload
+   sudo lodgectl status     # the agent socket, and frostread among its agents
+   ```
+
+5. **Issue Read's notes token**, scoped to one folder, for the agent
+   socket. It is shown once; pipe it straight into `readctl`, which writes
+   it to `/var/lib/frostread/tokens/notes` (0600) and prints nothing.
+
+   ```sh
+   sudo lodgectl token issue frostread-notes --app notes \
+     --scope 'vault=1;write=Reading/' --agent frostread |
+     sudo -u frostread readctl notes-token
+   ```
+
+   `readctl` speaks readd's private socket, which admits only frostread's
+   own processes; every `readctl` step runs as `sudo -u frostread`.
+
+6. **Subscribe to feeds** from an OPML file, and check the app:
+
+   ```sh
+   sudo -u frostread readctl import feeds.opml
+   sudo -u frostread readctl status     # save as a note: yes, vault 1, folder Reading/
+   sudo -u frostread readctl sources
+   ```
+
+   The web app is at `https://LODGE/read/`, and save-as-note writes into
+   notes under `Reading/`.
 
 ## Docs
 

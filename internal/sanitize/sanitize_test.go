@@ -71,10 +71,39 @@ func TestKeepsTheArticle(t *testing.T) {
 	}
 }
 
+// The text of code, styles, embedded documents and titles is not the
+// page's words: it never reaches the index or an agent.
+func TestPlainTextSkipsSilentElements(t *testing.T) {
+	for _, tag := range []string{"script", "style", "noscript", "template", "svg", "math", "iframe", "object", "title"} {
+		html := "<p>before</p><" + tag + ">SENTINEL</" + tag + "><p>after</p>"
+		got := PlainText(html)
+		if strings.Contains(got, "SENTINEL") {
+			t.Fatalf("%s's text reached the plain text: %q", tag, got)
+		}
+		if got != "before after" {
+			t.Fatalf("%s: %q, want the words around it", tag, got)
+		}
+	}
+	// The tags an article may keep still give their words.
+	got := PlainText(`<p>Keep <strong>this</strong>.</p><pre><code>code words</code></pre>`)
+	if got != "Keep this. code words" {
+		t.Fatalf("kept elements = %q", got)
+	}
+}
+
 func TestPlainText(t *testing.T) {
 	got := PlainText(`<p>One <em>two</em>.</p><p>Three</p>`)
 	if got != "One two. Three" {
 		t.Fatalf("plain text = %q", got)
+	}
+	// A block's words never run into the next block's: a figure's caption
+	// follows the paragraph with a space, not "mind.A".
+	got = PlainText(`<p>The dog does not mind.</p><figure><img src="https://example.com/t.png" alt="x"><figcaption>A made-up tomato.</figcaption></figure>`)
+	if got != "The dog does not mind. A made-up tomato." {
+		t.Fatalf("blocks ran together: %q", got)
+	}
+	if got := PlainText(`<p>One<br>Two</p><div>Three</div><ul><li>Four</li><li>Five</li></ul>`); got != "One Two Three Four Five" {
+		t.Fatalf("blocks = %q", got)
 	}
 	// html.Parse is forgiving: stray text stays text.
 	if got := PlainText("<"); got != "<" {

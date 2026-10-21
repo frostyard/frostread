@@ -79,7 +79,7 @@ what search returns too, unless a query says otherwise.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `url` | string | the article's URL |
-| `contentPath` | string | `/content/item/<id>/<mac>`, for lodge-client's `contentURL` |
+| `contentPath` | string | the article's path relative to the content root, `item/<id>/<mac>`, for lodge-client's `contentURL`, which builds `CONTENT/read/<contentPath>` |
 | `extractState` | string | `pending`, `done` or `failed` |
 | `extractError` | string | why extraction failed, empty when it did not |
 | `originalHash` | string | the SHA-256 of the body as sent |
@@ -167,6 +167,12 @@ a line saying so.
 lodge-content. The manifest sets `"content": true` and
 `"contentLinks": true`.
 
+- **The public URL** is `CONTENT/read/item/<id>/<mac>`: lodge-content maps
+  `CONTENT/<id>/<path>` to the app's `/content/<path>`, and an item's
+  `contentPath` is `item/<id>/<mac>`, relative to that root. It has no
+  leading slash and no `content/` segment, because lodge-client's
+  `contentURL` adds `CONTENT/<app>/`.
+
 - `mac` is `base64url(HMAC-SHA256(secret, "item:<id>"))` cut to 22
   characters. `secret` is 32 random bytes in the store's `settings`,
   written on first start.
@@ -183,6 +189,13 @@ lodge-content. The manifest sets `"content": true` and
   CSP allows only `img-src data:`.
 - The page has no script, no remote link but the article's own anchors,
   and no remote image.
+- The article's date is shown in the daemon's time zone (`time.Local`),
+  the same day the app's reader shows in the reader's zone.
+- **The theme.** `?scheme=light` or `?scheme=dark` makes the page follow
+  the shell's theme, which the web app passes whenever the theme changes
+  (and a changed theme reloads the frame). Without the query, the page
+  follows the reader's own `prefers-color-scheme`. The MAC covers the path
+  alone, so the query changes nothing about what may be read.
 
 ### Fetching
 
@@ -218,6 +231,7 @@ the private socket's JSON-RPC as caller `local`.
 | `save <url>` | saves a link to read later |
 | `add <feed-url>` | subscribes, discovering the feed from a page |
 | `sources` | lists sources with their unread counts |
+| `note <item-id>` | saves the article as a note, and prints its path and its route in notes |
 | `import <file.opml>` | imports the file's outlines; `-` reads stdin |
 | `export` | writes the OPML to stdout |
 | `poll [source-id]` | polls every source now, or one source |
@@ -259,6 +273,35 @@ it names several), mode 0700:
 | `blobs/sha256/<first two hex digits>/<rest>` | content-addressed bodies and images, 0600 |
 | `tokens/notes` | the notes MCP token, 0600 |
 
+### Installation on lodge's host
+
+The daemon installs as lodge's `read` app, beside lodge and notes, with
+the steps [README.md, Install on lodge's host](../../README.md#install-on-lodges-host)
+gives. What it needs:
+
+| What | Where | Made by |
+| --- | --- | --- |
+| `readd`, `readctl` | `/usr/local/bin` | `make lodge-package`, then the staged `usr/` copied over the host's |
+| manifest and web bundle | `/usr/share/lodge/apps/read/` | the same |
+| `frostread.socket`, `frostread.service` | `/usr/lib/systemd/system/` | the same |
+| the user `frostread`, in `lodge-apps` and `lodge-agents` | `sysusers.d` | `sudo systemd-sysusers /usr/lib/sysusers.d/frostread.conf` |
+| the configuration | `/etc/frostread/frostread.json` | the owner, by hand |
+| the notes token | `STATE/tokens/notes`, 0600 | `readctl notes-token`, from stdin |
+
+- **Group `lodge-agents` and the `agents` list.** Save-as-note calls notes'
+  MCP on lodge's agent socket ([ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md));
+  the sysusers entry puts `frostread` in `lodge-agents`, and `frostread`
+  must also be named in `agents` in `/etc/lodge/config.json`, followed by
+  `sudo lodgectl reload`.
+- **The token is issued for the agent socket:**
+  `sudo lodgectl token issue frostread-notes --app notes --scope
+  'vault=<id>;write=Reading/' --agent frostread`, piped to
+  `sudo -u frostread readctl notes-token`. It is shown once and is never
+  printed again.
+- **`readctl` is same-user only:** it speaks readd's private socket, which
+  admits only frostread's own processes, so every readctl step runs as
+  `sudo -u frostread`.
+
 ## Rules
 
 - `readd` MUST listen only on Unix sockets. It MUST NOT open a TCP
@@ -276,6 +319,11 @@ it names several), mode 0700:
   one transaction. It MUST NOT delete a saved link.
 - A poll error MUST be stored on the source and shown in `Source.lastError`,
   and it MUST NOT stop the poller.
+- A URL the fetcher refuses MUST answer `invalidParams` with one sentence
+  naming the address, such as "Read does not fetch addresses inside your
+  network (192.0.2.1)." The guard's detail, and the address that was
+  refused, go to the log; the MCP `save_url` tool answers the same
+  sentence.
 - Extraction MUST NOT delay the item's arrival: an item is listed with
   `extractState: "pending"` before it is done, and every new item is
   queued for it. A feed item whose feed text is 600 characters or more is
@@ -299,8 +347,12 @@ no such code: the tag guards a file whose symbol a test proves absent from
 a release build with `go tool nm`.
 
 `cmd/readdev`, built with the `devfeeds` tag, serves on `127.0.0.1:8088` a
-generated RSS feed, Atom feed and JSON Feed, six made-up article pages with
-one image, and `/subscriptions.opml`; `-opml` prints the OPML and stops.
+generated RSS feed, Atom feed and JSON Feed, two more that answer their
+feed once and then fail their polls (500, and 429 with `Retry-After: 120`),
+six made-up article pages with one image, and `/subscriptions.opml`;
+`-opml` prints the OPML and stops. The OPML names all five feeds, so the
+owner sees sources with an error marker and the message in a source's
+sheet.
 `testdata/dev/subscriptions.opml` is the same document, for a check that
 does not want to run readdev first. `make dev-seed` prints it. The live check is:
 
@@ -320,6 +372,8 @@ vets and tests both.
 | `api/*.go` | follows this spec by hand until the app adopts a generator |
 | `schema/rpc/*.yaml` | the JSON-RPC contract; `api/` follows it by hand |
 | `readctl` | the private socket's methods |
+| `web/src/rpc/testdata/*.json` | the daemon's answers: `internal/readapi`'s contract test writes them for a seeded store, and `make check` fails when one is stale. `make contract-update` rewrites them |
+| `web/src/rpc/api.ts` | follows the Go types, `omitzero` included; the goldens' Vitest check fails when it does not |
 
 ## References
 

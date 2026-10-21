@@ -21,6 +21,7 @@ import (
 	"github.com/frostyard/lodge/kit/lodgeapp"
 
 	"github.com/frostyard/frostread/internal/engine"
+	"github.com/frostyard/frostread/internal/fetch"
 )
 
 // Notice is the sentence every result carries, so an article reaches an
@@ -277,6 +278,10 @@ type saveOut struct {
 func (t *tools) saveURL(ctx context.Context, _ *mcp.CallToolRequest, in saveIn) (*mcp.CallToolResult, saveOut, error) {
 	it, err := t.o.Engine.SaveURL(ctx, t.scope, in.URL)
 	if err != nil {
+		if sentence, ok := fetch.Refusal(err); ok {
+			t.o.Log.Info("a fetch was refused", "tool", "save_url", "err", err)
+			return nil, saveOut{}, fmt.Errorf("%s", sentence)
+		}
 		return nil, saveOut{}, err
 	}
 	return nil, saveOut{ID: it.ID, URL: it.URL}, nil

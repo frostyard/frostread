@@ -117,3 +117,106 @@ ticked as its work lands.
 - Rationale: [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md),
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)
+
+### Phase 6 evidence, 2026-10-21
+
+The whole live check ran on loopback with generated data only, through
+`make dev-lodge` (`scripts/dev-lodge.sh`), on this machine. Its root is
+written `<root>` here.
+
+**What ran**
+
+```sh
+make -C ../frostnotes web-build     # nsl: notes' web build
+make web-build                      # nsl: Read's web build
+ROOT=<root> make dev-lodge          # lodge's dev/e2e.sh, notesd, readd, readdev
+LODGE_ROOT=<root> ../lodge/build/lodgectl status
+LODGE_ROOT=<root> ../lodge/build/lodgectl apps
+build/readctl --socket <root>/run/frostread/readctl.sock status
+build/readctl --socket <root>/run/frostread/readctl.sock sources
+build/readctl --socket <root>/run/frostread/readctl.sock search tomato
+build/readctl --socket <root>/run/frostread/readctl.sock note 1
+curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8480/{,/read/,/app/read/,/notes/1/}
+curl -s http://127.0.0.1:8481/read/item/1/<mac>   # the content page
+```
+
+The content page's path came from `items.get` over readd's private socket,
+as a session would receive it.
+
+**What was seen**
+
+- `lodgectl status`: `app notes up`, `app read up`, the agent socket
+  listening, 0 sessions.
+- `lodgectl apps`: notes `up` with `content,device,mcp,remoteImages`; read
+  `up` with `content,contentLinks,mcp`.
+- `readctl status`: `readd 759d3b0-dirty`, `save as a note: yes, vault 1,
+  folder Reading/`.
+- `readctl sources`: three sources, each 2 unread: the generated RSS, Atom
+  and JSON feeds. `readctl search tomato` found the extracted articles.
+- `readctl note 1` printed
+  `Reading/2026-10-21 Keeping a reading list that works.md` and its route
+  `/notes/1/Reading/2026-10-21%20Keeping%20a%20reading%20list%20that%20works.md`.
+  The file was in `<root>/vault/Reading/`, with the frontmatter (`source:
+  http://127.0.0.1:8088/articles/5`, `saved`, `author`, `site`), the title,
+  the line `[Open in Read](/read/item/1)`, the article's Markdown, and the
+  image as `[image: A made-up tomato](http://127.0.0.1:8088/img/tomato.png)`.
+- The four lodge pages answered 200, with the shell's title `Lodge` and the
+  read app's `Read`. The content page answered 200 with one
+  `data:image/png;base64` image and no `blob:` marker.
+- No `lgm_` token appeared in the script's output, in `<root>/logs` or in
+  the vault.
+
+**What did not work at first, and was fixed before this run**
+
+- notesd in the frostnotes checkout's `build/` was stale, from before that
+  checkout's lodge support, and refused `-lodge`. `scripts/dev-lodge.sh`
+  now runs `make -C ../frostnotes build` on every start.
+- The script's closing text had a command in backticks inside an unquoted
+  here-document, so it ran during printing. It says the same in plain words
+  now.
+- The development shell is plain HTTP, so the configuration has no
+  `lodge_url` (it must be an https origin). The note's link is the rooted
+  `/read/item/1`, which notes follows in lodge. That is by design, and it
+  is what the note above holds.
+
+### MCP over the agent socket, 2026-10-21
+
+`make dev-lodge` ran on loopback, with the development build and the
+generated vault. Tokens were issued for app `read`, each with `--agent`
+naming the current user, and were passed to the check through the
+environment; none was printed or committed.
+
+```sh
+LODGE_ROOT=<root> ../lodge/build/lodgectl token issue frostread-live-read  --app read --scope read       --agent <user>
+LODGE_ROOT=<root> ../lodge/build/lodgectl token issue frostread-live-write --app read --scope read\;write --agent <user>
+LODGE_ROOT=<root> ../lodge/build/lodgectl token issue frostread-live-bad   --app read --scope write      --agent <user>
+LODGE_ROOT=<root> READ_LIVE_TOKEN_READ=… READ_LIVE_TOKEN_WRITE=… READ_LIVE_TOKEN_BAD=… \
+  READ_LIVE_SOCKET=<root>/run/frostread/readctl.sock \
+  go test -tags live ./internal/live -run 'TestAgentSocket|TestBadScopeIs403' -v
+```
+
+Seen:
+
+- The read token's tools were `list_sources`, `list_unread`, `read_item`
+  and `search`. `save_url` was not listed, and calling it was refused.
+- `list_sources` answered 3 sources, and `list_unread` 6 items. The search
+  for "heron" found "An autumn walk along the river", and `read_item` on it
+  returned 991 characters.
+- The token whose scope was `write` was refused at `initialize`: 403, "the
+  token's scope does not parse: scope \"write\" is not read or read;write".
+- The write token saved the development article at
+  `http://127.0.0.1:8088/articles/4` as item 7, marked one item read and
+  starred another. The counts a web session reads (`counts`) went from
+  `all 6, later 0, starred 0, unread 6` to `all 7, later 1, starred 1,
+  unread 6`: the saved link is a new unread item, and one was marked read.
+- `lodgectl token revoke frostread-live-write` answered "revoked
+  frostread-live-write". The next `initialize` with that token failed with
+  "Unauthorized".
+
+The content page's theme, by `curl` on its content URL:
+
+| Query | The page's `<html>` |
+| --- | --- |
+| none | `<html lang="en">` |
+| `?scheme=dark` | `<html lang="en" data-scheme="dark">` |
+| `?scheme=light` | `<html lang="en" data-scheme="light">` |

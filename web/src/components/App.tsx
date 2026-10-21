@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { commandFor } from "../lib/keys.js";
 import { formatRoute, routeTitle } from "../lib/routes.js";
 import { openOutside, reportRoute } from "../lodge.js";
+import { ConfirmSheet } from "./ConfirmSheet.js";
 import { useRead, useReadStore } from "./context.js";
 import { ListPane } from "./ListPane.js";
 import { Reader } from "./Reader.js";
@@ -24,6 +25,9 @@ export function App() {
   const selectedId = useRead((state) => state.selectedId);
   const error = useRead((state) => state.error);
   const clearError = useRead((state) => state.clearError);
+  const markAllPrompt = useRead((state) => state.markAllPrompt);
+  const confirmMarkAll = useRead((state) => state.confirmMarkAll);
+  const cancelMarkAll = useRead((state) => state.cancelMarkAll);
   const narrow = useNarrow();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -81,7 +85,7 @@ export function App() {
           break;
         case "markAllRead":
           event.preventDefault();
-          void state.markAllRead();
+          void state.askMarkAll();
           break;
         case "escape":
           if (sidebarOpen) {
@@ -107,6 +111,16 @@ export function App() {
         <p className="text-reader-body">{error}</p>
       </Sheet>
     );
+  const confirmSheet =
+    markAllPrompt === null ? null : (
+      <ConfirmSheet
+        title="Mark all read"
+        message={markAllPrompt}
+        confirmLabel="Mark as read"
+        onConfirm={() => void confirmMarkAll()}
+        onClose={cancelMarkAll}
+      />
+    );
 
   if (narrow) {
     return (
@@ -119,6 +133,7 @@ export function App() {
           <ListPane searchRef={search} onViews={() => setSidebarOpen(true)} />
         )}
         {errorSheet}
+        {confirmSheet}
       </div>
     );
   }
@@ -153,6 +168,7 @@ export function App() {
         <Reader />
       </div>
       {errorSheet}
+      {confirmSheet}
     </div>
   );
 }

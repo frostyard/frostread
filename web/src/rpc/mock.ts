@@ -14,11 +14,43 @@ const AUTHORED = [true, false, true] as const;
 
 interface MockItem extends ItemDetail {
   sourceId: number;
+  sourceTitle: string;
+  author: string;
+  excerpt: string;
+  notePath: string;
+  contentPath: string;
+  extractError: string;
+  originalHash: string;
+}
+
+/** MockSource holds the values the mock keeps; sourceOut drops the empty
+ * ones, as the daemon's omitzero does. */
+interface MockSource extends Source {
+  siteUrl: string;
+  errorCount: number;
+  lastError: string;
+  polledAt: string;
+  nextPollAt: string;
+}
+
+/** sourceOut is a source as readd sends it: no zero field. */
+function sourceOut(source: MockSource): Source {
+  return {
+    id: source.id,
+    url: source.url,
+    title: source.title,
+    unread: source.unread,
+    ...(source.siteUrl === "" ? {} : { siteUrl: source.siteUrl }),
+    ...(source.errorCount === 0 ? {} : { errorCount: source.errorCount }),
+    ...(source.lastError === "" ? {} : { lastError: source.lastError }),
+    ...(source.polledAt === "" ? {} : { polledAt: source.polledAt }),
+    ...(source.nextPollAt === "" ? {} : { nextPollAt: source.nextPollAt }),
+  };
 }
 
 /** createMockTransport returns a Transport over the mock's data. */
 export function createMockTransport(): Transport {
-  const sources: Source[] = SOURCE_TITLES.map((title, i) => ({
+  const sources: MockSource[] = SOURCE_TITLES.map((title, i) => ({
     id: i + 1,
     url: `https://feed${i + 1}.example/feed.xml`,
     siteUrl: `https://site${i + 1}.example/`,
@@ -61,19 +93,29 @@ export function createMockTransport(): Transport {
     });
 
   const byId = (id: number) => items.find((item) => item.id === id);
+  /** summary is a row as readd sends it: no zero field. */
   const summary = (item: MockItem): ItemSummary => ({
     id: item.id,
     title: item.title,
-    sourceTitle: item.sourceTitle,
-    author: item.author,
     published: item.published,
-    excerpt: item.excerpt,
     read: item.read,
     starred: item.starred,
     archived: item.archived,
     saved: item.saved,
-    notePath: item.notePath,
+    ...(item.sourceTitle === "" ? {} : { sourceTitle: item.sourceTitle }),
+    ...(item.author === "" ? {} : { author: item.author }),
+    ...(item.excerpt === "" ? {} : { excerpt: item.excerpt }),
+    ...(item.notePath === "" ? {} : { notePath: item.notePath }),
     ...(item.snippet === undefined ? {} : { snippet: item.snippet }),
+  });
+  /** detail is an item as items.get sends it: a summary, and no zero field. */
+  const detail = (item: MockItem): ItemDetail => ({
+    ...summary(item),
+    url: item.url,
+    extractState: item.extractState,
+    ...(item.contentPath === "" ? {} : { contentPath: item.contentPath }),
+    ...(item.extractError === "" ? {} : { extractError: item.extractError }),
+    ...(item.originalHash === "" ? {} : { originalHash: item.originalHash }),
   });
   const inView = (item: MockItem, view: View): boolean => {
     switch (view) {
@@ -118,12 +160,14 @@ export function createMockTransport(): Transport {
       case "counts":
         return counts() as T;
       case "sources.list":
-        return { sources: [...sources].sort((a, b) => a.title.localeCompare(b.title)) } as T;
+        return {
+          sources: [...sources].sort((a, b) => a.title.localeCompare(b.title)).map(sourceOut),
+        } as T;
       case "sources.add": {
         const url = String(params.url ?? "");
         const existing = sources.find((source) => source.url === url);
-        if (existing !== undefined) return { source: existing } as T;
-        const source: Source = {
+        if (existing !== undefined) return { source: sourceOut(existing) } as T;
+        const source: MockSource = {
           id: sources.length + 1,
           url,
           siteUrl: url,
@@ -136,7 +180,7 @@ export function createMockTransport(): Transport {
         };
         sources.push(source);
         notify("unread", "all");
-        return { source } as T;
+        return { source: sourceOut(source) } as T;
       }
       case "sources.remove": {
         const id = Number(params.id);
@@ -163,7 +207,7 @@ export function createMockTransport(): Transport {
         return { added: urls.length - skipped, skipped } as T;
       }
       case "opml.export":
-        return { xml: opml(sources) } as T;
+        return { xml: opml(sources.map(sourceOut)) } as T;
       case "items.list": {
         const view = (params.view ?? "all") as View;
         const sourceId = params.sourceId === undefined ? undefined : Number(params.sourceId);
@@ -179,7 +223,7 @@ export function createMockTransport(): Transport {
       case "items.get": {
         const item = byId(Number(params.id));
         if (item === undefined) throw new MockError(1001, "no such item");
-        return item as T;
+        return detail(item) as T;
       }
       case "items.search": {
         const query = String(params.query ?? "").toLowerCase();
@@ -276,7 +320,7 @@ export class MockError extends Error {
 }
 
 /** mockItem generates one item of a source, or a saved link when source is null. */
-function mockItem(id: number, source: Source | null, authored: boolean): MockItem {
+function mockItem(id: number, source: MockSource | null, authored: boolean): MockItem {
   const title = `Item ${id}: ${["Slow web", "RSS forever", "A quieter inbox", "Reading at night"][id % 4]}`;
   const excerpt =
     `The ${id}th piece about reading: feeds, saving things for later, and ` +

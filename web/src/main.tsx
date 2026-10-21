@@ -2,13 +2,14 @@
 // shell's theme, then open readd's API at /app/read/api and start the app.
 // In vite dev there is no shell, so the app runs on the mock transport with
 // the system's scheme (lodge's app-contract.md, The web build).
-import { connectLodge } from "@frostyard/lodge-client";
+import { connectLodge, frameRoute } from "@frostyard/lodge-client";
 import { applyScheme, followLodge } from "@frostyard/lodge-ui/theme";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./app.css";
 import { App } from "./components/App.js";
 import { StoreProvider } from "./components/context.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { parseRoute } from "./lib/routes.js";
 import { setLodge } from "./lodge.js";
 import { readAPI } from "./rpc/api.js";
@@ -18,11 +19,19 @@ import { createReadStore } from "./store.js";
 const host = document.getElementById("root");
 if (host === null) throw new Error("read-web: #root is missing");
 
+// The route a cold load starts at is the frame's own address: the shell
+// opens /app/read/<route> for /read/<route> (lodge-client.md, Routes). It
+// is read here, before the app reports a route of its own, because a first
+// report of "/" would move the shell's history and the client's location.
+const startRoute = parseRoute(frameRoute("read", window.location));
+
 const store = createReadStore();
 createRoot(host).render(
   <StrictMode>
     <StoreProvider store={store}>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StoreProvider>
   </StrictMode>,
 );
@@ -33,21 +42,25 @@ async function start(): Promise<void> {
     // No shell: the mock, and the system's colour scheme. The import is
     // lazy, so a lodge build carries no mock.
     applyScheme(document.documentElement, null);
+    store.getState().setScheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
     const { createMockTransport } = await import("./rpc/mock.js");
     const transport = createMockTransport();
     transport.onEvent(() => void store.getState().changed());
     await store.getState().connect(readAPI(transport));
-    await store.getState().setRoute(parseRoute(location.pathname));
+    await store.getState().setRoute(startRoute);
     return;
   }
   const lodge = await connectLodge({ app: "read" });
   setLodge(lodge);
   followLodge(lodge);
+  store.getState().setScheme(lodge.theme);
+  // The article's frame follows the same scheme; a theme change reloads it.
+  lodge.on("theme", ({ scheme }) => store.getState().setScheme(scheme));
   lodge.on("navigate", ({ route }) => void store.getState().setRoute(parseRoute(route)));
   const transport = await connectLodgeAPI(lodge.apiURL());
   transport.onEvent(() => void store.getState().changed());
   await store.getState().connect(readAPI(transport));
-  await store.getState().setRoute(parseRoute(lodge.history.location.pathname));
+  await store.getState().setRoute(startRoute);
 }
 
 await start();

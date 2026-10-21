@@ -28,6 +28,10 @@ export interface ReadState {
   itemLoading: boolean;
   /** noteRoutes are the routes saveAsNote answered in this session. */
   noteRoutes: Record<number, string>;
+  /** scheme is the shell's theme, which the article's frame follows. */
+  scheme: "light" | "dark";
+  /** markAllPrompt asks before many items change at once; null does not. */
+  markAllPrompt: string | null;
   busy: boolean;
 }
 
@@ -45,13 +49,19 @@ export interface ReadActions {
   toggleStar(): Promise<void>;
   archive(): Promise<void>;
   markAllRead(): Promise<void>;
+  askMarkAll(): Promise<void>;
+  confirmMarkAll(): Promise<void>;
+  cancelMarkAll(): void;
   refresh(id?: number): Promise<void>;
   addSource(url: string): Promise<void>;
+  renameSource(id: number, title: string): Promise<void>;
+  removeSource(id: number): Promise<void>;
   importOPML(xml: string): Promise<number>;
   exportOPML(): Promise<string>;
   saveLater(url: string): Promise<void>;
   saveAsNote(id: number): Promise<void>;
   noteRoute(id: number): string | null;
+  setScheme(scheme: "light" | "dark"): void;
   changed(): Promise<void>;
   clearError(): void;
   loadStatus(): Promise<void>;
@@ -60,6 +70,39 @@ export interface ReadActions {
 }
 
 export type ReadStore = ReadState & ReadActions;
+
+/** MARK_ALL_CONFIRM is how many items a mark-all may change without asking. */
+export const MARK_ALL_CONFIRM = 20;
+
+/**
+ * unreadToMark is how many items a mark-all would mark read in a route, or
+ * null when the counts the app has do not say (a starred, later or archive
+ * view). The server marks every unread item in the view or the source.
+ */
+export function unreadToMark(route: Route, counts: Counts): number | null {
+  switch (route.kind) {
+    case "source":
+      return counts.sources.find((row) => row.sourceId === route.id)?.unread ?? 0;
+    case "view":
+      switch (route.view) {
+        case "unread":
+        case "all":
+          return counts.views.unread;
+        default:
+          return null;
+      }
+    case "item":
+      return counts.views.unread;
+  }
+}
+
+/** markAllPromptFor is the question a mark-all asks first, or null. */
+export function markAllPromptFor(route: Route, counts: Counts): string | null {
+  const n = unreadToMark(route, counts);
+  if (n !== null && n <= MARK_ALL_CONFIRM) return null;
+  if (n === null) return "Mark every unread item in this view as read?";
+  return `Mark ${n} items as read?`;
+}
 
 /** message is an error as the UI shows it. */
 function message(err: unknown): string {
@@ -84,6 +127,8 @@ export function createReadStore(): StoreApi<ReadStore> {
     item: null,
     itemLoading: false,
     noteRoutes: {},
+    scheme: "light",
+    markAllPrompt: null,
     busy: false,
 
     async connect(api) {
@@ -97,6 +142,11 @@ export function createReadStore(): StoreApi<ReadStore> {
 
     async setRoute(route) {
       if (route.kind === "item") {
+        // A permalink may name an item outside the current list: the All
+        // list is what stands behind it, whatever view was showing.
+        const all: Route = { kind: "view", view: "all" };
+        set({ route, listRoute: all, selectedId: route.id, item: null, query: "", error: null });
+        await get().load();
         await get().open(route.id);
         return;
       }
@@ -235,25 +285,58 @@ export function createReadStore(): StoreApi<ReadStore> {
       }
     },
 
+    askMarkAll() {
+      const prompt = markAllPromptFor(get().listRoute, get().counts);
+      if (prompt === null) {
+        return get().markAllRead();
+      }
+      set({ markAllPrompt: prompt });
+      return Promise.resolve();
+    },
+
+    async confirmMarkAll() {
+      set({ markAllPrompt: null });
+      await get().markAllRead();
+    },
+
+    cancelMarkAll() {
+      set({ markAllPrompt: null });
+    },
+
+    // The source sheet shows a failure in place, so these reject rather
+    // than open the error sheet.
     async refresh(id) {
       const { api } = get();
       if (api === null) return;
-      try {
-        await api.refresh(id);
-      } catch (err) {
-        set({ error: message(err) });
+      await api.refresh(id);
+      await Promise.all([get().loadSources(), get().loadCounts(), get().load()]);
+    },
+
+    async renameSource(id, title) {
+      const { api } = get();
+      if (api === null) return;
+      await api.renameSource(id, title);
+      await Promise.all([get().loadSources(), get().load()]);
+    },
+
+    async removeSource(id) {
+      const { api, listRoute } = get();
+      if (api === null) return;
+      await api.removeSource(id);
+      // The source's page has gone with it: show the unread view.
+      if (listRoute.kind === "source" && listRoute.id === id) {
+        await get().setRoute(UNREAD);
       }
+      await Promise.all([get().loadSources(), get().loadCounts(), get().load()]);
     },
 
     async addSource(url) {
       const { api } = get();
       if (api === null) return;
-      try {
-        await api.addSource(url);
-        await Promise.all([get().loadSources(), get().loadCounts()]);
-      } catch (err) {
-        set({ error: message(err) });
-      }
+      // The sheet shows a failure in place; a second error sheet would
+      // cover it.
+      await api.addSource(url);
+      await Promise.all([get().loadSources(), get().loadCounts()]);
     },
 
     async importOPML(xml) {
@@ -283,13 +366,11 @@ export function createReadStore(): StoreApi<ReadStore> {
     async saveLater(url) {
       const { api } = get();
       if (api === null) return;
-      try {
-        const saved = await api.saveLater(url);
-        await Promise.all([get().loadCounts(), get().loadSources()]);
-        await get().open(saved.id);
-      } catch (err) {
-        set({ error: message(err) });
-      }
+      // The sheet shows a failure in place; a second error sheet would
+      // cover it.
+      const saved = await api.saveLater(url);
+      await Promise.all([get().loadCounts(), get().loadSources()]);
+      await get().open(saved.id);
     },
 
     async saveAsNote(id) {
@@ -312,9 +393,15 @@ export function createReadStore(): StoreApi<ReadStore> {
       const { item, noteRoutes, status } = get();
       const known = noteRoutes[id];
       if (known !== undefined) return known;
-      if (item === null || item.id !== id || item.notePath === "" || status === null) return null;
+      if (item === null || item.id !== id || item.notePath === undefined || item.notePath === "" || status === null) {
+        return null;
+      }
       if (status.notes.vaultId === 0) return null;
       return routeOfNote(item.notePath, status.notes.vaultId);
+    },
+
+    setScheme(scheme) {
+      set({ scheme });
     },
 
     async changed() {

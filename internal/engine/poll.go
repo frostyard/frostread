@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"sync"
 	"time"
 
 	"github.com/frostyard/frostread/internal/blobs"
 	"github.com/frostyard/frostread/internal/config"
+	"github.com/frostyard/frostread/internal/extract"
 	"github.com/frostyard/frostread/internal/feed"
 	"github.com/frostyard/frostread/internal/fetch"
 	"github.com/frostyard/frostread/internal/sanitize"
@@ -111,12 +111,23 @@ func (e *Engine) pollSource(ctx context.Context, src store.Source) error {
 func (e *Engine) polled(ctx context.Context, src store.Source, res *fetch.Response, items []feed.Item) error {
 	newItems := make([]store.NewItem, 0, len(items))
 	for _, it := range items {
-		original := it.SummaryHTML + it.ContentHTML
+		// The feed's HTML is untrusted: it is sanitized before the store
+		// holds it, and its bytes are kept as sent, by hash.
+		summary := sanitize.HTML(it.SummaryHTML)
+		content := sanitize.HTML(it.ContentHTML)
+		// A feed may give an empty document as its content: store no HTML
+		// when there are no words in it.
+		if sanitize.PlainText(summary) == "" {
+			summary = ""
+		}
+		if sanitize.PlainText(content) == "" {
+			content = ""
+		}
 		newItems = append(newItems, store.NewItem{
 			GUID: it.GUID, URL: it.URL, Title: it.Title, Author: it.Author,
-			Published: it.Published, SummaryHTML: it.SummaryHTML, ContentHTML: it.ContentHTML,
-			Text:         sanitize.PlainText(it.SummaryHTML + " " + it.ContentHTML),
-			OriginalHash: blobs.ID([]byte(original)),
+			Published: it.Published, SummaryHTML: summary, ContentHTML: content,
+			Text:         extract.StripTitle(sanitize.PlainText(summary+" "+content), it.Title),
+			OriginalHash: blobs.ID([]byte(it.SummaryHTML + it.ContentHTML)),
 		})
 	}
 	added, err := e.o.Store.AddItems(ctx, src.ID, newItems)
@@ -171,7 +182,7 @@ func (e *Engine) nextPoll(now time.Time, failures int, retryAfter time.Duration)
 	}
 	// ±10%, so a hundred sources do not poll in one minute, and never
 	// past the longest wait.
-	jitter := time.Duration(float64(d) * (rand.Float64()*0.2 - 0.1))
+	jitter := time.Duration(float64(d) * (e.o.Rand()*0.2 - 0.1))
 	next := now.Add(min(d+jitter, MaxBackoff))
 	if retryAfter > next.Sub(now) {
 		next = now.Add(min(retryAfter, MaxBackoff))

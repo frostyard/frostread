@@ -1,5 +1,7 @@
 // The routes the shell sends and the app reports (docs/specs/api.md, and
 // the brief's list).
+
+import { frameRoute } from "@frostyard/lodge-client";
 import { describe, expect, it } from "vitest";
 import { formatRoute, noteRoute, parseRoute } from "./lib/routes.js";
 
@@ -28,5 +30,21 @@ describe("routes", () => {
       "/notes/1/Reading/Why%20feeds%20are%20still%20good.md",
     );
     expect(noteRoute("", 2)).toBe("/notes/2/");
+  });
+});
+
+describe("a cold load's route", () => {
+  // lodge-client frames an app at /app/<id><route> and gives the app its
+  // own route from that address (lodge-client.md, Routes; frameRoute).
+  it("comes from the frame's own address, not from a report", () => {
+    const loc = (pathname: string) => ({ pathname, search: "", hash: "" });
+    expect(parseRoute(frameRoute("read", loc("/app/read/item/3")))).toEqual({ kind: "item", id: 3 });
+    expect(parseRoute(frameRoute("read", loc("/app/read/view/starred")))).toEqual({
+      kind: "view",
+      view: "starred",
+    });
+    expect(parseRoute(frameRoute("read", loc("/app/read/source/2")))).toEqual({ kind: "source", id: 2 });
+    expect(parseRoute(frameRoute("read", loc("/app/read/")))).toEqual({ kind: "view", view: "unread" });
+    expect(parseRoute(frameRoute("read", loc("/app/read")))).toEqual({ kind: "view", view: "unread" });
   });
 });

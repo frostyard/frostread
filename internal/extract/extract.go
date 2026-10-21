@@ -75,9 +75,13 @@ func (e *Extractor) Extract(ctx context.Context, body []byte, pageURL string) (A
 	if len([]rune(text)) < MinText {
 		return Article{}, fmt.Errorf("extract %s: %d characters: %w", pageURL, len([]rune(text)), ErrNoArticle)
 	}
+	title := strings.TrimSpace(art.Title())
+	// The heading readability keeps in the text is the title the reader
+	// shows above it: drop the copy.
+	text = StripTitle(text, title)
 	published, _ := art.PublishedTime()
 	out := Article{
-		Title:     strings.TrimSpace(art.Title()),
+		Title:     title,
 		Byline:    strings.TrimSpace(art.Byline()),
 		SiteName:  strings.TrimSpace(art.SiteName()),
 		Published: published,

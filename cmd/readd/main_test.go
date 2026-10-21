@@ -78,7 +78,7 @@ func start(t *testing.T) (*app, *engine.Engine, *kittest.Lodge) {
 	mcp := mcpsession.New(mcpserver.Handler(mcpserver.Options{Engine: eng, Version: "test", Log: log}),
 		mcpsession.Options{CheckScope: mcpserver.CheckScope, Logger: log})
 	t.Cleanup(func() { _ = mcp.Close() })
-	a, err := newApp(log, &server{rpc: srv, read: readapi.New(eng), content: page, mcp: mcp})
+	a, err := newApp(log, &server{rpc: srv, read: readapi.New(eng, log), content: page, mcp: mcp})
 	if err != nil {
 		t.Fatal(err)
 	}

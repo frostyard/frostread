@@ -20,7 +20,9 @@ the canonical paths, and keep content tool-agnostic.
 
 ## Status
 
-Pre-release, private, 2026-10-21. Built: the daemon and its store, the
+Pre-release, private, 2026-10-21. Built on lodge's kit **v0.3.0**, and
+its web bundle on `@frostyard/lodge-client` **client/v0.2.0** and
+`@frostyard/lodge-ui` **ui/v0.1.0**. Built: the daemon and its store, the
 guarded fetcher, feeds and OPML, extraction and the blob store, polling,
 search, the JSON-RPC API, `readctl`, MCP with scoped tokens, save-as-note,
 the content pages, the units, and the development feeds. Next: the web app
@@ -59,7 +61,12 @@ counterpart of something those repositories do, read their file.
   socket.
 - `internal/config`: `/etc/frostread/frostread.json` and the state
   directory.
-- `web/`: the web bundle on `@frostyard/lodge-client`.
+- `scripts/dev-lodge.sh`: one command, `make dev-lodge`, that starts
+  lodge's development build on loopback with Read and Notes, generated
+  feeds, a generated vault and Read's scoped notes token. It reads the
+  `../lodge` and `../frostnotes` checkouts and changes neither.
+- `web/`: the web bundle on `@frostyard/lodge-client` (client/v0.2.0) and
+  `@frostyard/lodge-ui` (ui/v0.1.0).
 - `packaging/lodge`: the manifest, the socket and service units, the system
   user, and `stage.sh`.
 
@@ -70,7 +77,11 @@ counterpart of something those repositories do, read their file.
   it before claiming any change complete, docs included.
 - `make race` runs the tests under the race detector, and `make cross`
   builds linux/amd64 and linux/arm64. `make ci` adds the web bundle's
-  checks.
+  checks (`make web-check`, nsl).
+- The daemon's wire answers are the web app's contract:
+  `internal/readapi`'s contract test writes `web/src/rpc/testdata`, and
+  `make check` fails when a golden is stale. After a change to `api/` or
+  the engine's types, run `make contract-update`, then `make web-check`.
 - Never run pnpm, node or cargo on the host. `web/` builds in the nsl
   machine `lodge` (`make web-build`), as lodge's apps do.
 - Fix a lint finding rather than loosening `.golangci.yml`.
@@ -130,12 +141,15 @@ neither is in a release build:
   `READ_DEV_ALLOW` names (such as `127.0.0.1:8088`). Every other address
   stays refused. A test proves with `go tool nm` that a release binary
   lacks the code.
-- **`devfeeds`**: `cmd/readdev` serves a generated RSS feed, Atom feed and
-  JSON Feed with six made-up articles on `127.0.0.1:8088`, and `-opml`
-  prints the OPML that names them. `make dev-seed` prints it.
+- **`devfeeds`**: `cmd/readdev` serves five generated feeds with six made-up
+  articles on `127.0.0.1:8088` (RSS, Atom, JSON Feed, and two that fail
+  their polls with 500 and 429), and `-opml` prints the OPML that names
+  them. `make dev-seed` prints it.
 
 They are documented in [docs/specs/api.md](docs/specs/api.md#development-only),
-and `make check` vets and tests both tags.
+and `make check` vets and tests both tags. `make dev-lodge` runs the whole
+live check on loopback; its evidence is in the
+[roadmap](docs/plans/0001-roadmap.md#phase-6--the-live-check-on-lodges-development-build-built-2026-10-21).
 
 ## Repository boundary
 
