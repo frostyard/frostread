@@ -117,3 +117,64 @@ ticked as its work lands.
 - Rationale: [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md),
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)
+
+### Phase 6 evidence, 2026-10-21
+
+The whole live check ran on loopback with generated data only, through
+`make dev-lodge` (`scripts/dev-lodge.sh`), on this machine. Its root is
+written `<root>` here.
+
+**What ran**
+
+```sh
+make -C ../frostnotes web-build     # nsl: notes' web build
+make web-build                      # nsl: Read's web build
+ROOT=<root> make dev-lodge          # lodge's dev/e2e.sh, notesd, readd, readdev
+LODGE_ROOT=<root> ../lodge/build/lodgectl status
+LODGE_ROOT=<root> ../lodge/build/lodgectl apps
+build/readctl --socket <root>/run/frostread/readctl.sock status
+build/readctl --socket <root>/run/frostread/readctl.sock sources
+build/readctl --socket <root>/run/frostread/readctl.sock search tomato
+build/readctl --socket <root>/run/frostread/readctl.sock note 1
+curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8480/{,/read/,/app/read/,/notes/1/}
+curl -s http://127.0.0.1:8481/read/item/1/<mac>   # the content page
+```
+
+The content page's path came from `items.get` over readd's private socket,
+as a session would receive it.
+
+**What was seen**
+
+- `lodgectl status`: `app notes up`, `app read up`, the agent socket
+  listening, 0 sessions.
+- `lodgectl apps`: notes `up` with `content,device,mcp,remoteImages`; read
+  `up` with `content,contentLinks,mcp`.
+- `readctl status`: `readd 759d3b0-dirty`, `save as a note: yes, vault 1,
+  folder Reading/`.
+- `readctl sources`: three sources, each 2 unread: the generated RSS, Atom
+  and JSON feeds. `readctl search tomato` found the extracted articles.
+- `readctl note 1` printed
+  `Reading/2026-10-21 Keeping a reading list that works.md` and its route
+  `/notes/1/Reading/2026-10-21%20Keeping%20a%20reading%20list%20that%20works.md`.
+  The file was in `<root>/vault/Reading/`, with the frontmatter (`source:
+  http://127.0.0.1:8088/articles/5`, `saved`, `author`, `site`), the title,
+  the line `[Open in Read](/read/item/1)`, the article's Markdown, and the
+  image as `[image: A made-up tomato](http://127.0.0.1:8088/img/tomato.png)`.
+- The four lodge pages answered 200, with the shell's title `Lodge` and the
+  read app's `Read`. The content page answered 200 with one
+  `data:image/png;base64` image and no `blob:` marker.
+- No `lgm_` token appeared in the script's output, in `<root>/logs` or in
+  the vault.
+
+**What did not work at first, and was fixed before this run**
+
+- notesd in the frostnotes checkout's `build/` was stale, from before that
+  checkout's lodge support, and refused `-lodge`. `scripts/dev-lodge.sh`
+  now runs `make -C ../frostnotes build` on every start.
+- The script's closing text had a command in backticks inside an unquoted
+  here-document, so it ran during printing. It says the same in plain words
+  now.
+- The development shell is plain HTTP, so the configuration has no
+  `lodge_url` (it must be an https origin). The note's link is the rooted
+  `/read/item/1`, which notes follows in lodge. That is by design, and it
+  is what the note above holds.

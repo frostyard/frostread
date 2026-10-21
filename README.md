@@ -30,7 +30,14 @@ MCP and save-as-note are built; the web app is next. See the
 make check              # tidy, vet, gofmt, lint and tests
 make build              # build/readd and build/readctl
 make lodge-package      # stage them for lodge under build/lodge-root
+make dev-lodge          # lodge's development build on loopback, with Read and Notes
 ```
+
+`make dev-lodge` starts lodge's development build with frostread and
+frostnotes in it, generated feeds and a generated vault, and frostread's
+scoped notes token, so save-as-note works end to end. It reads `../lodge`
+and `../frostnotes` (`LODGE_DIR`, `NOTES_DIR`) and changes neither. See
+`scripts/dev-lodge.sh`.
 
 The web bundle builds only in an nsl machine with Node, never on the host:
 

@@ -59,6 +59,10 @@ counterpart of something those repositories do, read their file.
   socket.
 - `internal/config`: `/etc/frostread/frostread.json` and the state
   directory.
+- `scripts/dev-lodge.sh`: one command, `make dev-lodge`, that starts
+  lodge's development build on loopback with Read and Notes, generated
+  feeds, a generated vault and Read's scoped notes token. It reads the
+  `../lodge` and `../frostnotes` checkouts and changes neither.
 - `web/`: the web bundle on `@frostyard/lodge-client`.
 - `packaging/lodge`: the manifest, the socket and service units, the system
   user, and `stage.sh`.
@@ -135,7 +139,9 @@ neither is in a release build:
   prints the OPML that names them. `make dev-seed` prints it.
 
 They are documented in [docs/specs/api.md](docs/specs/api.md#development-only),
-and `make check` vets and tests both tags.
+and `make check` vets and tests both tags. `make dev-lodge` runs the whole
+live check on loopback; its evidence is in the
+[roadmap](docs/plans/0001-roadmap.md#phase-6--the-live-check-on-lodges-development-build-built-2026-10-21).
 
 ## Repository boundary
 
