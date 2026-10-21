@@ -20,9 +20,12 @@ the canonical paths, and keep content tool-agnostic.
 
 ## Status
 
-Pre-release, private, 2026-10-21. The repository holds lodge's app scaffold
-(`readd`, on lodge's kit) and the founding documents, which are Proposed
-(2026-10-21). The order of work is the [roadmap](docs/plans/0001-roadmap.md).
+Pre-release, private, 2026-10-21. Built: the daemon and its store, the
+guarded fetcher, feeds and OPML, extraction and the blob store, polling,
+search, the JSON-RPC API, `readctl`, MCP with scoped tokens, save-as-note,
+the content pages, the units, and the development feeds. Next: the web app
+([roadmap](docs/plans/0001-roadmap.md), Phase 5). The founding documents are
+Proposed (2026-10-21).
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
