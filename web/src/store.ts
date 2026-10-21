@@ -61,6 +61,9 @@ export interface ReadActions {
   importOPML(xml: string): Promise<number>;
   exportOPML(): Promise<string>;
   saveLater(url: string): Promise<void>;
+  /** saveFromPage saves a page for later with its title, from the save page,
+   * and answers the saved item. It rejects so the page can show why. */
+  saveFromPage(url: string, title: string): Promise<ItemSummary>;
   saveAsNote(id: number): Promise<void>;
   /** checkNote asks notes where an item's note is, and keeps note_path
    * true: a missing note clears it, a moved one records its path, and an
@@ -99,11 +102,17 @@ export function unreadToMark(route: Route, counts: Counts): number | null {
       }
     case "item":
       return counts.views.unread;
+    case "save":
+    case "bookmarklet":
+      // These pages are not a list: there is nothing to mark.
+      return null;
   }
 }
 
 /** markAllPromptFor is the question a mark-all asks first, or null. */
 export function markAllPromptFor(route: Route, counts: Counts): string | null {
+  // The save and bookmarklet pages are no list, and ask nothing.
+  if (route.kind === "save" || route.kind === "bookmarklet") return null;
   const n = unreadToMark(route, counts);
   if (n !== null && n <= MARK_ALL_CONFIRM) return null;
   if (n === null) return "Mark every unread item in this view as read?";
@@ -146,6 +155,13 @@ export function createReadStore(): StoreApi<ReadStore> {
     },
 
     async setRoute(route) {
+      if (route.kind === "save" || route.kind === "bookmarklet") {
+        // These pages stand over the whole frame: the list behind them stays
+        // as it was, and no item opens. A mark-all's question does not hang
+        // over them.
+        set({ route, selectedId: null, item: null, error: null, markAllPrompt: null });
+        return;
+      }
       if (route.kind === "item") {
         // A permalink may name an item outside the current list: the All
         // list is what stands behind it, whatever view was showing.
@@ -380,6 +396,16 @@ export function createReadStore(): StoreApi<ReadStore> {
       await get().open(saved.id);
     },
 
+    async saveFromPage(url, title) {
+      const { api } = get();
+      if (api === null) throw new Error("Read is not connected.");
+      // The save page shows a failure in place, so this rejects rather than
+      // open the error sheet.
+      const saved = await api.saveLater(url, title);
+      await Promise.all([get().loadCounts(), get().loadSources()]);
+      return saved;
+    },
+
     async saveAsNote(id) {
       const { api } = get();
       if (api === null) return;
@@ -488,6 +514,8 @@ function listParams(route: Route): { view: View; sourceId?: number } {
     case "view":
       return { view: route.view };
     case "item":
+    case "save":
+    case "bookmarklet":
       return { view: "all" };
   }
 }

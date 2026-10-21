@@ -3,7 +3,7 @@
 
 import { frameRoute } from "@frostyard/lodge-client";
 import { describe, expect, it } from "vitest";
-import { formatRoute, noteRoute, parseRoute } from "./lib/routes.js";
+import { formatRoute, noteRoute, parseRoute, routeTitle } from "./lib/routes.js";
 
 describe("routes", () => {
   it("parses an item, a source and a view", () => {
@@ -46,5 +46,61 @@ describe("a cold load's route", () => {
     expect(parseRoute(frameRoute("read", loc("/app/read/source/2")))).toEqual({ kind: "source", id: 2 });
     expect(parseRoute(frameRoute("read", loc("/app/read/")))).toEqual({ kind: "view", view: "unread" });
     expect(parseRoute(frameRoute("read", loc("/app/read")))).toEqual({ kind: "view", view: "unread" });
+  });
+});
+
+describe("the save page the bookmarklet opens", () => {
+  const path = "/save?url=https%3A%2F%2Fexample.com%2Fa-page&title=A%20page";
+
+  it("parses its address and title, and writes the path it arrived at", () => {
+    const route = parseRoute(path);
+    expect(route).toEqual({
+      kind: "save",
+      url: "https://example.com/a-page",
+      title: "A page",
+      path,
+    });
+    expect(formatRoute(route)).toBe(path);
+  });
+
+  it("takes a save page with no title, and one with no address", () => {
+    expect(parseRoute("/save?url=https%3A%2F%2Fexample.com%2Fa-page")).toEqual({
+      kind: "save",
+      url: "https://example.com/a-page",
+      title: "",
+      path: "/save?url=https%3A%2F%2Fexample.com%2Fa-page",
+    });
+    expect(parseRoute("/save")).toEqual({ kind: "save", url: "", title: "", path: "/save" });
+    expect(parseRoute("/save?title=A%20page")).toMatchObject({ kind: "save", url: "", title: "A page" });
+  });
+
+  it("decodes a + and a %20 in the query, and keeps them in the path it reports", () => {
+    const route = parseRoute("/save?url=https%3A%2F%2Fexample.com%2Fa+b&title=A+B%20page");
+    expect(route).toMatchObject({ kind: "save", url: "https://example.com/a b", title: "A B page" });
+    expect(formatRoute(route)).toBe("/save?url=https%3A%2F%2Fexample.com%2Fa+b&title=A+B%20page");
+  });
+
+  it("round trips a save path exactly, so the shell records no new entry", () => {
+    for (const arrived of ["/save", path, "/save?url=a+b", "/save?url=%2F%3F%23&title="]) {
+      expect(formatRoute(parseRoute(arrived)), arrived).toBe(arrived);
+    }
+  });
+
+  it("names the save page and the bookmarklet page for the shell", () => {
+    expect(routeTitle(parseRoute(path), [])).toBe("Save to Read");
+    expect(routeTitle(parseRoute("/bookmarklet"), [])).toBe("Save from your phone");
+  });
+});
+
+describe("the bookmarklet page", () => {
+  it("parses /bookmarklet and writes it back", () => {
+    expect(parseRoute("/bookmarklet")).toEqual({ kind: "bookmarklet" });
+    expect(formatRoute({ kind: "bookmarklet" })).toBe("/bookmarklet");
+  });
+
+  it("stays strict about anything else", () => {
+    for (const other of ["/bookmarklets", "/bookmarklet/x", "/save/x"]) {
+      expect(parseRoute(other), other).toEqual({ kind: "view", view: "unread" });
+    }
   });
 });

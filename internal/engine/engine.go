@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/frostyard/frostread/internal/blobs"
 	"github.com/frostyard/frostread/internal/config"
@@ -481,9 +482,41 @@ func (e *Engine) SetArchived(ctx context.Context, sc Scope, id int64, archived b
 	return nil
 }
 
-// SaveURL saves a link to read later. Saving it twice returns the same
-// item.
-func (e *Engine) SaveURL(ctx context.Context, sc Scope, rawurl string) (store.Item, error) {
+// TitleLimit is the most runes of a saved page's title: other people's
+// words are data, so a page cannot make an item's title arbitrarily long
+// (docs/specs/api.md, later.save).
+const TitleLimit = 300
+
+// cleanTitle makes a page's title a stored title: control characters go (a
+// line break counts as white space, so it becomes a space and does not run
+// two words together), every run of white space becomes one space, and it
+// is cut to TitleLimit runes. The words are kept as text; nothing in them
+// is markup.
+func cleanTitle(title string) string {
+	kept := strings.Map(func(r rune) rune {
+		if !unicode.IsControl(r) {
+			return r
+		}
+		if unicode.IsSpace(r) {
+			return ' '
+		}
+		return -1
+	}, title)
+	words := strings.Fields(kept)
+	if len(words) == 0 {
+		return ""
+	}
+	cleaned := []rune(strings.Join(words, " "))
+	if len(cleaned) > TitleLimit {
+		cleaned = cleaned[:TitleLimit]
+	}
+	return strings.TrimSpace(string(cleaned))
+}
+
+// SaveURL saves a link to read later, with the page's title when it has
+// one. A title that is empty after cleaning becomes the URL's host name.
+// Saving the same URL twice returns the same item, and keeps its title.
+func (e *Engine) SaveURL(ctx context.Context, sc Scope, rawurl, title string) (store.Item, error) {
 	if !sc.Write {
 		return store.Item{}, ErrReadOnly
 	}
@@ -491,7 +524,11 @@ func (e *Engine) SaveURL(ctx context.Context, sc Scope, rawurl string) (store.It
 		return store.Item{}, err
 	}
 	u, _ := url.Parse(rawurl)
-	it, err := e.o.Store.SaveLink(ctx, rawurl, u.Hostname())
+	name := cleanTitle(title)
+	if name == "" {
+		name = u.Hostname()
+	}
+	it, err := e.o.Store.SaveLink(ctx, rawurl, name)
 	if err != nil {
 		return store.Item{}, err
 	}

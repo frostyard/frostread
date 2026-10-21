@@ -1,0 +1,258 @@
+# The read domain: the sources, the items, the views, the search, the saved
+# links, save-as-note and the counts (docs/specs/api.md, JSON-RPC API).
+# api/read.go is what a generator writes from this file, by hand until the
+# app adopts one. events.subscribe is the events domain's.
+domain: read
+callers: [local, session]
+doc: >-
+  The reader's own methods. A browser session reaches them through lodge's
+  /app/read/api; readctl reaches them all on readd's private socket. A
+  write checks the caller's scope, and a method a caller may not use
+  answers methodNotFound.
+enums:
+  - name: NoteState
+    doc: Where an item's note is, as notes answers (docs/specs/api.md, Note status).
+    values:
+      - {name: present, doc: "The note is at the item's note_path."}
+      - {name: moved, doc: "The note is elsewhere in the vault, and found; its new path is recorded."}
+      - {name: missing, doc: "No note holds the item's marker any more; note_path is cleared."}
+      - {name: unreachable, doc: "Notes could not be asked within 5 seconds; the link and its path stay."}
+types:
+  - name: Source
+    doc: One subscription, as the sidebar shows it.
+    fields:
+      - {name: id, type: int}
+      - {name: url, type: string, doc: "The feed's URL."}
+      - {name: siteUrl, type: string, optional: true, doc: "The site's home, when the feed names it."}
+      - {name: title, type: string, doc: "The title the owner or the feed gave it."}
+      - {name: unread, type: int, doc: "Its unread items."}
+      - {name: errorCount, type: int, optional: true, doc: "Consecutive failed polls; absent when it has not failed."}
+      - {name: lastError, type: string, optional: true, doc: "The last poll's error; absent when it did not fail."}
+      - {name: polledAt, type: time, optional: true, doc: "The last successful poll; absent before the first."}
+      - {name: nextPollAt, type: time, optional: true, doc: "When it polls next; absent when none is scheduled."}
+  - name: SourceCount
+    doc: One source's unread items, for the sidebar.
+    fields:
+      - {name: sourceId, type: int}
+      - {name: unread, type: int}
+  - name: SourceList
+    doc: sources.list's result.
+    fields:
+      - {name: sources, type: "[]Source", doc: "Every source, by title."}
+  - name: SourceResult
+    doc: sources.add's result.
+    fields:
+      - {name: source, type: Source}
+  - name: ItemSummary
+    doc: An item in a list or a search result.
+    fields:
+      - {name: id, type: int}
+      - {name: title, type: string}
+      - {name: sourceTitle, type: string, optional: true, doc: "Its source's title; absent for a saved link."}
+      - {name: author, type: string, optional: true, doc: "When the feed or the page names one."}
+      - {name: published, type: time}
+      - {name: excerpt, type: string, optional: true, doc: "Its summary as text, at most 300 characters; absent when there is none yet."}
+      - {name: read, type: bool}
+      - {name: starred, type: bool}
+      - {name: archived, type: bool}
+      - {name: saved, type: bool, doc: "It is a saved link."}
+      - {name: notePath, type: string, optional: true, doc: "The note save-as-note wrote; absent when it wrote none."}
+      - {name: snippet, type: string, optional: true, doc: "Search results only: the match, its words between **."}
+  - name: ItemDetail
+    doc: A summary, and what the reader shows.
+    fields:
+      - {name: summary, type: ItemSummary, doc: "Its summary's fields, in the same object."}
+      - {name: url, type: string, doc: "The article's URL."}
+      - {name: contentPath, type: string, optional: true, doc: "item/<id>/<mac>, relative to the content root; absent when the daemon has no content route for it."}
+      - {name: extractState, type: string, doc: "pending, done or failed."}
+      - {name: extractError, type: string, optional: true, doc: "Why extraction failed; absent when it did not."}
+      - {name: originalHash, type: string, optional: true, doc: "The SHA-256 of the body as sent; absent before the page is fetched."}
+  - name: ItemsPage
+    doc: items.list's and items.search's result.
+    fields:
+      - {name: items, type: "[]ItemSummary"}
+      - {name: next, type: string, optional: true, doc: "The following page's cursor; absent on the last page."}
+  - name: ItemResult
+    doc: later.save's result.
+    fields:
+      - {name: item, type: ItemSummary}
+  - name: NoteResult
+    doc: items.saveAsNote's result.
+    fields:
+      - {name: path, type: string, doc: "The note's path in the vault."}
+      - {name: route, type: string, doc: "The lodge route that opens it, /notes/<vaultId>/<path segments, encoded>."}
+  - name: NoteStatusResult
+    doc: items.noteStatus's result.
+    fields:
+      - {name: state, type: NoteState}
+      - {name: path, type: string, optional: true, doc: "The note's path, present or moved, or the old one when notes could not be asked."}
+      - {name: route, type: string, optional: true, doc: "Its route in lodge, when it is present or moved."}
+      - {name: error, type: string, optional: true, doc: "Why notes could not answer, when the state is unreachable."}
+  - name: Counts
+    doc: The sidebar's counts.
+    fields:
+      - {name: views, type: "map[string]int", doc: "Every view's count: unread, starred, later, archive and all."}
+      - {name: sources, type: "[]SourceCount"}
+  - name: Note
+    doc: Whether save-as-note is ready.
+    fields:
+      - {name: configured, type: bool, doc: "A notes vault and token are configured."}
+      - {name: vaultId, type: int, doc: "The notes vault save-as-note writes into; 0 when none is set."}
+      - {name: folder, type: string, doc: "The folder in that vault."}
+  - name: Status
+    doc: status's result.
+    fields:
+      - {name: version, type: string, doc: "The daemon's version."}
+      - {name: notes, type: Note}
+  - name: OPMLImport
+    doc: opml.import's result.
+    fields:
+      - {name: added, type: int}
+      - {name: skipped, type: int, doc: "Outlines for a URL that is already a source."}
+  - name: OPMLDocument
+    doc: opml.export's result.
+    fields:
+      - {name: xml, type: string, doc: "Every source as an OPML 2.0 document."}
+methods:
+  - name: status
+    doc: The daemon's version, and whether save-as-note is ready.
+    result: Status
+  - name: sources.list
+    doc: Every source, by title.
+    result: SourceList
+  - name: sources.add
+    writes: true
+    doc: >-
+      Subscribe to a feed. A page is searched for its feed first, and the
+      feed is polled at once. A URL the fetcher refuses answers
+      invalidParams (ADR-0003), as does one that is already a source
+      (conflict).
+    params:
+      - {name: url, type: string, doc: "A feed's or a page's address."}
+    result: SourceResult
+    errors: [conflict, invalidParams]
+  - name: sources.remove
+    writes: true
+    doc: Unsubscribe; the source's items go with it.
+    params:
+      - {name: id, type: int}
+    errors: [notFound]
+  - name: sources.rename
+    writes: true
+    doc: Set the owner's title.
+    params:
+      - {name: id, type: int}
+      - {name: title, type: string}
+    errors: [notFound]
+  - name: sources.refresh
+    writes: true
+    doc: Poll now, one source or every source.
+    params:
+      - {name: id, type: int, optional: true, doc: "One source's id; absent or 0 polls every source."}
+    errors: [notFound]
+  - name: opml.import
+    writes: true
+    doc: Add every outline in an OPML document, skipping a URL that is already a source.
+    params:
+      - {name: xml, type: string}
+    result: OPMLImport
+    errors: [invalidParams]
+  - name: opml.export
+    doc: Every source as an OPML 2.0 document.
+    result: OPMLDocument
+  - name: items.list
+    doc: One page of a view or a source, newest first.
+    params:
+      - {name: view, type: string, doc: "unread, starred, later, archive or all."}
+      - {name: sourceId, type: int, optional: true, doc: "Only this source's items."}
+      - {name: cursor, type: string, optional: true, doc: "The previous page's next cursor; absent starts at the newest."}
+      - {name: limit, type: int, optional: true, doc: "At most this many; 1 to 200, 50 when absent."}
+    result: ItemsPage
+    errors: [invalidParams]
+  - name: items.get
+    doc: One item.
+    params:
+      - {name: id, type: int}
+    result: ItemDetail
+    errors: [notFound]
+  - name: items.search
+    doc: Full-text search, best match first, with a snippet.
+    params:
+      - {name: query, type: string}
+      - {name: limit, type: int, optional: true, doc: "At most this many; 1 to 200, 50 when absent."}
+    result: ItemsPage
+    errors: [invalidParams]
+  - name: items.setRead
+    writes: true
+    doc: Mark items read or unread.
+    params:
+      - {name: ids, type: "[]int"}
+      - {name: read, type: bool}
+  - name: items.markAllRead
+    writes: true
+    doc: Mark read every unread item in a view or a source, published before before.
+    params:
+      - {name: view, type: string, optional: true, doc: "A view; all when absent."}
+      - {name: sourceId, type: int, optional: true, doc: "Only this source's items."}
+      - {name: before, type: time, optional: true, doc: "Only items published before this time; absent takes every one."}
+    errors: [invalidParams]
+  - name: items.setStarred
+    writes: true
+    doc: Change an item's star.
+    params:
+      - {name: id, type: int}
+      - {name: starred, type: bool}
+    errors: [notFound]
+  - name: items.setArchived
+    writes: true
+    doc: Change an item's archive state.
+    params:
+      - {name: id, type: int}
+      - {name: archived, type: bool}
+    errors: [notFound]
+  - name: items.saveAsNote
+    writes: true
+    doc: >-
+      Write the article into notes, through notes' MCP on lodge's agent
+      socket with frostread's token, and record the note's path
+      (ADR-0004). A failed or pending extraction, a missing token or vault,
+      and notes out of reach answer unavailable.
+    params:
+      - {name: id, type: int}
+    result: NoteResult
+    errors: [notFound, unavailable]
+  - name: items.noteStatus
+    doc: >-
+      Ask notes where the item's note is, and keep note_path true: a moved
+      note's path is recorded, a missing one is cleared, and an
+      unreachable notes keeps it. Answers within 5 seconds.
+    params:
+      - {name: id, type: int}
+    result: NoteStatusResult
+    errors: [notFound, unavailable]
+  - name: later.save
+    writes: true
+    doc: >-
+      Save a link to read later, with the page's title when it has one. The
+      URL is checked before it is stored: a scheme other than http or
+      https, a URL that names a user, and an address inside the owner's
+      network answer invalidParams (ADR-0003, ADR-0006). The title is other
+      people's words: control characters go, each run of white space
+      becomes one space, it is trimmed and cut to 300 runes, and an empty
+      title becomes the URL's host name. Saving the same URL twice returns
+      the same item, and does not change its title.
+    params:
+      - {name: url, type: string}
+      - {name: title, type: string, optional: true, doc: "The page's title, as the bookmarklet read it; absent when there is none."}
+    result: ItemResult
+    errors: [invalidParams]
+  - name: counts
+    doc: The sidebar's counts.
+    result: Counts
+  - name: notes.setToken
+    writes: true
+    callers: [local]
+    doc: Write the notes token, 0600, and use it at once. The private socket's only method a session may not call.
+    params:
+      - {name: token, type: string}
+    errors: [invalidParams]

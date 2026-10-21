@@ -107,6 +107,17 @@ the path after it.
 an item list and a reader, with
 `j`/`k`, `s` and `m`, and the narrow layout on a phone.
 
+**Saving from another page.** `/save?url=<encoded>&title=<encoded>` is the
+page a bookmarklet opens: it shows the page's title and address as text,
+with the address's host, and saves only when the owner taps Save, through
+`later.save` on the app's own lodge session. The bookmarklet only
+navigates this tab; it holds no token. `/bookmarklet`, which the sidebar
+opens, hands the bookmarklet out with its code and the install steps for
+iOS Safari and a desktop browser. A saved title is cleaned and cut to 300
+runes, and the address is checked with `fetch.Check` before it is stored
+([ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md),
+[specs/api.md](../specs/api.md#web-routes)).
+
 ## Operational notes
 
 - **State:** `/var/lib/frostread` (`STATE_DIRECTORY`), with `frostread.db`,
@@ -132,6 +143,7 @@ an item list and a reader, with
   [ADR-0002](../adr/0002-agent-portable-instruction-surface.md),
   [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md),
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
-  [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)
+  [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
+  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
 - Contracts: [specs/api.md](../specs/api.md)
-- Built in: [roadmap — Phases 1 to 6](../plans/0001-roadmap.md)
+- Built in: [roadmap — Phases 1 to 7](../plans/0001-roadmap.md)

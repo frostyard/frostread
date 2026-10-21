@@ -276,7 +276,7 @@ type saveOut struct {
 }
 
 func (t *tools) saveURL(ctx context.Context, _ *mcp.CallToolRequest, in saveIn) (*mcp.CallToolResult, saveOut, error) {
-	it, err := t.o.Engine.SaveURL(ctx, t.scope, in.URL)
+	it, err := t.o.Engine.SaveURL(ctx, t.scope, in.URL, "")
 	if err != nil {
 		if sentence, ok := fetch.Refusal(err); ok {
 			t.o.Log.Info("a fetch was refused", "tool", "save_url", "err", err)

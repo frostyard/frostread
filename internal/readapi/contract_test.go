@@ -187,7 +187,7 @@ func seed(t *testing.T) *seeded {
 			}
 		}
 	}
-	saved, err := eng.SaveURL(ctx, engine.Scope{Write: true}, "https://example.org/later-reading")
+	saved, err := eng.SaveURL(ctx, engine.Scope{Write: true}, "https://example.org/later-reading", "")
 	if err != nil {
 		t.Fatal(err)
 	}

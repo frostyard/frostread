@@ -1,15 +1,18 @@
 // The app: the sidebar, the list and the reader, with a splitter between
 // them; one pane at a time below 600px (lodge-ui's useNarrow); the keys;
 // and the error Sheet.
+import { MAX_ROUTE } from "@frostyard/lodge-client";
 import { Sheet, Splitter, useNarrow } from "@frostyard/lodge-ui/react";
 import { useEffect, useRef, useState } from "react";
 import { commandFor } from "../lib/keys.js";
-import { formatRoute, routeTitle } from "../lib/routes.js";
+import { formatRoute, routeTitle, UNREAD } from "../lib/routes.js";
 import { openOutside, reportRoute } from "../lodge.js";
+import { BookmarkletPage } from "./BookmarkletPage.js";
 import { ConfirmSheet } from "./ConfirmSheet.js";
 import { useRead, useReadStore } from "./context.js";
 import { ListPane } from "./ListPane.js";
 import { Reader } from "./Reader.js";
+import { SavePage } from "./SavePage.js";
 import { Sidebar } from "./Sidebar.js";
 
 /** MIN and MAX bound a pane's width in pixels while it is dragged. */
@@ -37,10 +40,13 @@ export function App() {
   const search = useRef<HTMLInputElement>(null);
 
   // Report the route to the shell's address bar and history (the brief:
-  // report on every change). A title that arrives later replaces it.
+  // report on every change). A title that arrives later replaces it. A save
+  // route the shell would refuse (it takes at most MAX_ROUTE characters) is
+  // not reported: the shell already has the address the bookmarklet opened.
   const reported = useRef({ path: "", title: "" });
   useEffect(() => {
     const path = formatRoute(route);
+    if (route.kind === "save" && path.length > MAX_ROUTE) return;
     const title = routeTitle(route, sources, item?.title ?? "Read");
     if (path === reported.current.path && title === reported.current.title) return;
     reportRoute(path, title, path === reported.current.path);
@@ -52,6 +58,14 @@ export function App() {
       const command = commandFor(event);
       if (command === null) return;
       const state = store.getState();
+      if (state.route.kind === "save" || state.route.kind === "bookmarklet") {
+        // These pages are not the reader: no key acts on them, except that
+        // Escape may leave. An open Sheet takes its own Escape.
+        if (command !== "escape" || state.error !== null) return;
+        event.preventDefault();
+        void state.setRoute(UNREAD);
+        return;
+      }
       switch (command) {
         case "next":
           event.preventDefault();
@@ -121,6 +135,17 @@ export function App() {
         onClose={cancelMarkAll}
       />
     );
+
+  // The save page and the bookmarklet page stand over the whole frame, in
+  // both layouts: they are no list and no reader.
+  if (route.kind === "save" || route.kind === "bookmarklet") {
+    return (
+      <div className="flex h-full flex-col bg-window text-primary">
+        {route.kind === "save" ? <SavePage url={route.url} title={route.title} /> : <BookmarkletPage />}
+        {errorSheet}
+      </div>
+    );
+  }
 
   if (narrow) {
     return (

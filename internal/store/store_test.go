@@ -228,6 +228,30 @@ func TestExtractionAndBlobs(t *testing.T) {
 	}
 }
 
+// A saved page's title stays when the extraction finds no title of its own:
+// the item is called what the owner saved it as (items.SetExtraction).
+func TestExtractionKeepsASavedTitle(t *testing.T) {
+	d, _ := open(t)
+	ctx := t.Context()
+	it, err := d.SaveLink(ctx, "https://example.org/a-titled-page", "The page as I saved it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = d.SetExtraction(ctx, it.ID, Extraction{
+		Title: "", ContentHTML: `<p>the article</p>`, Text: "the article", State: ExtractDone,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.Item(ctx, it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "The page as I saved it" {
+		t.Fatalf("title after an extraction with none = %q, want the saved title", got.Title)
+	}
+}
+
 func TestPolling(t *testing.T) {
 	d, now := open(t)
 	ctx := t.Context()

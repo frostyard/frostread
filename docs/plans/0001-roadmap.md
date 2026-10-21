@@ -104,12 +104,28 @@ ticked as its work lands.
   binaries, `readctl import` adds the three feeds, and an article's
   content page renders with its inlined image.
 
+## Phase 7 — Save from the phone (in progress 2026-10-21)
+
+- `later.save`'s optional `title`, cleaned and cut to 300 runes, and the
+  engine test that an address inside the network is never stored
+  ([specs/api.md](../specs/api.md): the methods, and the web routes).
+- The save page at `/save?url=<encoded>&title=<encoded>`, which saves only
+  on the owner's tap, and the `/bookmarklet` page, whose code the bundle
+  builds from the frame's own origin.
+- The sidebar's "Save from your phone", and the install steps for iOS
+  Safari and a desktop browser
+  ([ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)).
+- **Done when:** the owner installs the bookmarklet in iOS Safari and
+  saves one page to read later through it.
+
 ## Later / ideas
 
 - Summaries through `kit/inference`, at background priority.
 - Highlights and notes on an article.
 - A share target: it needs a service worker, which lodge refuses
-  (ADR-0008), so it stays out until Web Push is asked for.
+  (ADR-0008), so it stays out until Web Push is asked for. The bookmarklet
+  is what saves from a phone instead
+  ([ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)).
 
 ## Open questions
 
@@ -126,7 +142,8 @@ ticked as its work lands.
   [specs/api.md](../specs/api.md)
 - Rationale: [ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md),
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
-  [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)
+  [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
+  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
 
 ### Phase 6 evidence, 2026-10-21
 

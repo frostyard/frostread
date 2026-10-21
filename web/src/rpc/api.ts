@@ -168,7 +168,8 @@ export interface ReadAPI {
   setArchived(id: number, archived: boolean): Promise<void>;
   saveAsNote(id: number): Promise<Note>;
   noteStatus(id: number): Promise<NoteStatus>;
-  saveLater(url: string): Promise<ItemSummary>;
+  /** saveLater saves a link to read later, with the page's title when there is one. */
+  saveLater(url: string, title?: string): Promise<ItemSummary>;
 }
 
 /** readAPI returns the typed methods over a transport. */
@@ -214,7 +215,10 @@ export function readAPI(transport: Transport): ReadAPI {
     },
     saveAsNote: (id) => call<Note>("items.saveAsNote", { id }),
     noteStatus: (id) => call<NoteStatus>("items.noteStatus", { id }),
-    saveLater: (url) => call<{ item: ItemSummary }>("later.save", { url }).then((r) => r.item),
+    saveLater: (url, title) =>
+      call<{ item: ItemSummary }>("later.save", title === undefined || title === "" ? { url } : { url, title }).then(
+        (r) => r.item,
+      ),
   };
 }
 
