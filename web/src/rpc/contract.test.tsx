@@ -11,7 +11,7 @@ import { ItemRow } from "../components/ItemRow.js";
 import { Reader } from "../components/Reader.js";
 import { SourceRow } from "../components/Sidebar.js";
 import { createReadStore } from "../store.js";
-import type { Counts, ImportResult, ItemDetail, ItemSummary, Note, Source, Status } from "./api.js";
+import type { Counts, ImportResult, ItemDetail, ItemSummary, Note, NoteStatus, Source, Status } from "./api.js";
 import {
   checked,
   type Problems,
@@ -21,6 +21,7 @@ import {
   validateItemDetail,
   validateItemResult,
   validateNote,
+  validateNoteStatus,
   validateNull,
   validateOPML,
   validatePage,
@@ -36,6 +37,7 @@ import failedJSON from "./testdata/items.get.failed.json";
 import savedJSON from "./testdata/items.get.saved.json";
 import allJSON from "./testdata/items.list.all.json";
 import unreadJSON from "./testdata/items.list.unread.json";
+import noteStatusJSON from "./testdata/items.noteStatus.json";
 import saveAsNoteJSON from "./testdata/items.saveAsNote.json";
 import searchJSON from "./testdata/items.search.json";
 import laterJSON from "./testdata/later.save.json";
@@ -102,6 +104,13 @@ describe("the daemon's answers match api.ts", () => {
     expect(saved.excerpt).toBeUndefined();
     expect(saved.notePath).toBeUndefined();
     expect(saved.extractState).toBe("pending");
+  });
+
+  it("items.noteStatus: a note it found is present, with its route", () => {
+    const status = checked<NoteStatus>(noteStatusJSON, validateNoteStatus);
+    expect(status.state).toBe("present");
+    expect(status.path?.endsWith(".md")).toBe(true);
+    expect(status.route?.startsWith("/notes/1/")).toBe(true);
   });
 
   it("items.saveAsNote and later.save", () => {

@@ -104,6 +104,7 @@ what search returns too, unless a query says otherwise.
 | `items.setStarred` | `{id, starred}` | `{}` | |
 | `items.setArchived` | `{id, archived}` | `{}` | |
 | `items.saveAsNote` | `{id}` | `{path, route}` | writes the article into notes; `route` is `/notes/<vaultId>/<path segments, encoded>`, for lodge-client's `open` |
+| `items.noteStatus` | `{id}` | `NoteStatus` | asks notes where the item's note is; `present`, `moved` (and records the new path), `missing` (and clears `note_path`) or `unreachable` (keeping it), within 5 seconds |
 | `later.save` | `{url}` | `{item: ItemSummary}` | saves a link to read later; saving it twice returns the same item |
 | `counts` | none | `{views: {unread, starred, later, archive, all}, sources: [{sourceId, unread}]}` | the sidebar's counts |
 | `notes.setToken` | `{token}` | `{}` | caller `local` only: writes the notes token, 0600, and uses it at once |
@@ -117,6 +118,15 @@ Errors are the scaffold's codes: `invalidParams` (a bad view, limit, cursor
 or URL), `notFound` (an unknown item or source), `conflict` (a URL that is
 already a source), `unavailable` (save-as-note with no token or no vault,
 or notes is not reachable) and `internal`.
+
+`NoteStatus`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `state` | string | `present`, `moved`, `missing` or `unreachable` |
+| `path` | string | the note's path, present or moved, or the old one when notes could not be asked |
+| `route` | string | its route in lodge, present or moved |
+| `error` | string | why notes could not answer, when the state is `unreachable` |
 
 #### Notifications
 
@@ -134,6 +144,34 @@ counts and the list it shows. `readctl` does not subscribe, so it receives
 no events. A notification may reach a client before the answer to its own
 `events.subscribe`; a client that ignores one before it has subscribed
 anyway loses nothing, because it refetches on connecting.
+
+#### Note status
+
+An item that saved a note keeps its path in `note_path`, and the reader
+offers "Open in Notes". The note can move, or go, so `items.noteStatus`
+asks notes, with the token's own scope, which reads the whole vault
+([frostnotes ADR-0028](https://github.com/frostyard/frostnotes/blob/main/docs/adr/0028-an-agents-scope-can-limit-writes-to-folders.md)):
+
+- **The marker.** Every new note's frontmatter holds `read_item:
+  /read/item/<id>`, the article's rooted path in the reader, beside
+  `source`, `saved`, `author` and `site`.
+- **Present:** `read_note` at `note_path` answers.
+- **Moved:** the read fails as not found, so the daemon looks for the
+  marker with `list_notes{property: "read_item", value: "/read/item/<id>"}`.
+  For a note written before the marker, it lists the notes under
+  `Reading/` (at most 50) and reads each for the item's link,
+  `/read/item/<id>`. A found note's path is recorded in `note_path`, and
+  the answer is `moved` with its route.
+- **Missing:** neither finds the note. `note_path` is cleared, and the
+  reader offers "Save as note" again.
+- **Unreachable:** a transport, authentication or protocol error, or the
+  5 second timeout. `note_path` stays, and the error is the answer's
+  `error`, which the reader shows beside the link.
+- **What this does not detect:** an old note, without the marker, that was
+  moved out of `Reading/`; a note whose marker and "Open in Read" link were
+  both edited away; and a note beyond the first 50 under `Reading/` in
+  path order. A renamed or moved note with its marker is found anywhere in
+  the vault.
 
 ### MCP
 
@@ -232,6 +270,7 @@ the private socket's JSON-RPC as caller `local`.
 | `add <feed-url>` | subscribes, discovering the feed from a page |
 | `sources` | lists sources with their unread counts |
 | `note <item-id>` | saves the article as a note, and prints its path and its route in notes |
+| `note-status <item-id>` | prints where the item's note is: `present`, `moved`, `missing` or `unreachable`, with its path or the error |
 | `import <file.opml>` | imports the file's outlines; `-` reads stdin |
 | `export` | writes the OPML to stdout |
 | `poll [source-id]` | polls every source now, or one source |

@@ -171,6 +171,19 @@ func (s *Service) SaveAsNote(ctx context.Context, id int64) (string, string, err
 	return path, route, s.fail(err)
 }
 
+// NoteStatus implements items.noteStatus.
+func (s *Service) NoteStatus(ctx context.Context, id int64) (api.NoteStatusResult, error) {
+	st, err := s.Engine.NoteStatus(ctx, id)
+	if err != nil {
+		return api.NoteStatusResult{}, s.fail(err)
+	}
+	out := api.NoteStatusResult{State: api.NoteState(st.State), Path: st.Path, Error: st.Error}
+	if st.State == notes.StatePresent || st.State == notes.StateMoved {
+		out.Route = s.Engine.NoteRoute(st.Path)
+	}
+	return out, nil
+}
+
 // SaveURL implements later.save.
 func (s *Service) SaveURL(ctx context.Context, url string) (engine.Summary, error) {
 	it, err := s.Engine.SaveURL(ctx, write, url)

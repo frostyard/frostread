@@ -25,10 +25,16 @@ import (
 	"github.com/frostyard/frostread/internal/store"
 )
 
-// NoteSaver writes an article into the notes vault; notes.Client is one.
+// NoteSaver writes an article into the notes vault and finds its note
+// again; notes.Client is one.
 type NoteSaver interface {
 	Save(ctx context.Context, a notes.Article) (path string, err error)
+	Find(ctx context.Context, path string, itemID int64) notes.Status
 }
+
+// NoteTimeout caps what a note's status costs: notes' MCP, and a look for a
+// moved note, answer within it or the status is unreachable.
+const NoteTimeout = 5 * time.Second
 
 // Options configure an Engine.
 type Options struct {
@@ -528,6 +534,49 @@ func (e *Engine) SaveAsNote(ctx context.Context, id int64) (path, route string, 
 	}
 	e.change("all")
 	return path, notes.Route(e.o.Config.NotesVault, path), nil
+}
+
+// NoteStatus asks notes about an item's note, and keeps the item's
+// note_path true: a moved note's new path is recorded, and a missing one is
+// cleared. An unreachable notes keeps the path, so the link survives.
+func (e *Engine) NoteStatus(ctx context.Context, id int64) (notes.Status, error) {
+	e.mu.Lock()
+	s := e.notes
+	e.mu.Unlock()
+	if s == nil || e.o.Config.NotesVault == 0 {
+		return notes.Status{}, fmt.Errorf("save as a note: %w", ErrUnavailable)
+	}
+	it, err := e.o.Store.Item(ctx, id)
+	if err != nil {
+		return notes.Status{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, NoteTimeout)
+	defer cancel()
+	st := s.Find(ctx, it.NotePath, it.ID)
+	switch st.State {
+	case notes.StateMoved:
+		if err := e.o.Store.SetNotePath(ctx, id, st.Path); err != nil {
+			return st, err
+		}
+		e.change("all")
+	case notes.StateMissing:
+		if it.NotePath != "" {
+			if err := e.o.Store.SetNotePath(ctx, id, ""); err != nil {
+				return st, err
+			}
+			e.change("all")
+		}
+	}
+	return st, nil
+}
+
+// NoteRoute is a note's address in lodge, or "" when notes is not
+// configured.
+func (e *Engine) NoteRoute(path string) string {
+	if path == "" || e.o.Config.NotesVault == 0 {
+		return ""
+	}
+	return notes.Route(e.o.Config.NotesVault, path)
 }
 
 // Counts is the sidebar's counts.

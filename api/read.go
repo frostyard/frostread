@@ -141,6 +141,33 @@ type ItemResult struct {
 	Item engine.Summary `json:"item"`
 }
 
+// NoteStatusParams holds the params of items.noteStatus.
+type NoteStatusParams struct {
+	ID int64 `json:"id"`
+}
+
+// NoteState is where an item's note is.
+type NoteState string
+
+const (
+	// NotePresent means the note is at the item's note_path.
+	NotePresent NoteState = "present"
+	// NoteMoved means the note is elsewhere in the vault, and found.
+	NoteMoved NoteState = "moved"
+	// NoteMissing means no note holds the item's marker any more.
+	NoteMissing NoteState = "missing"
+	// NoteUnreachable means notes could not be asked; the link stays.
+	NoteUnreachable NoteState = "unreachable"
+)
+
+// NoteStatusResult is items.noteStatus's result.
+type NoteStatusResult struct {
+	State NoteState `json:"state"`
+	Path  string    `json:"path,omitzero"`
+	Route string    `json:"route,omitzero"`
+	Error string    `json:"error,omitzero"`
+}
+
 // Counts is the counts method's result.
 type Counts struct {
 	Views   map[string]int      `json:"views"`
@@ -171,6 +198,7 @@ type ReadService interface {
 	SetStarred(ctx context.Context, id int64, starred bool) error
 	SetArchived(ctx context.Context, id int64, archived bool) error
 	SaveAsNote(ctx context.Context, id int64) (path, route string, err error)
+	NoteStatus(ctx context.Context, id int64) (NoteStatusResult, error)
 	SaveURL(ctx context.Context, url string) (engine.Summary, error)
 	Counts(ctx context.Context) (Counts, error)
 	SetNotesToken(ctx context.Context, token string) error
@@ -306,6 +334,13 @@ func registerRead(r *Router, s ReadService) {
 			return nil, err
 		}
 		return NoteResult{Path: path, Route: route}, nil
+	})
+	r.handle("items.noteStatus", session, func(ctx context.Context, raw jsontext.Value) (any, error) {
+		var p NoteStatusParams
+		if err := decodeParams(raw, &p, []string{"id"}); err != nil {
+			return nil, err
+		}
+		return s.NoteStatus(ctx, p.ID)
 	})
 	r.handle("later.save", session, func(ctx context.Context, raw jsontext.Value) (any, error) {
 		var p SaveParams
@@ -446,6 +481,13 @@ func (x ReadClient) SaveAsNote(ctx context.Context, id int64) (path, route strin
 	var out NoteResult
 	err = x.c.Call(ctx, "items.saveAsNote", ItemParams{ID: id}, &out)
 	return out.Path, out.Route, err
+}
+
+// NoteStatus calls items.noteStatus.
+func (x ReadClient) NoteStatus(ctx context.Context, id int64) (NoteStatusResult, error) {
+	var out NoteStatusResult
+	err := x.c.Call(ctx, "items.noteStatus", NoteStatusParams{ID: id}, &out)
+	return out, err
 }
 
 // SaveURL calls later.save.

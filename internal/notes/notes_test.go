@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,30 @@ type created struct {
 	Created bool   `json:"created"`
 }
 
+type pathIn struct {
+	Path string `json:"path" jsonschema:"the note's path"`
+}
+
+type listIn struct {
+	Folder   string `json:"folder,omitzero"`
+	Property string `json:"property,omitzero"`
+	Value    string `json:"value,omitzero"`
+	Limit    int    `json:"limit,omitzero"`
+}
+
+type listEntry struct {
+	Path string `json:"path"`
+}
+
+type listNotesOut struct {
+	Notes []listEntry `json:"notes"`
+}
+
+type readNoteOut struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
 // fakeNotes is notes' side: create_note, refusing a path that exists.
 type fakeNotes struct {
 	mu   sync.Mutex
@@ -33,6 +58,31 @@ func (f *fakeNotes) server(t *testing.T) *httptest.Server {
 	t.Helper()
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		s := mcp.NewServer(&mcp.Implementation{Name: "fake-notes"}, nil)
+		mcp.AddTool(s, &mcp.Tool{Name: "read_note", Description: "Read a note."},
+			func(_ context.Context, _ *mcp.CallToolRequest, in pathIn) (*mcp.CallToolResult, readNoteOut, error) {
+				f.mu.Lock()
+				content, ok := f.have[in.Path]
+				f.mu.Unlock()
+				if !ok {
+					return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{
+						&mcp.TextContent{Text: "notFound: note " + in.Path + " does not exist"}}}, readNoteOut{}, nil
+				}
+				return nil, readNoteOut{Path: in.Path, Content: content}, nil
+			})
+		mcp.AddTool(s, &mcp.Tool{Name: "list_notes", Description: "List notes."},
+			func(_ context.Context, _ *mcp.CallToolRequest, in listIn) (*mcp.CallToolResult, listNotesOut, error) {
+				f.mu.Lock()
+				defer f.mu.Unlock()
+				out := listNotesOut{Notes: []listEntry{}}
+				for path, content := range f.have {
+					if in.Property != "" && !strings.Contains(content, in.Property+": "+in.Value) {
+						continue
+					}
+					out.Notes = append(out.Notes, listEntry{Path: path})
+				}
+				slices.SortFunc(out.Notes, func(a, b listEntry) int { return strings.Compare(a.Path, b.Path) })
+				return nil, out, nil
+			})
 		mcp.AddTool(s, &mcp.Tool{Name: "create_note", Description: "Create a note."},
 			func(_ context.Context, _ *mcp.CallToolRequest, in createIn) (*mcp.CallToolResult, created, error) {
 				f.mu.Lock()
@@ -82,7 +132,7 @@ func TestSave(t *testing.T) {
 	}
 	body := f.content(path)
 	for _, want := range []string{
-		"---\nsource: https://example.com/garden\nsaved: 2026-10-21\nauthor: Ann Author\nsite: Example Journal\n---",
+		"---\nread_item: /read/item/7\nsource: https://example.com/garden\nsaved: 2026-10-21\nauthor: Ann Author\nsite: Example Journal\n---",
 		"# Gardening in the spring",
 		"[Open in Read](/read/item/7)",
 		"[image: A ripe tomato](https://example.com/tomato.png)",
@@ -168,5 +218,45 @@ func TestRoute(t *testing.T) {
 	want := "/notes/2/Reading/2026-10-21%20A%20tomato.md"
 	if got != want {
 		t.Fatalf("route = %q, want %q", got, want)
+	}
+}
+
+// Find answers present, missing or moved from what notes holds, and never
+// calls a failure to answer missing.
+func TestFind(t *testing.T) {
+	f := &fakeNotes{have: map[string]string{
+		"Reading/kept.md":   "---\nread_item: /read/item/7\n---\n\n# Kept\n",
+		"Reading/linked.md": "# Linked\n\n[Open in Read](/read/item/9)\n",
+		"Other/moved.md":    "---\nread_item: /read/item/8\n---\n\n# Moved\n",
+	}}
+	srv := f.server(t)
+	c := &Client{HTTP: srv.Client(), Endpoint: srv.URL, Folder: "Reading/", VaultID: 1, Version: "test"}
+
+	for _, tc := range []struct {
+		name string
+		path string
+		id   int64
+		want string
+		got  string
+	}{
+		{"present", "Reading/kept.md", 7, StatePresent, "Reading/kept.md"},
+		{"missing", "Reading/gone.md", 42, StateMissing, ""},
+		{"moved by its marker", "Reading/gone.md", 8, StateMoved, "Other/moved.md"},
+		{"moved, an older note by its link", "Reading/gone.md", 9, StateMoved, "Reading/linked.md"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := c.Find(t.Context(), tc.path, tc.id)
+			if st.State != tc.want || st.Path != tc.got {
+				t.Fatalf("Find(%q, %d) = %+v, want %s %q", tc.path, tc.id, st, tc.want, tc.got)
+			}
+		})
+	}
+
+	// Notes out of reach is unreachable, with the path kept.
+	dead := &Client{HTTP: &http.Client{Timeout: time.Second}, Endpoint: "http://127.0.0.1:1/mcp",
+		Folder: "Reading/", VaultID: 1}
+	st := dead.Find(t.Context(), "Reading/kept.md", 7)
+	if st.State != StateUnreachable || st.Path != "Reading/kept.md" || st.Error == "" {
+		t.Fatalf("unreachable = %+v", st)
 	}
 }

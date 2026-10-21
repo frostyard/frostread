@@ -69,6 +69,14 @@ type saver struct{ path string }
 
 func (s saver) Save(context.Context, notes.Article) (string, error) { return s.path, nil }
 
+// Find answers as notes would for the saved note: present where it is.
+func (s saver) Find(_ context.Context, path string, _ int64) notes.Status {
+	if path == "" {
+		return notes.Status{State: notes.StateMissing}
+	}
+	return notes.Status{State: notes.StatePresent, Path: path}
+}
+
 // full is an article long enough that a feed carries it whole.
 var full = strings.Repeat("Plant tomatoes after the last frost, water them well, and wait for the fruit. ", 12)
 
@@ -239,6 +247,7 @@ func TestContract(t *testing.T) {
 		{"items.get.saved", "items.get", `{"id":` + itoa(s.saved) + `}`},
 		{"items.search", "items.search", `{"query":"tomatoes","limit":10}`},
 		{"items.saveAsNote", "items.saveAsNote", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`},
+		{"items.noteStatus", "items.noteStatus", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`},
 		{"later.save", "later.save", `{"url":"https://example.org/read-later"}`},
 		{"events.subscribe", "events.subscribe", `{}`},
 		{"opml.export", "opml.export", `{}`},

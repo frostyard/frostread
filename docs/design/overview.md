@@ -87,8 +87,13 @@ and the engine checks the scope again on every write.
 **Save as a note.** `internal/notes` calls notes' `create_note` through
 lodge's agent socket with frostread's own scoped token
 ([ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md)).
-The note is Markdown, with frontmatter, and a rooted link back to the
-article.
+The note is Markdown, with frontmatter (including the `read_item` marker),
+and a rooted link back to the article. When the reader opens an item with a
+note, and again when the owner clicks "Open in Notes", the app asks
+`items.noteStatus`: a moved note is found by its marker and opened at its
+new path, a missing one turns the button back into "Save as note", and an
+unreachable notes keeps the link with the error shown
+([specs/api.md](../specs/api.md#note-status)).
 
 **Content.** `internal/content` serves
 `/content/item/<id>/<mac>` (the public `CONTENT/read/item/<id>/<mac>`) as one
