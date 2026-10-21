@@ -76,6 +76,15 @@ func TestPlainText(t *testing.T) {
 	if got != "One two. Three" {
 		t.Fatalf("plain text = %q", got)
 	}
+	// A block's words never run into the next block's: a figure's caption
+	// follows the paragraph with a space, not "mind.A".
+	got = PlainText(`<p>The dog does not mind.</p><figure><img src="https://example.com/t.png" alt="x"><figcaption>A made-up tomato.</figcaption></figure>`)
+	if got != "The dog does not mind. A made-up tomato." {
+		t.Fatalf("blocks ran together: %q", got)
+	}
+	if got := PlainText(`<p>One<br>Two</p><div>Three</div><ul><li>Four</li><li>Five</li></ul>`); got != "One Two Three Four Five" {
+		t.Fatalf("blocks = %q", got)
+	}
 	// html.Parse is forgiving: stray text stays text.
 	if got := PlainText("<"); got != "<" {
 		t.Fatalf("stray text = %q", got)

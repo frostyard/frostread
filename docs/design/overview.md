@@ -90,7 +90,8 @@ The note is Markdown, with frontmatter, and a rooted link back to the
 article.
 
 **Content.** `internal/content` serves
-`/content/item/<mac>` as one HTML page with inline styles and `data:` image
+`/content/item/<id>/<mac>` (the public `CONTENT/read/item/<id>/<mac>`) as one
+HTML page with inline styles and `data:` image
 URIs, only from lodge-content. The MAC is `HMAC-SHA256` of `item:<id>`
 under the store's secret, base64url, 22 characters, and the id travels in
 the path after it.

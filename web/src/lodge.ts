@@ -35,11 +35,14 @@ export function openOutside(url: string): void {
   window.open(url, "_blank", "noopener");
 }
 
-/** contentSrc is an item's article as lodge's content URL, or null outside
- * lodge and for an item the daemon has no content route for. */
+/**
+ * contentSrc is an item's article as lodge's content URL, or null outside
+ * lodge and for an item the daemon has no content route for. contentPath is
+ * relative to the content root, such as item/3/<mac>, which is what
+ * lodge-client's contentURL takes: CONTENT/<app>/<path>.
+ */
 export function contentSrc(contentPath: string | undefined): string | null {
   const shell = lodge();
-  if (shell === null || contentPath === undefined) return null;
-  // lodge-client's contentURL takes the path without its leading slash.
-  return shell.contentURL(contentPath.replace(/^\//, ""));
+  if (shell === null || contentPath === undefined || contentPath === "" || contentPath.startsWith("/")) return null;
+  return shell.contentURL(contentPath);
 }

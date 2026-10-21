@@ -88,3 +88,25 @@ describe("the store", () => {
     expect(store.getState().item?.url).toBe("https://example.com/read-this");
   });
 });
+
+describe("a permalink into the reader", () => {
+  it("opens an item outside the current view, with the All list behind it", async () => {
+    const store = await connected();
+    // An archived article is not in the Unread list the store starts with.
+    const api = store.getState().api;
+    expect(api).not.toBeNull();
+    if (api === null) return;
+    const archived = (await api.listItems({ view: "archive", limit: 5 })).items[0];
+    expect(archived).toBeDefined();
+    if (archived === undefined) return;
+    expect(store.getState().items.some((item) => item.id === archived.id)).toBe(false);
+
+    await store.getState().setRoute({ kind: "item", id: archived.id });
+
+    const state = store.getState();
+    expect(state.route).toEqual({ kind: "item", id: archived.id });
+    expect(state.listRoute).toEqual({ kind: "view", view: "all" });
+    expect(state.items.some((item) => item.id === archived.id)).toBe(true);
+    expect(state.item?.id).toBe(archived.id);
+  });
+});

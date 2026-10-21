@@ -46,7 +46,7 @@ func TestPage(t *testing.T) {
 	h, _, id := setup(t)
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	res, err := http.Get(srv.URL + h.Path(id))
+	res, err := http.Get(srv.URL + "/content/" + h.Path(id))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestPendingItemShowsSanitizedSummary(t *testing.T) {
 	}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	res, err := http.Get(srv.URL + h.Path(ids[0]))
+	res, err := http.Get(srv.URL + "/content/" + h.Path(ids[0]))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestWrongMACIs404(t *testing.T) {
 	h, _, id := setup(t)
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	good := h.Path(id)
+	good := "/content/" + h.Path(id)
 	for _, path := range []string{
 		strings.TrimSuffix(good, good[len(good)-4:]) + "aaaa", // a wrong MAC
 		"/content/item/99/" + good[len(good)-22:],             // another item
@@ -123,6 +123,28 @@ func TestWrongMACIs404(t *testing.T) {
 		if res.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s = %d, want 404", path, res.StatusCode)
 		}
+	}
+}
+
+// The path is relative to the content root, as lodge-client expects: no
+// leading slash, and no "content/" segment, which this handler answers
+// under.
+func TestPathIsRelativeToTheContentRoot(t *testing.T) {
+	h, _, id := setup(t)
+	path := h.Path(id)
+	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, "content/") || !strings.HasPrefix(path, "item/") {
+		t.Fatalf("Path = %q, want item/<id>/<mac>", path)
+	}
+	// The handler answers /content/ and the path.
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/content/" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("/content/%s = %d, want 200", path, res.StatusCode)
 	}
 }
 
@@ -145,7 +167,7 @@ func TestMissingItemIs404(t *testing.T) {
 	h, _, _ := setup(t)
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	res, err := http.Get(srv.URL + h.Path(999))
+	res, err := http.Get(srv.URL + "/content/" + h.Path(999))
 	if err != nil {
 		t.Fatal(err)
 	}

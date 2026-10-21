@@ -45,8 +45,9 @@ type Options struct {
 	// SetNotesToken writes a new notes token and rebuilds Notes; nil
 	// keeps the token that is set.
 	SetNotesToken func(token string) error
-	// ContentPath is an item's content URL, the MAC included; nil makes
-	// every detail's path empty.
+	// ContentPath is an item's content path relative to the content root,
+	// such as item/3/<mac>, for lodge-client's contentURL; nil makes every
+	// detail's path empty.
 	ContentPath func(id int64) string
 	// OnChange receives the views a change affects, for items.changed.
 	OnChange func(views []string)

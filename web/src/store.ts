@@ -97,6 +97,11 @@ export function createReadStore(): StoreApi<ReadStore> {
 
     async setRoute(route) {
       if (route.kind === "item") {
+        // A permalink may name an item outside the current list: the All
+        // list is what stands behind it, whatever view was showing.
+        const all: Route = { kind: "view", view: "all" };
+        set({ route, listRoute: all, selectedId: route.id, item: null, query: "", error: null });
+        await get().load();
         await get().open(route.id);
         return;
       }

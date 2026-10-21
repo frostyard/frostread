@@ -7,6 +7,6 @@
   "archived": false,
   "saved": true,
   "url": "https://example.org/later-reading",
-  "contentPath": "/content/item/5/contract-mac",
+  "contentPath": "item/5/contract-mac",
   "extractState": "pending"
 }

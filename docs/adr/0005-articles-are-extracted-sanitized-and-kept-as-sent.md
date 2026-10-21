@@ -48,7 +48,7 @@ style (system fonts, a 42 rem column, light and dark by
 byline and the sanitized content, with every `blob:<hash>` replaced by a
 `data:<mime>;base64,…` URI. Lodge's content CSP allows only `img-src
 data:`, so nothing else could load. The page is served at
-`https://CONTENT/read/content/item/<mac>` under a MAC, never a guessable id
+`https://CONTENT/read/item/<id>/<mac>` under a MAC, never a guessable id
 ([ADR-0003's sibling rule, lodge-http.md's content routes](https://github.com/frostyard/lodge/blob/main/docs/specs/lodge-http.md#content-routes)).
 
 **The original is kept as sent.** The bytes the feed or the page returned

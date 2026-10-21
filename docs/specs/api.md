@@ -79,7 +79,7 @@ what search returns too, unless a query says otherwise.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `url` | string | the article's URL |
-| `contentPath` | string | `/content/item/<id>/<mac>`, for lodge-client's `contentURL` |
+| `contentPath` | string | the article's path relative to the content root, `item/<id>/<mac>`, for lodge-client's `contentURL`, which builds `CONTENT/read/<contentPath>` |
 | `extractState` | string | `pending`, `done` or `failed` |
 | `extractError` | string | why extraction failed, empty when it did not |
 | `originalHash` | string | the SHA-256 of the body as sent |
@@ -166,6 +166,12 @@ a line saying so.
 `GET /content/item/<id>/<mac>`, for caller `content`, only from
 lodge-content. The manifest sets `"content": true` and
 `"contentLinks": true`.
+
+- **The public URL** is `CONTENT/read/item/<id>/<mac>`: lodge-content maps
+  `CONTENT/<id>/<path>` to the app's `/content/<path>`, and an item's
+  `contentPath` is `item/<id>/<mac>`, relative to that root. It has no
+  leading slash and no `content/` segment, because lodge-client's
+  `contentURL` adds `CONTENT/<app>/`.
 
 - `mac` is `base64url(HMAC-SHA256(secret, "item:<id>"))` cut to 22
   characters. `secret` is 32 random bytes in the store's `settings`,

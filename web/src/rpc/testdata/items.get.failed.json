@@ -9,7 +9,7 @@
   "archived": false,
   "saved": false,
   "url": "https://example.com/fails",
-  "contentPath": "/content/item/2/contract-mac",
+  "contentPath": "item/2/contract-mac",
   "extractState": "failed",
   "extractError": "the page answers 500",
   "originalHash": "838485e01e095157c3023445252559256e2a26220b0192ff585382ded9d8caae"

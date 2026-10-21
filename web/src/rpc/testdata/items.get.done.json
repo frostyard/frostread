@@ -10,7 +10,7 @@
   "archived": false,
   "saved": false,
   "url": "https://example.com/tomatoes",
-  "contentPath": "/content/item/1/contract-mac",
+  "contentPath": "item/1/contract-mac",
   "extractState": "done",
   "originalHash": "fdbab2dffb9bbd83849a6420c459a181aaa0c757b07cff767cadd74cc8fa6a1c"
 }

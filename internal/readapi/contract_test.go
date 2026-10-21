@@ -133,7 +133,7 @@ func seed(t *testing.T) *seeded {
 		Config:   config.Config{PollInterval: "20m", NotesFolder: "Reading/", NotesVault: 1},
 		Interval: 20 * time.Minute, Version: "contract",
 		Notes:       saver{path: "Reading/2026-10-20 Planting tomatoes after the last frost.md"},
-		ContentPath: func(id int64) string { return "/content/item/" + itoa(id) + "/contract-mac" },
+		ContentPath: func(id int64) string { return "item/" + itoa(id) + "/contract-mac" },
 		Now:         func() time.Time { return now },
 		Rand:        func() float64 { return 0.5 },
 	})

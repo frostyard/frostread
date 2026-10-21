@@ -60,8 +60,23 @@ func HTML(untrusted string) string {
 	return linkTargets(clean)
 }
 
-// PlainText returns the text of some HTML, with a space between elements:
-// what an excerpt or a search index needs.
+// blocks are the elements that start and end a line of text. A block's
+// words never run into its neighbour's: "mind." and "A tomato." are two
+// sentences, so a line break separates them (ADR-0005's text, for an
+// excerpt and for the search index).
+var blocks = map[string]bool{
+	"address": true, "article": true, "aside": true, "blockquote": true, "br": true,
+	"dd": true, "div": true, "dl": true, "dt": true, "figcaption": true, "figure": true,
+	"footer": true, "h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+	"header": true, "hr": true, "li": true, "main": true, "nav": true, "ol": true, "p": true,
+	"pre": true, "section": true, "table": true, "tbody": true, "td": true, "tfoot": true,
+	"th": true, "thead": true, "tr": true, "ul": true,
+}
+
+// PlainText returns the text of some HTML, a line break between blocks and
+// a space between a block's words: what an excerpt or a search index
+// needs. The result has no line breaks of its own: its words are joined by
+// single spaces.
 func PlainText(untrusted string) string {
 	doc, err := html.Parse(strings.NewReader(untrusted))
 	if err != nil {
@@ -70,19 +85,18 @@ func PlainText(untrusted string) string {
 	var b strings.Builder
 	var walk func(n *html.Node)
 	walk = func(n *html.Node) {
-		switch n.Type {
-		case html.TextNode:
+		block := n.Type == html.ElementNode && blocks[n.Data]
+		if block {
+			b.WriteByte('\n')
+		}
+		if n.Type == html.TextNode {
 			b.WriteString(n.Data)
-		case html.ElementNode:
-			switch n.Data {
-			case "p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre":
-				if b.Len() > 0 && !strings.HasSuffix(b.String(), " ") {
-					b.WriteByte(' ')
-				}
-			}
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			walk(c)
+		}
+		if block {
+			b.WriteByte('\n')
 		}
 	}
 	walk(doc)

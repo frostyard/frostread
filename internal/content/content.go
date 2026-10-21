@@ -26,10 +26,13 @@ type Handler struct {
 	Secret []byte
 }
 
-// Path is an item's content URL: /content/item/<id>/<mac>. The MAC covers
-// the id, so no other item's page can be asked for.
+// Path is an item's content path relative to the content root:
+// item/<id>/<mac>. It has no leading slash and no "content/" segment,
+// because lodge-client's contentURL puts them there:
+// CONTENT/<app>/<path>. This handler answers /content/<path>. The MAC
+// covers the id, so no other item's page can be asked for.
 func (h *Handler) Path(id int64) string {
-	return "/content/item/" + strconv.FormatInt(id, 10) + "/" + h.mac(id)
+	return "item/" + strconv.FormatInt(id, 10) + "/" + h.mac(id)
 }
 
 // mac is base64url(HMAC-SHA256(secret, "item:<id>")) cut to 22 characters:
