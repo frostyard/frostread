@@ -291,13 +291,27 @@ it names several), mode 0700:
 ### Development-only
 
 For the live check on lodge's development build, a binary built with the
-`devfetch` tag admits `127.0.0.1` for exactly the hosts named in
-`READ_DEV_ALLOW`, a comma-separated list such as `127.0.0.1:8088`. Every
+`devfetch` tag admits `127.0.0.1` for exactly the host:ports named in
+`READ_DEV_ALLOW`, a comma-separated list such as `127.0.0.1:8088`. The
+scheme and name checks, and every other dial, still run the guard. Every
 other address stays refused, and every other name too. A release build has
-no such code: the tag guards a file that a test proves absent from a
-release build with `go tool nm`. `cmd/readdev`, built with the `devfeeds`
-tag, serves the OPML and generated feeds the live check uses. Neither tag
-is in any release build or in `make build`.
+no such code: the tag guards a file whose symbol a test proves absent from
+a release build with `go tool nm`.
+
+`cmd/readdev`, built with the `devfeeds` tag, serves on `127.0.0.1:8088` a
+generated RSS feed, Atom feed and JSON Feed, six made-up article pages with
+one image, and `/subscriptions.opml`; `-opml` prints the OPML and stops.
+`testdata/dev/subscriptions.opml` is the same document, for a check that
+does not want to run readdev first. `make dev-seed` prints it. The live check is:
+
+```sh
+go run -tags devfeeds ./cmd/readdev &
+READ_DEV_ALLOW=127.0.0.1:8088 readd --root "$ROOT" --socket "$ROOT/run/frostread/readctl.sock" &
+go run -tags devfeeds ./cmd/readdev -opml | readctl --socket … import -
+```
+
+Neither tag is in any release build or in `make build`, and `make check`
+vets and tests both.
 
 ## Derived artifacts
 

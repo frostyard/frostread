@@ -93,7 +93,7 @@ type Client struct {
 // New returns a Client that sends the User-Agent frostread/version and
 // caps each request at timeout (DefaultTimeout when 0).
 func New(version string) *Client {
-	tr := netguard.Transport(DefaultTimeout)
+	tr := devTransport(netguard.Transport(DefaultTimeout))
 	c := &Client{tr: tr, ua: "frostread/" + version}
 	c.h = &http.Client{Transport: tr, Timeout: DefaultTimeout, CheckRedirect: c.checkRedirect}
 	return c
@@ -132,7 +132,11 @@ func checkURL(u *url.URL) error {
 		return fmt.Errorf("a url may not name a user: %w", ErrRefused)
 	}
 	if err := netguard.Name(u.Hostname()); err != nil {
-		return fmt.Errorf("%s: %w", u.Hostname(), err)
+		// A development build may admit the host READ_DEV_ALLOW names,
+		// and only that host: devAllowed is false in every release.
+		if !devAllowed(u.Host) {
+			return fmt.Errorf("%s: %w", u.Hostname(), err)
+		}
 	}
 	return nil
 }

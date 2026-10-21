@@ -83,7 +83,7 @@ ticked as its work lands.
 - **Done when:** the owner reads a feed on a phone through lodge, marks it
   read with `m`, and saves it to notes.
 
-## Phase 6 — The live check on lodge's development build
+## Phase 6 — The live check on lodge's development build (built 2026-10-21)
 
 - `cmd/readdev`, under the `devfeeds` tag: three generated feeds (RSS,
   Atom and JSON Feed) and their article pages on `127.0.0.1`, and the

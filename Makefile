@@ -38,8 +38,14 @@ cross: ## Build for linux/amd64 and linux/arm64
 tidy-check: ## Fail if go.mod or go.sum is not tidy
 	go mod tidy -diff
 
-verify: tidy-check vet lint test ## The gate without formatting: tidy, vet, lint and tests
+verify: tidy-check vet lint test dev-check ## The gate without formatting: tidy, vet, lint, tests and the dev tags
 	test -z "$$(gofmt -l .)"
+
+# The development tags are vetted and tested too, so they do not rot:
+# devfetch (the fetcher's loopback escape) and devfeeds (cmd/readdev).
+dev-check:
+	go vet -tags 'devfetch devfeeds' ./...
+	go test -tags 'devfetch devfeeds' ./cmd/readdev/ ./internal/fetch/
 
 check: fmt verify ## Format, then verify
 

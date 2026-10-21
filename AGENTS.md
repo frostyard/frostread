@@ -120,12 +120,19 @@ counterpart of something those repositories do, read their file.
 
 ## Development-only code
 
-Step 6 of the founding brief adds a development escape for the live check
-on lodge's development build: a build tag `devfetch` (never in a release
-build) under which the fetcher admits `127.0.0.1` alone, for hosts named in
-`READ_DEV_ALLOW` (such as `127.0.0.1:8088`). It is documented in
-[docs/specs/api.md](docs/specs/api.md#development-only), and a test proves
-with `go tool nm` that a release binary lacks it.
+Two build tags serve the live check on lodge's development build, and
+neither is in a release build:
+
+- **`devfetch`**: the fetcher admits `127.0.0.1` alone, for the host:ports
+  `READ_DEV_ALLOW` names (such as `127.0.0.1:8088`). Every other address
+  stays refused. A test proves with `go tool nm` that a release binary
+  lacks the code.
+- **`devfeeds`**: `cmd/readdev` serves a generated RSS feed, Atom feed and
+  JSON Feed with six made-up articles on `127.0.0.1:8088`, and `-opml`
+  prints the OPML that names them. `make dev-seed` prints it.
+
+They are documented in [docs/specs/api.md](docs/specs/api.md#development-only),
+and `make check` vets and tests both tags.
 
 ## Repository boundary
 
