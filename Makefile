@@ -1,4 +1,4 @@
-.PHONY: help build fmt vet lint lint-version-check test race cross tidy-check verify check ci web-build web-check lodge-package dev-seed clean
+.PHONY: help build fmt vet lint lint-version-check test race cross tidy-check verify check ci web-build web-check web-fmt lodge-package dev-seed clean
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -57,11 +57,14 @@ NSL_MACHINE ?= lodge
 IN_NSL ?= nsl run -m $(NSL_MACHINE) sh -lc
 FROZEN = $(if $(wildcard web/pnpm-lock.yaml),--frozen-lockfile,)
 
-web-check: ## Typecheck the web bundle (nsl)
-	$(IN_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm exec tsc --noEmit'
+web-check: ## Lint (Biome), typecheck and test web/ (nsl)
+	$(IN_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm run check'
+
+web-fmt: ## Format web/ and organize its imports with Biome (nsl)
+	$(IN_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm run fmt'
 
 web-build: ## Build the web bundle for lodge's /app/read/ into build/web (nsl)
-	$(IN_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm exec tsc --noEmit && pnpm exec vite build --outDir ../build/web --emptyOutDir'
+	$(IN_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm run build'
 
 # lodge-package stages the app under LODGE_DESTDIR in lodge's install
 # layout, with packaging/lodge/stage.sh. It replaces only this app's own
