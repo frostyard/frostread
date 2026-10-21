@@ -21,7 +21,9 @@ shell, as app `read`.
   scoped token.
 
 Status: pre-release, private, 2026-10-21. The daemon, its API, `readctl`,
-MCP and save-as-note are built; the web app is next. See the
+MCP, save-as-note and the web app are built. It runs on lodge's kit
+**v0.3.0**, and the bundle on `@frostyard/lodge-client` **client/v0.2.0**
+and `@frostyard/lodge-ui` **ui/v0.1.0**. See the
 [roadmap](docs/plans/0001-roadmap.md).
 
 ## Build
