@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 var (
@@ -27,6 +29,9 @@ var (
 // Store is a directory of immutable blobs. It is safe for concurrent use.
 type Store struct {
 	dir string
+	// mu orders a Put against a removal: Put holds it shared while it finds,
+	// touches or publishes a file, and RemoveIf holds it alone.
+	mu sync.RWMutex
 	// MaxBytes caps one Put; 0 means no cap.
 	MaxBytes int64
 }
@@ -60,8 +65,9 @@ func (s *Store) path(id string) (string, error) {
 }
 
 // Put streams r into a temporary file, then atomically publishes the blob
-// as its SHA-256. An existing blob is kept, and its content is not read
-// again. Content over MaxBytes is an error, and nothing is published.
+// as its SHA-256. An existing blob is kept, its modification time is set to
+// now so that a sweep leaves it for a grace period, and its content is not
+// read again. Content over MaxBytes is an error, and nothing is published.
 func (s *Store) Put(ctx context.Context, r io.Reader, mime string) (string, error) {
 	_ = mime // the MIME type lives in the store's blobs table
 	root := filepath.Join(s.dir, "sha256")
@@ -96,7 +102,15 @@ func (s *Store) Put(ctx context.Context, r io.Reader, mime string) (string, erro
 	if err != nil {
 		return "", err
 	}
+	// The shared lock covers the stat, the touch and the rename, so a
+	// removal never runs between finding a blob and using it.
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if _, err := os.Stat(final); err == nil {
+		now := time.Now()
+		if err := os.Chtimes(final, now, now); err != nil {
+			return "", fmt.Errorf("blobs: touch blob: %w", err)
+		}
 		return id, nil // already stored
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", fmt.Errorf("blobs: stat blob: %w", err)
@@ -187,4 +201,80 @@ func (s *Store) CleanupTemp() (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// List calls fn for each blob in the store, with its id, its size and its
+// modification time. It skips a Put's temporary file and every name that is
+// not an id. A store with no files lists nothing. An error from fn stops
+// the walk and is returned.
+func (s *Store) List(fn func(id string, size int64, mod time.Time) error) error {
+	root := filepath.Join(s.dir, "sha256")
+	shards, err := os.ReadDir(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("blobs: list store: %w", err)
+	}
+	for _, shard := range shards {
+		if !shard.IsDir() || len(shard.Name()) != 2 {
+			continue
+		}
+		entries, err := os.ReadDir(filepath.Join(root, shard.Name()))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("blobs: list shard %s: %w", shard.Name(), err)
+		}
+		for _, e := range entries {
+			id := e.Name()
+			if !validID(id) || id[:2] != shard.Name() || !e.Type().IsRegular() {
+				continue
+			}
+			fi, err := e.Info()
+			if errors.Is(err, fs.ErrNotExist) {
+				continue // removed since the listing
+			}
+			if err != nil {
+				return fmt.Errorf("blobs: stat %s: %w", id, err)
+			}
+			if err := fn(id, fi.Size(), fi.ModTime()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// RemoveIf removes a blob when ok says so. It holds the store's lock alone,
+// so no Put runs beside it. ok receives the file's modification time as it
+// is under the lock, and may ask other systems whether the blob is in use.
+// It returns whether the file was removed and its size. A missing file is
+// not removed and is not an error; an error from ok keeps the file.
+func (s *Store) RemoveIf(id string, ok func(mod time.Time) (bool, error)) (removed bool, size int64, err error) {
+	p, err := s.path(id)
+	if err != nil {
+		return false, 0, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fi, err := os.Stat(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, 0, nil
+	}
+	if err != nil {
+		return false, 0, fmt.Errorf("blobs: stat %s: %w", id, err)
+	}
+	yes, err := ok(fi.ModTime())
+	if err != nil || !yes {
+		return false, 0, err
+	}
+	if err := os.Remove(p); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, 0, nil
+		}
+		return false, 0, fmt.Errorf("blobs: remove %s: %w", id, err)
+	}
+	return true, fi.Size(), nil
 }

@@ -182,6 +182,15 @@ type NotesTokenParams struct {
 	Token string `json:"token"`
 }
 
+// BlobsSweepParams holds the params of blobs.sweep.
+type BlobsSweepParams struct {
+	// DryRun asks for a sweep that removes and writes nothing.
+	DryRun bool `json:"dryRun,omitzero"`
+}
+
+// SweepResult is blobs.sweep's result: what the blob sweep found.
+type SweepResult = engine.SweepResult
+
 // ReadService is the read domain's methods. The API calls it as the
 // browser session or the CLI; its writes carry the session's right.
 type ReadService interface {
@@ -205,6 +214,7 @@ type ReadService interface {
 	SaveURL(ctx context.Context, url, title string) (engine.Summary, error)
 	Counts(ctx context.Context) (Counts, error)
 	SetNotesToken(ctx context.Context, token string) error
+	SweepBlobs(ctx context.Context, dryRun bool) (SweepResult, error)
 }
 
 func registerRead(r *Router, s ReadService) {
@@ -366,6 +376,13 @@ func registerRead(r *Router, s ReadService) {
 		}
 		return nil, s.SetNotesToken(ctx, p.Token)
 	})
+	r.handle("blobs.sweep", local, func(ctx context.Context, raw jsontext.Value) (any, error) {
+		var p BlobsSweepParams
+		if err := decodeParams(raw, &p, nil); err != nil {
+			return nil, err
+		}
+		return s.SweepBlobs(ctx, p.DryRun)
+	})
 }
 
 // ReadClient calls the read methods; it implements ReadService.
@@ -510,4 +527,11 @@ func (x ReadClient) Counts(ctx context.Context) (Counts, error) {
 // SetNotesToken calls notes.setToken.
 func (x ReadClient) SetNotesToken(ctx context.Context, token string) error {
 	return x.c.Call(ctx, "notes.setToken", NotesTokenParams{Token: token}, nil)
+}
+
+// SweepBlobs calls blobs.sweep.
+func (x ReadClient) SweepBlobs(ctx context.Context, dryRun bool) (SweepResult, error) {
+	var out SweepResult
+	err := x.c.Call(ctx, "blobs.sweep", BlobsSweepParams{DryRun: dryRun}, &out)
+	return out, err
 }

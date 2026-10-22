@@ -78,6 +78,15 @@ type Engine struct {
 	queue  chan int64
 	busy   sync.Map // item id -> struct{}, extraction in flight
 	notify func(views []string)
+
+	// sweepMu allows one blob sweep at a time.
+	sweepMu sync.Mutex
+	// sweepHook runs after a sweep records and before it removes; tests
+	// set it to act between the steps.
+	sweepHook func()
+	// sweepFirst and sweepEvery replace the sweep schedule when set; tests
+	// set them.
+	sweepFirst, sweepEvery time.Duration
 }
 
 // New returns an Engine. Its extraction queue feeds one RunExtraction.

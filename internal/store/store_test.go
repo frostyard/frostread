@@ -23,8 +23,8 @@ func open(t *testing.T) (*DB, time.Time) {
 func TestSchemaAndSecret(t *testing.T) {
 	d, _ := open(t)
 	v, err := d.SchemaVersion(t.Context())
-	if err != nil || v != 1 {
-		t.Fatalf("schema version = %d, %v; want 1", v, err)
+	if err != nil || v != 2 {
+		t.Fatalf("schema version = %d, %v; want 2", v, err)
 	}
 	a, err := d.Secret(t.Context())
 	if err != nil || len(a) != 32 {
@@ -94,7 +94,7 @@ func TestSavedLinksAreIdempotent(t *testing.T) {
 	}
 	views, _, err := d.Counts(ctx)
 	if err != nil || views[ViewLater] != 1 {
-		t.Fatalf("later = %d, %v; want 1", views[ViewLater], err)
+		t.Fatalf("later = %d, %v; want 2", views[ViewLater], err)
 	}
 }
 
@@ -166,7 +166,7 @@ func TestSearchRanksAndSnippets(t *testing.T) {
 		t.Fatal("the best match has no snippet")
 	}
 	if found, err := d.Search(ctx, `"the last frost"`, 10); err != nil || len(found) != 1 {
-		t.Fatalf("phrase search = %d, %v; want 1", len(found), err)
+		t.Fatalf("phrase search = %d, %v; want 2", len(found), err)
 	}
 	if found, err := d.Search(ctx, "plant", 10); err != nil || len(found) != 2 {
 		t.Fatalf("prefix search = %d, %v; want 2", len(found), err)

@@ -93,6 +93,15 @@ types:
     fields:
       - {name: views, type: "map[string]int", doc: "Every view's count: unread, starred, later, archive and all."}
       - {name: sources, type: "[]SourceCount"}
+  - name: SweepResult
+    doc: blobs.sweep's result, and the totals of the daily sweep (ADR-0007).
+    fields:
+      - {name: dryRun, type: bool, doc: "Nothing was removed or written; the counts say what a real sweep would do now."}
+      - {name: scanned, type: int, doc: "The blob files found."}
+      - {name: inUse, type: int, doc: "The blobs some row names: an item's original or an image of its extraction."}
+      - {name: waiting, type: int, doc: "The unreferenced blobs still inside the grace period."}
+      - {name: removed, type: int, doc: "The blobs removed; in a dry run, the blobs a real sweep would remove now."}
+      - {name: removedBytes, type: int, doc: "The size of the removed blobs, in bytes."}
   - name: Note
     doc: Whether save-as-note is ready.
     fields:
@@ -252,7 +261,18 @@ methods:
   - name: notes.setToken
     writes: true
     callers: [local]
-    doc: Write the notes token, 0600, and use it at once. The private socket's only method a session may not call.
+    doc: Write the notes token, 0600, and use it at once. A session may not call it.
     params:
       - {name: token, type: string}
     errors: [invalidParams]
+  - name: blobs.sweep
+    writes: true
+    callers: [local]
+    doc: >-
+      Sweep the blob store now: remove each blob that no row has named for
+      the grace period, and report the totals (ADR-0007). A dry run removes
+      and writes nothing, and reports what a real sweep would remove now.
+      One sweep runs at a time; a second call waits for the first.
+    params:
+      - {name: dryRun, type: bool, optional: true, doc: "Report only. False when absent."}
+    result: SweepResult

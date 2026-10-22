@@ -50,6 +50,7 @@ COMMAND:
   export              write the OPML to stdout
   poll                poll every source now
   search <query>      search titles, authors and article text
+  sweep [-dry-run]    remove the blobs no item has named for the grace period; -dry-run only reports
   notes-token         read the notes MCP token from stdin and set it
   status              print the version and whether save-as-note is ready
 
@@ -58,7 +59,7 @@ The socket is --socket, or READ_SOCKET, or ` + DefaultSocket + `.`
 // known reports whether command is one readctl has.
 func known(command string) bool {
 	switch command {
-	case "save", "add", "sources", "note", "note-status", "import", "export", "poll", "search", "notes-token", "status":
+	case "save", "add", "sources", "note", "note-status", "import", "export", "poll", "search", "notes-token", "sweep", "status":
 		return true
 	}
 	return false
@@ -209,6 +210,22 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		fmt.Fprintln(out, "the notes token is set")
 		return nil
+	case "sweep":
+		sf := flag.NewFlagSet("readctl sweep", flag.ContinueOnError)
+		sf.SetOutput(errOut)
+		dry := sf.Bool("dry-run", false, "report what a sweep would remove, and remove nothing")
+		if err := sf.Parse(args); err != nil {
+			return err
+		}
+		if sf.NArg() != 0 {
+			return errors.New("usage: readctl sweep [-dry-run]")
+		}
+		res, err := read.SweepBlobs(ctx, *dry)
+		if err != nil {
+			return err
+		}
+		printSweep(out, res)
+		return nil
 	case "note":
 		if len(args) != 1 {
 			return errors.New("usage: readctl note <item-id>")
@@ -260,4 +277,17 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		fmt.Fprintln(errOut, usage)
 		return fmt.Errorf("unknown command %q", command)
 	}
+}
+
+// printSweep writes a sweep's totals, one per line.
+func printSweep(out io.Writer, res api.SweepResult) {
+	verb := "removed"
+	if res.DryRun {
+		fmt.Fprintln(out, "dry run: nothing was removed or written")
+		verb = "would remove"
+	}
+	fmt.Fprintf(out, "scanned %d blobs\n", res.Scanned)
+	fmt.Fprintf(out, "in use %d\n", res.InUse)
+	fmt.Fprintf(out, "waiting %d\n", res.Waiting)
+	fmt.Fprintf(out, "%s %d, %d bytes\n", verb, res.Removed, res.RemovedBytes)
 }

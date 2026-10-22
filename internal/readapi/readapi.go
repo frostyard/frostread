@@ -211,6 +211,12 @@ func (s *Service) SetNotesToken(ctx context.Context, token string) error {
 	return s.fail(s.Engine.SetNotesToken(ctx, token))
 }
 
+// SweepBlobs implements blobs.sweep.
+func (s *Service) SweepBlobs(ctx context.Context, dryRun bool) (api.SweepResult, error) {
+	res, err := s.Engine.SweepBlobs(ctx, dryRun)
+	return res, s.fail(err)
+}
+
 // source converts a stored source to the API's shape.
 func source(src store.Source) api.Source {
 	return api.Source{ID: src.ID, URL: src.URL, SiteURL: src.SiteURL, Title: src.Title,

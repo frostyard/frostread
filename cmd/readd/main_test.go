@@ -180,9 +180,12 @@ func TestPrivateSocket(t *testing.T) {
 	if _, err := c.Read().Sources(t.Context()); err != nil {
 		t.Fatalf("sources.list on the private socket: %v", err)
 	}
+	if res, err := c.Read().SweepBlobs(t.Context(), true); err != nil || !res.DryRun {
+		t.Fatalf("blobs.sweep on the private socket = %+v, %v", res, err)
+	}
 }
 
-// A session may not set the notes token.
+// A session may not set the notes token, nor sweep the blobs.
 func TestNotesTokenIsLocalOnly(t *testing.T) {
 	_, _, l := start(t)
 	nc, err := l.DialAPI(t.Context(), kittest.Session())
@@ -196,6 +199,9 @@ func TestNotesTokenIsLocalOnly(t *testing.T) {
 	}
 	if err := c.Read().SetNotesToken(t.Context(), "lgm_x"); !errors.Is(err, api.ErrMethodNotFound) {
 		t.Fatalf("notes.setToken as a session = %v, want methodNotFound", err)
+	}
+	if _, err := c.Read().SweepBlobs(t.Context(), true); !errors.Is(err, api.ErrMethodNotFound) {
+		t.Fatalf("blobs.sweep as a session = %v, want methodNotFound", err)
 	}
 }
 
