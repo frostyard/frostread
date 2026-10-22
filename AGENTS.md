@@ -20,14 +20,18 @@ the canonical paths, and keep content tool-agnostic.
 
 ## Status
 
-Pre-release, private, 2026-10-21. Built on lodge's kit **v0.3.0**, and
+Pre-release, private, 2026-10-22. Built on lodge's kit **v0.3.0**, and
 its web bundle on `@frostyard/lodge-client` **client/v0.3.0** and on
-`@frostyard/lodge-ui` **ui/v0.1.0**. Built: the daemon and its store, the
+`@frostyard/lodge-ui` **ui/v0.5.0**. Built: the daemon and its store, the
 guarded fetcher, feeds and OPML, extraction and the blob store, polling,
 search, the JSON-RPC API, `readctl`, MCP with scoped tokens, save-as-note,
-the content pages, the units, the development feeds and the web app. Phases
-1 to 6 of the [roadmap](docs/plans/0001-roadmap.md) are done, and frostread
-runs on lodge's host for the owner's daily use (2026-10-21). The founding ADRs, 0001 to
+the content pages, the units, the development feeds, the web app, save
+from the phone (the save page and the bookmarklet) and the blob sweep.
+Phases 1 to 6 of the [roadmap](docs/plans/0001-roadmap.md) are done.
+Phases 7 (save from the phone, frostread#10) and 8 (the blob sweep,
+frostread#12) are built and merged (2026-10-21); Phase 7's Done when waits
+for the owner's check in iOS Safari. frostread runs on lodge's host for the
+owner's daily use (2026-10-21). The founding ADRs, 0001 to
 0005, are Accepted (Brian, 2026-10-21), and ADR-0006, the bookmarklet, and
 ADR-0007, the blob sweep, are Accepted (Brian, 2026-10-22).
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
@@ -69,7 +73,7 @@ counterpart of something those repositories do, read their file.
   `../lodge` and `../frostnotes` checkouts and changes neither.
 - `web/`: the web bundle on `@frostyard/lodge-client` (client/v0.3.0,
   whose `rpc` subpath carries JSON-RPC) and `@frostyard/lodge-ui`
-  (ui/v0.1.0).
+  (ui/v0.5.0).
 - `packaging/lodge`: the manifest, the socket and service units, the system
   user, and `stage.sh`.
 
