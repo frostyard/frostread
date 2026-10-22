@@ -1,6 +1,6 @@
 # 0007 — A daily mark-and-scan sweep removes orphaned blobs after a grace period
 
-- **Status:** Proposed
+- **Status:** Accepted (Brian, 2026-10-22)
 - **Date:** 2026-10-21
 
 ## Context

@@ -28,7 +28,8 @@ search, the JSON-RPC API, `readctl`, MCP with scoped tokens, save-as-note,
 the content pages, the units, the development feeds and the web app. Phases
 1 to 6 of the [roadmap](docs/plans/0001-roadmap.md) are done, and frostread
 runs on lodge's host for the owner's daily use (2026-10-21). The founding ADRs, 0001 to
-0005, are Accepted (Brian, 2026-10-21).
+0005, are Accepted (Brian, 2026-10-21), and ADR-0007, the blob sweep, is
+Accepted (Brian, 2026-10-22). ADR-0006, the bookmarklet, is Proposed.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
