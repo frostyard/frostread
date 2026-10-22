@@ -23,10 +23,11 @@ shell, as app `read`.
 - **Agents.** Porter and any other agent reach it at `/mcp/read` with a
   scoped token.
 
-Status: pre-release, private, 2026-10-21. The daemon, its API, `readctl`,
-MCP, save-as-note and the web app are built. It runs on lodge's kit
-**v0.3.0**, and the bundle on `@frostyard/lodge-client` **client/v0.3.0**
-and `@frostyard/lodge-ui` **ui/v0.1.0**. See the
+Status: pre-release, private, 2026-10-22. The daemon, its API, `readctl`,
+MCP, save-as-note, the web app, save from the phone and the blob sweep are
+built. It runs on lodge's kit **v0.3.0**, and the bundle on
+`@frostyard/lodge-client` **client/v0.3.0** and `@frostyard/lodge-ui`
+**ui/v0.5.0**. See the
 [roadmap](docs/plans/0001-roadmap.md).
 
 ## Build

@@ -117,6 +117,10 @@ ticked as its work lands.
   ([ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)).
 - **Done when:** the owner installs the bookmarklet in iOS Safari and
   saves one page to read later through it.
+- **Built and merged** in frostread#10 (2026-10-21), and
+  [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
+  is Accepted (Brian, 2026-10-22). The Done when waits for the owner's
+  check in iOS Safari.
 
 ## Phase 8 — The blob sweep (built 2026-10-21)
 
@@ -133,6 +137,9 @@ ticked as its work lands.
   period, the sweep after it removes them, a blob another item names stays,
   and a save that runs beside a sweep keeps its blob, under the race
   detector.
+- **Merged** in frostread#12 (2026-10-21), and
+  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
+  is Accepted (Brian, 2026-10-22).
 
 ## Later / ideas
 
