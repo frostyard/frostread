@@ -26,7 +26,7 @@ An ADR marked (Proposed) waits for the owner; the others are Accepted.
 - [0003 — The fetcher reaches only public addresses](adr/0003-the-fetcher-reaches-only-public-addresses.md)
 - [0004 — Save as a note goes through notes' MCP on the agent socket](adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md)
 - [0005 — Articles are extracted, sanitized, and kept as sent](adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)
-- [0006 — Save from another page through a confirm page a bookmarklet opens](adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md) (Proposed)
+- [0006 — Save from another page through a confirm page a bookmarklet opens](adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
 - [0007 — A daily mark-and-scan sweep removes orphaned blobs after a grace period](adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
 
 ### Design

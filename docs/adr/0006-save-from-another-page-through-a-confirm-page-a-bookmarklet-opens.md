@@ -1,6 +1,6 @@
 # 0006 — Save from another page through a confirm page a bookmarklet opens
 
-- **Status:** Proposed
+- **Status:** Accepted (Brian, 2026-10-22)
 - **Date:** 2026-10-21
 
 ## Context
