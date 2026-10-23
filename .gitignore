@@ -3,3 +3,6 @@ node_modules/
 web/node_modules/
 .envrc
 .mcp.json
+# A stray `go build ./cmd/readctl` at the root; make build writes to build/.
+/readctl
+/readd
