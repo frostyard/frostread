@@ -23,11 +23,11 @@ shell, as app `read`.
 - **Agents.** Porter and any other agent reach it at `/mcp/read` with a
   scoped token.
 
-Status: pre-release, private, 2026-10-22. The daemon, its API, `readctl`,
-MCP, save-as-note, the web app, save from the phone and the blob sweep are
-built. It runs on lodge's kit **v0.3.0**, and the bundle on
-`@frostyard/lodge-client` **client/v0.3.2** and `@frostyard/lodge-ui`
-**ui/v0.6.0**. See the
+Status: pre-release, 2026-10-22. The repository is public since
+2026-10-23. The daemon, its API, `readctl`, MCP, save-as-note, the web
+app, save from the phone and the blob sweep are built. It runs on lodge's
+kit **v0.3.0**, and the bundle on `@frostyard/lodge-client`
+**client/v0.3.2** and `@frostyard/lodge-ui` **ui/v0.6.0**. See the
 [roadmap](docs/plans/0001-roadmap.md).
 
 ## Build
@@ -130,7 +130,8 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
 
 5. **Issue Read's notes token**, scoped to one folder, for the agent
    socket. It is shown once; pipe it straight into `readctl`, which writes
-   it to `/var/lib/frostread/tokens/notes` (0600) and prints nothing.
+   it to `/var/lib/frostread/tokens/notes` (0600) and prints
+   `the notes token is set`.
 
    ```sh
    sudo lodgectl token issue frostread-notes --app notes \
