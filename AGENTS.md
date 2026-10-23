@@ -21,8 +21,8 @@ the canonical paths, and keep content tool-agnostic.
 ## Status
 
 Pre-release, private, 2026-10-22. Built on lodge's kit **v0.3.0**, and
-its web bundle on `@frostyard/lodge-client` **client/v0.3.0** and on
-`@frostyard/lodge-ui` **ui/v0.5.0**. Built: the daemon and its store, the
+its web bundle on `@frostyard/lodge-client` **client/v0.3.2** and on
+`@frostyard/lodge-ui` **ui/v0.6.0**. Built: the daemon and its store, the
 guarded fetcher, feeds and OPML, extraction and the blob store, polling,
 search, the JSON-RPC API, `readctl`, MCP with scoped tokens, save-as-note,
 the content pages, the units, the development feeds, the web app, save
@@ -71,9 +71,9 @@ counterpart of something those repositories do, read their file.
   lodge's development build on loopback with Read and Notes, generated
   feeds, a generated vault and Read's scoped notes token. It reads the
   `../lodge` and `../frostnotes` checkouts and changes neither.
-- `web/`: the web bundle on `@frostyard/lodge-client` (client/v0.3.0,
+- `web/`: the web bundle on `@frostyard/lodge-client` (client/v0.3.2,
   whose `rpc` subpath carries JSON-RPC) and `@frostyard/lodge-ui`
-  (ui/v0.5.0).
+  (ui/v0.6.0).
 - `packaging/lodge`: the manifest, the socket and service units, the system
   user, and `stage.sh`.
 
