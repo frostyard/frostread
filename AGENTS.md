@@ -85,7 +85,9 @@ counterpart of something those repositories do, read their file.
   it before claiming any change complete, docs included.
 - `make race` runs the tests under the race detector, and `make cross`
   builds linux/amd64 and linux/arm64. `make ci` adds the web bundle's
-  checks (`make web-check`, nsl).
+  checks (`make web-check`, nsl). CI also runs a `vulncheck` job
+  (`make vulncheck`: govulncheck, pinned in the Makefile; it needs the
+  network, so no gate runs it). Keep it at 0 reachable findings.
 - The daemon's wire answers are the web app's contract:
   `internal/readapi`'s contract test writes `web/src/rpc/testdata`, and
   `make check` fails when a golden is stale. After a change to `api/` or

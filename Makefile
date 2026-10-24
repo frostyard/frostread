@@ -1,4 +1,4 @@
-.PHONY: help build fmt vet lint lint-version-check test race cross tidy-check verify check ci contract-update web-build web-check web-fmt lodge-package dev-seed dev-lodge clean
+.PHONY: help build fmt vet lint lint-version-check test race cross vulncheck tidy-check verify check ci contract-update web-build web-check web-fmt lodge-package dev-seed dev-lodge clean
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -59,6 +59,12 @@ contract-update: ## Rewrite web/src/rpc/testdata from the daemon's seeded answer
 	go test ./internal/readapi -run TestContract -update
 
 check: fmt verify ## Format, then verify
+
+# govulncheck's release, pinned here and not in go.mod (it needs the network).
+GOVULNCHECK_VERSION := v1.9.0
+
+vulncheck: ## Report reachable vulnerabilities (govulncheck; needs the network)
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 ci: verify race cross web-check ## verify, the race detector, cross-builds and the web bundle (nsl)
 
