@@ -153,6 +153,119 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
    The web app is at `https://LODGE/read/`, and save-as-note writes into
    notes under `Reading/`.
 
+## Update
+
+frostread has no release. An update moves the host to a newer commit of
+`main`. While frostread is stopped, the Read tab does not work, the
+poller does not run, and lodge shows the app as down.
+
+1. **Note the old version, and stop frostread.** Stop the socket too:
+   it starts the service again on the next connection.
+
+   ```sh
+   sudo -u frostread readctl status     # prints: readd <version>
+   sudo systemctl stop frostread.socket frostread.service
+   ```
+
+2. **Take a rollback archive.** Keep it root-only: the notes token is a
+   secret. Name it with the old version and a UTC time. The binaries are
+   in `/usr/bin` (builds from frostread#20 on) or in `/usr/local/bin`
+   (earlier builds); `--ignore-failed-read` skips the path that does not
+   exist.
+
+   ```sh
+   sudo sh -c 'umask 077; tar --ignore-failed-read -czpf \
+     /root/frostread-OLDVERSION-$(date -u +%Y%m%dT%H%M%SZ).tar.gz \
+     /var/lib/frostread /etc/frostread /usr/share/lodge/apps/read \
+     /usr/bin/readd /usr/bin/readctl \
+     /usr/local/bin/readd /usr/local/bin/readctl \
+     /usr/lib/systemd/system/frostread.socket \
+     /usr/lib/systemd/system/frostread.service \
+     /usr/lib/sysusers.d/frostread.conf'
+   ```
+
+3. **Pull and build.** Pull the new commit, then repeat step 1's build
+   commands (`make web-build` in nsl, then `make lodge-package`):
+
+   ```sh
+   git pull --ff-only origin main
+   ```
+
+4. **Copy, reload and start.** Repeat step 1's `rm` and `cp` lines.
+   Then:
+
+   ```sh
+   sudo systemctl daemon-reload
+   sudo systemctl start frostread.socket frostread.service
+   sudo lodgectl reload
+   ```
+
+5. **Check.** `readctl status` prints the new version, and `read` is up
+   in lodge's list, with the new version:
+
+   ```sh
+   sudo -u frostread readctl status
+   sudo lodgectl apps
+   ```
+
+## Roll back
+
+Roll back to the commit you ran before.
+
+1. **Stop frostread**, as in step 1 of "Update".
+2. **Put the earlier build back.** Check out the earlier commit, build
+   it, and repeat step 1's `rm` and `cp` lines. A build from before
+   frostread#20 brings back `/usr/local/bin/readd`, and its unit names
+   that path. Or extract the installed files from the rollback archive,
+   after you remove `/usr/share/lodge/apps/read`. This leaves the state
+   and the configuration as they are:
+
+   ```sh
+   sudo tar -xzpf ARCHIVE -C / --exclude=var/lib/frostread --exclude=etc/frostread
+   ```
+
+3. **Reload and start**, as in step 4 of "Update":
+
+   ```sh
+   sudo systemctl daemon-reload
+   sudo systemctl start frostread.socket frostread.service
+   sudo lodgectl reload
+   ```
+
+4. **Read the journal:**
+
+   ```sh
+   sudo journalctl -u frostread -n 50
+   ```
+
+   If it says `database schema N is newer than this readd`, the newer
+   readd migrated the database, and the older readd refuses it. Stop
+   frostread, restore `/var/lib/frostread` from the archive, and start
+   again:
+
+   ```sh
+   sudo systemctl stop frostread.socket frostread.service
+   sudo rm -rf /var/lib/frostread
+   sudo tar -xzpf ARCHIVE -C / var/lib/frostread
+   sudo systemctl start frostread.socket frostread.service
+   ```
+
+   The restore loses what changed after the archive: new items, reads
+   and saves. The archive also holds the blobs and the notes token.
+5. **Check**, as in step 5 of "Update".
+
+## After the sysexts
+
+This is planned, not built. In core's
+[Plan 0010](https://github.com/frostyard/core/blob/main/docs/plans/0010-suite-packaging.md),
+Phase 3 ships readd as the sysext `readd` for Snosi images (Floe), not
+for this host. lodge's host stays hand-installed, as above (Phase 4 is
+deferred, 2026-10-23). On a Snosi image the planned commands are
+`sudo updex features update --component=readd` and a reboot to update,
+and `sudo updex features rollback readd`, which takes effect at the next
+boot. A sysext rollback does not undo a database migration, so keep a
+backup of `/var/lib/frostread` there too.
+
 ## Docs
 
 - [docs/README.md](docs/README.md): the index.
