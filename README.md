@@ -313,7 +313,7 @@ bundle: `make web-build` (nsl), then `make deb`. It writes
 `dist/frostyard-readd_0.0.0-<commit>-snapshot_amd64.deb`, and `make deb-check`
 (`packaging/deb-check.py`) reads the archive's exact member names. It fails unless
 the control fields are right (`Depends: systemd`, no maintainer scripts), and
-the package holds only root-owned, non-writable directories, files and links
+the package holds only root-owned, non-writable directories and regular files (no links)
 under `/usr`, with the binaries (mode 0755), the units, the sysusers.d entry and the web bundle's `index.html`, and a manifest whose `version` is the package's
 version. `internal/packagecheck` feeds it bad packages, and each must fail.
 CI builds a snapshot on every pull request (job `deb`).
