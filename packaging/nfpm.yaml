@@ -12,7 +12,7 @@ description: |-
   frostread, a tailnet-only feed reader and read-later list, for lodge.
   The readd daemon, the readctl CLI, the Read app's manifest and web
   bundle, its systemd units and its sysusers.d entry. It runs as lodge's
-  read app. Built for Snosi's sysext (ADR-0058).
+  read app. Built for Snosi's sysext readd (core ADR-0058).
 vendor: frostyard
 homepage: https://github.com/frostyard/frostread
 license: MIT
