@@ -6,3 +6,4 @@ web/node_modules/
 # A stray `go build ./cmd/readctl` at the root; make build writes to build/.
 /readctl
 /readd
+/dist/
