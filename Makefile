@@ -127,7 +127,13 @@ deb: ## Build dist/frostyard-readd_<DEB_VERSION>_amd64.deb with nFPM, after the 
 	$(MAKE) --no-print-directory deb-check DEB_VERSION="$(DEB_VERSION)"
 
 deb-check: ## Check the .deb make deb built: its fields, its paths (only /usr), its owners and modes, its payload
-	packaging/deb-check.sh "$(DEB_FILE)" $(DEB_PKG) "$(DEB_VERSION)"
+	packaging/deb-check.py "$(DEB_FILE)" $(DEB_PKG) "$(DEB_VERSION)" \
+		--exec /usr/bin/readd --exec /usr/bin/readctl \
+		--file /usr/lib/systemd/system/frostread.socket \
+		--file /usr/lib/systemd/system/frostread.service \
+		--file /usr/lib/sysusers.d/frostread.conf \
+		--file /usr/share/lodge/apps/read/web/index.html \
+		--manifest /usr/share/lodge/apps/read/app.json
 
 svu-version-check:
 	@test -n "$(SVU_VERSION)" || { echo "mise.toml pins no svu"; exit 1; }
@@ -151,10 +157,12 @@ bump: svu-version-check ## Tag the next version with svu and push the tag (main,
 	@test -z "$$(git status --porcelain)" || { echo "the working tree is not clean"; exit 1; }
 	$(MAKE) check
 	@test -z "$$(git status --porcelain)" || { echo "the gate changed the tree (formatting?); commit it first"; exit 1; }
-	@version=$$($(SVU) next); \
-		git tag -a $$version -m "Version $$version"; \
-		echo "Tagged $$version; pushing it to origin..."; \
-		git push origin $$version
+	@set -eu; \
+	version=$$($(SVU) next); \
+	printf '%s\n' "$$version" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+' || { echo "svu next gave '$$version', not vX.Y.Z"; exit 1; }; \
+	git tag -a "$$version" -m "Version $$version"; \
+	echo "Tagged $$version; pushing it to origin..."; \
+	git push origin "refs/tags/$$version"
 
 clean: ## Remove build output
 	rm -rf build dist

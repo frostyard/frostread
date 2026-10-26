@@ -80,7 +80,7 @@ counterpart of something those repositories do, read their file.
   `stage.sh` writes only under `usr/` (core ADR-0058); `internal/packagecheck`
   tests the staged tree and its units. `make deb` builds the release
   `.deb` with nFPM (`packaging/nfpm.yaml`, checked by
-  `packaging/deb-check.sh`); `make bump` tags a release.
+  `packaging/deb-check.py`); `make bump` tags a release.
 - `.github/workflows/`: `ci.yml` (the jobs of `make ci`, plus `deb`, a
   snapshot `.deb`) and `release.yml` (a tag builds, attests and publishes
   the `.deb`). `internal/workflowcheck` tests that their actions are
