@@ -192,18 +192,26 @@ poller does not run, and lodge shows the app as down.
 2. **Take a rollback archive.** Keep it root-only: the notes token is a
    secret. Name it with the old version and a UTC time. The binaries are
    in `/usr/bin` (builds from frostread#20 on) or in `/usr/local/bin`
-   (earlier builds); `--ignore-failed-read` skips the path that does not
-   exist.
+   (earlier builds), so the script lists only the paths that exist. Every
+   other path must exist, or `tar` fails.
 
    ```sh
-   sudo sh -c 'umask 077; tar --ignore-failed-read -czpf \
-     /root/frostread-OLDVERSION-$(date -u +%Y%m%dT%H%M%SZ).tar.gz \
-     /var/lib/frostread /etc/frostread /usr/share/lodge/apps/read \
-     /usr/bin/readd /usr/bin/readctl \
-     /usr/local/bin/readd /usr/local/bin/readctl \
-     /usr/lib/systemd/system/frostread.socket \
-     /usr/lib/systemd/system/frostread.service \
-     /usr/lib/sysusers.d/frostread.conf'
+   sudo sh -c 'umask 077
+     a=/root/frostread-OLDVERSION-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
+     bins=$(ls -d /usr/bin/readd /usr/bin/readctl \
+       /usr/local/bin/readd /usr/local/bin/readctl 2>/dev/null)
+     tar -czpf "$a" /var/lib/frostread /etc/frostread \
+       /usr/share/lodge/apps/read $bins \
+       /usr/lib/systemd/system/frostread.socket \
+       /usr/lib/systemd/system/frostread.service \
+       /usr/lib/sysusers.d/frostread.conf && echo "$a"'
+   ```
+
+   Continue only when `tar` exits 0 and prints the archive name. Check
+   that the archive holds the state:
+
+   ```sh
+   sudo tar -tzf ARCHIVE var/lib/frostread >/dev/null
    ```
 
 3. **Pull and build.** Pull the new commit, then repeat step 1's build
