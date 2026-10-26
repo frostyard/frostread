@@ -77,6 +77,8 @@ counterpart of something those repositories do, read their file.
   (ui/v0.6.0).
 - `packaging/lodge`: the manifest, the socket and service units, the system
   user, and `stage.sh`.
+  `stage.sh` writes only under `usr/` (core ADR-0058); `internal/packagecheck`
+  tests the staged tree and its units.
 
 ## Gates
 

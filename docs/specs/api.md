@@ -403,12 +403,16 @@ gives. What it needs:
 
 | What | Where | Made by |
 | --- | --- | --- |
-| `readd`, `readctl` | `/usr/local/bin` | `make lodge-package`, then the staged `usr/` copied over the host's |
+| `readd`, `readctl` | `/usr/bin` | `make lodge-package`, then the staged `usr/` copied over the host's |
 | manifest and web bundle | `/usr/share/lodge/apps/read/` | the same |
 | `frostread.socket`, `frostread.service` | `/usr/lib/systemd/system/` | the same |
 | the user `frostread`, in `lodge-apps` and `lodge-agents` | `sysusers.d` | `sudo systemd-sysusers /usr/lib/sysusers.d/frostread.conf` |
 | the configuration | `/etc/frostread/frostread.json` | the owner, by hand |
 | the notes token | `STATE/tokens/notes`, 0600 | `readctl notes-token`, from stdin |
+
+The staging writes only under `usr/`, the layout a sysext carries
+([core ADR-0058](https://github.com/frostyard/core/blob/main/docs/adr/0058-ship-suite-desktop-apps-as-flatpaks-and-services-as-sysexts.md)).
+The packaging test, `internal/packagecheck`, checks it.
 
 - **Group `lodge-agents` and the `agents` list.** Save-as-note calls notes'
   MCP on lodge's agent socket ([ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md));

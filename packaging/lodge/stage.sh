@@ -9,7 +9,8 @@
 # DESTDIR may be a lodge root that other apps and lodge itself share, so
 # this removes nothing of theirs: only the app's own directory is replaced,
 # so a web build's stale files go, and every other file it stages is
-# overwritten in place. DESTDIR must not be empty or /.
+# overwritten in place. DESTDIR must not be empty or /. It writes only under
+# DESTDIR/usr, so a sysext can carry the result (frostyard/core ADR-0058).
 set -eu
 
 usage="usage: packaging/lodge/stage.sh DESTDIR VERSION [BUILD]"
@@ -28,8 +29,8 @@ esac
 
 app=$dest/usr/share/lodge/apps/read
 rm -rf -- "$app"
-install -Dm755 "$build/readd" "$dest/usr/local/bin/readd"
-install -Dm755 "$build/readctl" "$dest/usr/local/bin/readctl"
+install -Dm755 "$build/readd" "$dest/usr/bin/readd"
+install -Dm755 "$build/readctl" "$dest/usr/bin/readctl"
 install -d "$app"
 sed "s/\"version\": \"[^\"]*\"/\"version\": \"$version\"/" "$here/app.json" > "$app/app.json"
 if [ -d "$build/web" ]; then cp -R "$build/web" "$app/web"; fi
