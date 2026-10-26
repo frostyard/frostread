@@ -297,6 +297,34 @@ and `sudo updex features rollback readd`, which takes effect at the next
 boot. A sysext rollback does not undo a database migration, so keep a
 backup of `/var/lib/frostread` there too.
 
+## Release
+
+A release is a tag, and `make bump` is the only way to make one
+([core ADR-0012](https://github.com/frostyard/core/blob/main/docs/adr/0012-svu-versioning-and-rolling-dev-prerelease.md)).
+It checks the pinned `svu`, that you are on `main` at `origin/main` with a
+clean tree, and that `make check` passes, then tags `svu next` and pushes
+the tag. The tag starts
+[`.github/workflows/release.yml`](.github/workflows/release.yml): it builds
+`frostyard-readd_X.Y.Z_amd64.deb` with `make deb`, attests its provenance, and
+attaches it to the GitHub release.
+
+`make deb` builds the same package on a developer's machine, after the web
+bundle: `make web-build` (nsl), then `make deb`. It writes
+`dist/frostyard-readd_0.0.0-<commit>-snapshot_amd64.deb`, and `make deb-check`
+(`packaging/deb-check.sh`) fails unless the package holds only `/usr` paths,
+all owned by root and not group- or world-writable, with the payload in
+place. CI builds a snapshot on every pull request (job `deb`).
+
+Verify a downloaded package:
+
+```sh
+gh attestation verify frostyard-readd_X.Y.Z_amd64.deb --repo frostyard/frostread
+```
+
+Snosi picks the package up later (core
+[Plan 0010](https://github.com/frostyard/core/blob/main/docs/plans/0010-suite-packaging.md),
+Phase 3).
+
 ## Docs
 
 - [docs/README.md](docs/README.md): the index.

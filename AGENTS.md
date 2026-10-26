@@ -78,7 +78,13 @@ counterpart of something those repositories do, read their file.
 - `packaging/lodge`: the manifest, the socket and service units, the system
   user, and `stage.sh`.
   `stage.sh` writes only under `usr/` (core ADR-0058); `internal/packagecheck`
-  tests the staged tree and its units.
+  tests the staged tree and its units. `make deb` builds the release
+  `.deb` with nFPM (`packaging/nfpm.yaml`, checked by
+  `packaging/deb-check.sh`); `make bump` tags a release.
+- `.github/workflows/`: `ci.yml` (the jobs of `make ci`, plus `deb`, a
+  snapshot `.deb`) and `release.yml` (a tag builds, attests and publishes
+  the `.deb`). `internal/workflowcheck` tests that their actions are
+  SHA-pinned with least privilege (frostyard/core ADR-0021).
 
 ## Gates
 
