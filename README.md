@@ -114,6 +114,17 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
    sudo systemctl enable --now frostread.socket frostread.service
    ```
 
+   **On an upgrade**, `enable --now` does not restart a service that
+   runs, so readd keeps its old binary until a restart. Restart it, then
+   check the unit and the running version:
+
+   ```sh
+   sudo systemctl restart frostread.service
+   systemctl show -p ExecStart frostread.service   # expect /usr/bin/readd
+   sudo -u frostread /usr/bin/readctl status       # expect readd <the new version>
+   sudo lodgectl reload                            # lodge rereads the manifest
+   ```
+
    The service is enabled too, so the poller runs from boot, not only
    after lodge's first request. On a host whose clock is UTC, give readd
    the owner's zone, as notes' unit does: a drop-in
