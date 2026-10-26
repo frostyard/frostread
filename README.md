@@ -114,16 +114,8 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
    sudo systemctl enable --now frostread.socket frostread.service
    ```
 
-   **On an upgrade**, `enable --now` does not restart a service that
-   runs, so readd keeps its old binary until a restart. Restart it, then
-   check the unit and the running version:
-
-   ```sh
-   sudo systemctl restart frostread.service
-   systemctl show -p ExecStart frostread.service   # expect /usr/bin/readd
-   sudo -u frostread /usr/bin/readctl status       # expect readd <the new version>
-   sudo lodgectl reload                            # lodge rereads the manifest
-   ```
+   **On an upgrade**, do not run these commands as they are: follow
+   [Update](#update), which stops frostread before the copy.
 
    The service is enabled too, so the poller runs from boot, not only
    after lodge's first request. On a host whose clock is UTC, give readd
@@ -221,8 +213,9 @@ poller does not run, and lodge shows the app as down.
    git pull --ff-only origin main
    ```
 
-4. **Copy, reload and start.** Repeat step 1's `rm` and `cp` lines.
-   Then:
+4. **Copy, reload and start.** Repeat step 1's `rm` and `cp` lines, and
+   its one-time removal of `/usr/local/bin/readd` and `readctl` if the
+   host still has them. Then:
 
    ```sh
    sudo systemctl daemon-reload
@@ -246,7 +239,7 @@ Roll back to the commit you ran before.
 2. **Put the earlier build back.** Check out the earlier commit, build
    it, and repeat step 1's `rm` and `cp` lines. A build from before
    frostread#20 brings back `/usr/local/bin/readd`, and its unit names
-   that path. Or extract the installed files from the rollback archive,
+   that path; the next update then needs the one-time removal again. Or extract the installed files from the rollback archive,
    after you remove `/usr/share/lodge/apps/read`. This leaves the state
    and the configuration as they are:
 
