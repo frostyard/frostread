@@ -75,7 +75,10 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
    machine. `lodge-package` stages `readd`, `readctl`, the manifest, the
    bundle, the units and the sysusers entry under `build/lodge-root`; it
    refuses a whole root, so copy the staged `usr/` over the host's, with
-   the app's own directory replaced whole.
+   the app's own directory replaced whole. The staging writes only under
+   `usr/`: `readd` and `readctl` land in `/usr/bin`, and the unit's
+   `ExecStart=` is `/usr/bin/readd`
+   ([core ADR-0058](https://github.com/frostyard/core/blob/main/docs/adr/0058-ship-suite-desktop-apps-as-flatpaks-and-services-as-sysexts.md)).
 
    ```sh
    make web-build                             # in nsl
@@ -83,6 +86,22 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
    sudo rm -rf /usr/share/lodge/apps/read     # only Read's own directory
    sudo cp -r build/lodge-root/usr/. /usr/    # not -a: the files must be root's
    ```
+
+   **Once, on a host that installed an earlier version** (which put the
+   binaries in `/usr/local/bin`): remove the old copies, because
+   `/usr/local/bin` comes before `/usr/bin` on `PATH` and a stale
+   `readctl` there would shadow the new one.
+
+   ```sh
+   sudo rm -f /usr/local/bin/readd /usr/local/bin/readctl
+   command -v readctl                         # expect /usr/bin/readctl
+   systemctl cat frostread.service            # expect ExecStart=/usr/bin/readd
+   ```
+
+   The steps below copy the unit to `/usr/lib/systemd/system/`, so a full
+   copy of it in `/etc/systemd/system/frostread.service` would shadow the
+   new one and still start `/usr/local/bin/readd`. These steps make only
+   the drop-in `tz.conf` (step 2), which is safe; remove any full copy.
 
 2. **Create the user and start the socket.** The sysusers entry makes
    `frostread`, with its home at `/var/lib/frostread`, in group
@@ -93,6 +112,17 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
    id frostread          # expect lodge-apps and lodge-agents
    sudo systemctl daemon-reload
    sudo systemctl enable --now frostread.socket frostread.service
+   ```
+
+   **On an upgrade**, `enable --now` does not restart a service that
+   runs, so readd keeps its old binary until a restart. Restart it, then
+   check the unit and the running version:
+
+   ```sh
+   sudo systemctl restart frostread.service
+   systemctl show -p ExecStart frostread.service   # expect /usr/bin/readd
+   sudo -u frostread /usr/bin/readctl status       # expect readd <the new version>
+   sudo lodgectl reload                            # lodge rereads the manifest
    ```
 
    The service is enabled too, so the poller runs from boot, not only
