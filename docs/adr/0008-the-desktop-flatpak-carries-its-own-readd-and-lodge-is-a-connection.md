@@ -185,6 +185,16 @@ Why a connection and not a sync:
 
   Saving local again writes `app.json`, then starts readd through the
   launcher.
+- **Every start in lodge mode repeats steps 2 and 3.** Before the window
+  opens its lodge connection, and each time the launcher runs in lodge
+  mode, it calls `daemon.shutdown` when a local readd answers, and takes
+  and releases the data lock, waiting up to 30 s. This ends a readd that
+  a crash left running after step 1, or that started from a stale
+  autostart and has not yet reached its mode check. When the lock stays
+  held, the window does not connect to lodge: it shows "This computer's
+  reader did not stop" with a retry, and the mode stays lodge in
+  `app.json`. So no readd runs while the window uses lodge, whatever
+  happened between the steps.
 - **The Server sheet says what each change does** before the user saves,
   from local facts only, so it reads the same while lodge is unreachable:
   - to lodge: "This computer's reader stops polling. Its sources and
@@ -204,6 +214,15 @@ Why a connection and not a sync:
   readd's `build` is not the latest, the launcher calls `daemon.shutdown`
   and starts the latest. Migrations run only in the readd that holds the
   lock.
+- **The replacement happens at the launcher's next run,** not at the
+  update itself: the next window opened from the app grid or by
+  `flatpak run`, or the next login. Until then the old readd and any old
+  window keep working together. A window that is open during the
+  replacement loses its connection, reconnects to the new readd, and
+  calls only methods that the new one keeps, because methods change only
+  by addition within protocol 1. Replacing readd as soon as an update
+  lands, through the Flatpak portal's update monitor, is a later idea
+  (frostnotes plan 0008's G3).
 
 ### readd's desktop mode
 
@@ -247,12 +266,31 @@ changes is where the page is shown.
   content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">`
   first in its head. Callers `local` and `session` may call it, so both
   modes show articles the same way.
-- **The answer stays under the transport's limit.** Images are embedded as
-  `data:` URIs in document order while the HTML stays under 12 MiB, below
-  the kit's 16 MiB line. An image past that budget loses its `src` and
-  keeps its alt text, as an image that could not be fetched does, and
-  `omittedImages` counts them; the reader says how many were left out.
-  The blobs stay in the store, so nothing is lost.
+- **The answer stays under the transport's limit.** The limit is the
+  whole JSON-RPC answer as it goes on the wire: the envelope, and the
+  HTML after JSON escaping, which can grow text (a quote or a backslash
+  takes 2 bytes, a control character 6). The kit refuses a line of 16 MiB
+  or more (`jsonrpc.MaxMessageSize`), so readd keeps the encoded answer
+  under 12 MiB:
+  1. It renders the page with no image embedded, and measures the
+     encoded answer. When that alone is 12 MiB or more, it answers
+     `tooLarge` (a new application error in `schema/rpc/errors.yaml`,
+     after `unavailable`), and the reader shows the excerpt with
+     "This article is too large to show in the app" and a link to the
+     original's URL.
+  2. Otherwise it embeds the images as `data:` URIs in document order.
+     An image is embedded only when the encoded size of its `data:` URI
+     (base64, 4 bytes for each 3, plus its prefix) still fits, so the
+     same image twice counts twice. An image that does not fit loses its
+     `src` and keeps its alt text, as an image that could not be fetched
+     does, and `omittedImages` counts it; the reader says how many were
+     left out.
+  3. It measures the final encoded answer again before it sends it, and
+     falls back to step 1's page when it is still 12 MiB or more.
+
+  The blobs stay in the store, so nothing is lost. Tests cover the
+  boundary: text heavy with quotes and backslashes, markup near the
+  limit, the same image many times, and an answer of exactly the limit.
 - **The window shows it in `<iframe srcdoc sandbox="allow-popups">`:** no
   `allow-scripts` and no `allow-same-origin`, so the article runs no
   script and has an opaque origin, apart from the app's. The frame fills
@@ -393,15 +431,16 @@ In local mode everything is the app's own, under
   `internal/workflowcheck` must accept.
 - readd gains `-desktop`, `-log`, `-build`, the lock, the mode check under
   it, and the methods `daemon.shutdown`, `items.render` and
-  `items.exportMarkdown`, and `status`'s `build`. `schema/rpc`,
+  `items.exportMarkdown`, the error `tooLarge`, and `status`'s `build`. `schema/rpc`,
   [specs/api.md](../specs/api.md) and the contract goldens follow.
 - The socket path, like the state directory, has 2 sources of truth:
   `internal/config` and `paths.rs`, each with tests.
 - An article whose embedded images pass 12 MiB shows some images as alt
   text on the desktop, where lodge-content would show them all.
-- An article's page is sent again over the socket, as base64, on each
-  open. That costs memory and time for a large article, bounded by the
-  budget.
+- An article's page, its images as base64 inside it, is sent again over
+  the socket on each open. That costs memory and time for a large
+  article, bounded by the 12 MiB answer. A very large article shows only
+  its excerpt and a link on the desktop.
 - A desktop in local mode and lodge's readd each poll the same feeds when
   the owner subscribes in both. Each keeps its own list and state; the app
   does not merge them.

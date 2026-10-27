@@ -73,7 +73,8 @@ code, then `make contract-update`.
   the one log line for the notes fields that have no effect.
 - `daemon.shutdown` (caller `local`), `status`'s `build`,
   `items.render {id, scheme}` (callers `local` and `session`) with the CSP
-  `meta` and the 12 MiB image budget, and `items.exportMarkdown {id}`
+  `meta`, the 12 MiB bound on the encoded answer and the `tooLarge`
+  error, and `items.exportMarkdown {id}`
   (caller `local`) in `internal/notes`.
 - `internal/content` and `items.render` share one renderer; a golden test
   holds both.
@@ -83,8 +84,11 @@ code, then `make contract-update`.
   directory exits with "another readd uses"; with `app.json` naming
   lodge, readd exits 0 without opening the database; `daemon.shutdown`
   releases the lock; `items.render` of an item with 20 MiB of images
-  answers under 12 MiB with the right `omittedImages`; and no listener but
-  the private socket is open.
+  answers with an encoded line under 12 MiB and the right
+  `omittedImages`, also for text heavy with quotes and backslashes and
+  for one image repeated many times; a page whose text alone passes the
+  bound answers `tooLarge`; and no listener but the private socket is
+  open.
 
 ## Phase 3 — The desktop shell (planner, large)
 
@@ -130,8 +134,8 @@ All UI and Rust work runs in the nsl machine.
   OPML file and lists its sources (no fetch: the build has no network);
   the launcher with a stand-in `flatpak-spawn` ends it, and readd lives
   on; with `app.json` naming lodge, `--background` exits 0; a readd whose
-  `build` differs from the stand-in latest commit is replaced, and one
-  that matches is kept; the log turns over.
+  `build` differs from the stand-in latest commit is replaced at the
+  launcher's next run, and one that matches is kept; the log turns over.
 - **Done when:** both jobs pass on a pull request, and the bundle they
   upload runs `flatpak run --command=readctl org.frostyard.Frostread
   --help`.
@@ -156,7 +160,8 @@ All UI and Rust work runs in the nsl machine.
   https://LODGE`, rustls with the web's roots, and a ping every 30 s.
 - The Server sheet: its texts, from local facts only; the ordered stop
   (write `app.json`, `daemon.shutdown`, take the lock, or write local back
-  after 30 s); saving local starts readd through the launcher; the
+  after 30 s); the same stop on every start in lodge mode, before the
+  window connects; saving local starts readd through the launcher; the
   unreachable state, which never falls back to local.
 - In lodge mode: save as note when lodge's `status` says it is ready, and
   "Open in Notes" in the browser.
@@ -164,7 +169,9 @@ All UI and Rust work runs in the nsl machine.
   dev-lodge`): local, then lodge (readd stops, the local data stays, the
   window shows lodge's feeds), then local again (the same local sources
   return); the sheet's texts with lodge stopped; a readd that will not
-  stop leaves the mode local, with the error.
+  stop leaves the mode local, with the error; and a crash injected just
+  after `app.json` is renamed to lodge leaves a local readd that the next
+  start ends before it connects to lodge.
 - **Done when:** the e2e test passes, and on the VM a switch to lodge
   leaves no readd in `flatpak ps`, and a login with the autostart still
   registered starts none.
@@ -206,16 +213,21 @@ core ADR-0062 asks.
 - `release.yml`, which builds lodge's `.deb` on `v*`, treats an `-rc.N`
   tag as a pre-release, or skips it; `make bump` learns the candidate
   tag.
-- Lucilla names the staged catalogue that lists the candidate's digest.
-- Brian pushes the candidate's tag, and a second one for the update check.
-- **Done when:** the VM installs the candidate from the staged catalogue,
-  and `flatpak info` shows the attested digest.
+- Lucilla names the staged catalogue that lists a candidate's digest.
+- Brian pushes 2 candidate tags: a **baseline**, `vX.Y.Z-rc.1`, for the
+  update check only, and the **release candidate**, `vX.Y.Z-rc.2`, which
+  the gate tests and the release promotes. A fix found by the gate makes
+  a new release candidate, and the gate runs again on it.
+- **Done when:** the VM installs each candidate from the staged
+  catalogue, and `flatpak info` shows its attested digest.
 
 ## Phase 10 — The clean-install gate (planner, with Duncan)
 
-On a fresh Snow VM with real portals, against Phase 9's candidate. Each
-item is recorded below with the candidate's digest, the date, and the
-VM's versions (GNOME, xdg-desktop-portal, Flatpak).
+On fresh Snow VMs with real portals. Items 1 to 4, 6 and 7 run on a fresh
+install of the **release candidate** of Phase 9; item 5 runs on a fresh
+install of the **baseline**, updated to that same release candidate. Each
+item is recorded below with both digests, the date, and the VM's
+versions (GNOME, xdg-desktop-portal, Flatpak).
 
 1. **Nothing else is there:** `flatpak list` shows no frostyard app;
    `command -v readd readctl lodge tailscale` finds nothing; no
@@ -231,10 +243,13 @@ VM's versions (GNOME, xdg-desktop-portal, Flatpak).
    polling while it is closed. Log out and in: readd starts at login
    (Background allowed), and new items arrived. With the background
    permission off, readd starts with the first window only.
-5. **Update without loss:** `flatpak update` to the second candidate,
-   with a window of the first open: the old readd is replaced by the new
-   build, never the reverse; the database migrates; every source, item
-   and state is there.
+5. **Update without loss:** on the baseline, with feeds, stars and saved
+   links, and a window open, `flatpak update` to the release candidate.
+   The old window keeps working. Then open a new window from the app
+   grid: the launcher replaces the old readd, `readctl status`'s `build`
+   is the release candidate's commit, and the old window reconnects to
+   it. The old readd is never started again; the database migrates;
+   every source, item and state is there.
 6. **Opt into lodge** (lodge's development build, reachable from the VM,
    with Read and Notes): read lodge's list, mark an item read and see it
    read in lodge's web app, save a link, and save as note.
@@ -243,7 +258,7 @@ VM's versions (GNOME, xdg-desktop-portal, Flatpak).
    to lodge: no data moves or disappears, no readd runs in lodge mode,
    and the sheet's texts match what happened.
 
-- **Done when:** all 7 pass on one candidate digest.
+- **Done when:** all 7 pass for one release candidate's digest.
 
 ### Record
 
@@ -251,8 +266,8 @@ No run yet.
 
 ## Phase 11 — Release (Brian and Lucilla, small)
 
-- Brian runs the promotion: `vX.Y.Z` and `latest` move to the digest that
-  passed Phase 10.
+- Brian runs the promotion: `vX.Y.Z` and `latest` move to the release
+  candidate's digest that passed Phase 10, never the baseline's.
 - Brian makes `ghcr.io/frostyard/frostread` public.
 - Lucilla lists `org.frostyard.Frostread` in `flatpak-index/apps.json`.
 - **Done when:** `flatpak install frostyard org.frostyard.Frostread` on a
