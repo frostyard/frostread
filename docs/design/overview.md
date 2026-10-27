@@ -13,6 +13,14 @@ frostread is lodge's `read` app: a tailnet-only feed reader and read-later
 list. It polls sources and fetches pages from the public web; lodge owns
 every listener, and the browser loads nothing remote.
 
+Planned, not built:
+[ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
+(proposed) adds a desktop Flatpak, `org.frostyard.Frostread`: a Tauri
+shell over this web bundle, with its own readd in a desktop mode, local by
+default, and lodge as a connection the user chooses.
+[Plan 0002](../plans/0002-the-standalone-desktop-flatpak.md) builds it;
+this document changes with each of its phases.
+
 ```
  feeds, pages, images ──▶ internal/fetch (kit/netguard) ──▶ poller, extract
                                                              │
@@ -155,6 +163,9 @@ runes, and the address is checked with `fetch.Check` before it is stored
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
   [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md),
-  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
+  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md);
+  planned: [ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
+  (the desktop Flatpak)
 - Contracts: [specs/api.md](../specs/api.md)
-- Built in: [roadmap — Phases 1 to 8](../plans/0001-roadmap.md)
+- Built in: [roadmap — Phases 1 to 8](../plans/0001-roadmap.md); the
+  desktop in [plan 0002](../plans/0002-the-standalone-desktop-flatpak.md)
