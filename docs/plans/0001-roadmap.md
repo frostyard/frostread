@@ -8,6 +8,11 @@ a live check on lodge's development build. It delivers
 Each phase ends with a demonstrable outcome. A phase's checkboxes are
 ticked as its work lands.
 
+The standalone desktop Flatpak, with its own readd and lodge as an
+option, is [plan 0002](0002-the-standalone-desktop-flatpak.md)
+([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
+proposed). This roadmap stays the lodge app's.
+
 ## Phase 1 — Scaffold and documents (2026-10-21)
 
 - Lodge's `new-lodge-app` scaffold: `readd`, its API, `web/`, the units
@@ -165,6 +170,7 @@ ticked as its work lands.
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
   [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md),
   [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
+- The desktop: [plan 0002](0002-the-standalone-desktop-flatpak.md)
 
 ### Phase 6 evidence, 2026-10-21
 
