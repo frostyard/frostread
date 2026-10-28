@@ -21,8 +21,9 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-10-27): **Phase 1 is open:** ADR-0008 is proposed, with 3
-open questions for Brian below. Nothing is built.
+Status (2026-10-28): **Phase 1 is in review:** ADR-0008 records Brian's
+3 answers of 2026-10-27 and is Accepted; core's plan 0010 Read row waits
+for Lucilla. Nothing is built.
 
 ## Who helps
 
@@ -178,7 +179,7 @@ All UI and Rust work runs in the nsl machine.
 
 ## Phase 7 — Notes on the desktop (planner, small)
 
-Shaped by open question 3; this is ADR-0008's proposal.
+Brian chose ADR-0008's proposal for open question 3 (2026-10-27).
 
 - Local mode: "Export as Markdown…" in the reader, through
   `items.exportMarkdown` and `SaveFile`; no save as note.
@@ -190,7 +191,7 @@ Shaped by open question 3; this is ADR-0008's proposal.
 
 ## Phase 8 — Moving from lodge (planner, small)
 
-Shaped by open question 2; this is ADR-0008's proposal.
+Brian chose ADR-0008's proposal for open question 2 (2026-10-27).
 
 - The steps in [design/overview.md](../design/overview.md): stay on lodge
   with the connection, or export OPML from Read in lodge and import it
@@ -285,25 +286,27 @@ No run yet.
 
 ## Open questions
 
-All 3 are Brian's, by Phase 1, and each changes ADR-0008 before it is
-accepted.
+Brian answered all 3 on 2026-10-27, each with ADR-0008's proposal.
 
 1. **The lodge mode.** ADR-0008 proposes a connection: the desktop uses
    lodge's readd and holds no copy. A sync would keep a local copy and
    reconcile it, for offline reading, at the cost of a new protocol and 2
    fetchers per feed. Options: connection (proposed); sync; connection
    now and sync later.
+   **Answer:** connection (Brian, 2026-10-27).
 2. **Moving from lodge to local.** ADR-0008 proposes OPML only: the
    subscriptions move, and items, states and saved links stay on lodge.
    The other option is a full copy too: `readctl export` on lodge's host
    and `readctl import` into the Flatpak (database and blobs, with a new
    content key), as frostmail's `mailctl import`, which adds about one
    medium phase.
+   **Answer:** OPML only (Brian, 2026-10-27).
 3. **Notes on the standalone desktop.** ADR-0008 proposes "Export as
    Markdown…" to a file the user picks, and save as note only in lodge
    mode. Options: the export (proposed); no note feature in local mode;
    the export now and a scoped link to a desktop Frostnotes later (needs
    frostnotes work).
+   **Answer:** the export (Brian, 2026-10-27).
 
 ## References
 

@@ -15,7 +15,7 @@ every listener, and the browser loads nothing remote.
 
 Planned, not built:
 [ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
-(proposed) adds a desktop Flatpak, `org.frostyard.Frostread`: a Tauri
+(Accepted) adds a desktop Flatpak, `org.frostyard.Frostread`: a Tauri
 shell over this web bundle, with its own readd in a desktop mode, local by
 default, and lodge as a connection the user chooses.
 [Plan 0002](../plans/0002-the-standalone-desktop-flatpak.md) builds it;

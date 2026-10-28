@@ -35,6 +35,9 @@ for the owner's check in iOS Safari. frostread runs on lodge's host for the
 owner's daily use (2026-10-21). The founding ADRs, 0001 to
 0005, are Accepted (Brian, 2026-10-21), and ADR-0006, the bookmarklet, and
 ADR-0007, the blob sweep, are Accepted (Brian, 2026-10-22).
+ADR-0008, the standalone desktop Flatpak, is Accepted (Brian, 2026-10-28);
+[plan 0002](docs/plans/0002-the-standalone-desktop-flatpak.md) builds it,
+and nothing of it is built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -109,7 +112,9 @@ counterpart of something those repositories do, read their file.
 ## Invariants (decided; binding from the first line of code)
 
 - **Only lodge listens on the network.** `readd` serves Unix sockets only:
-  lodge's app socket, and its own private socket for `readctl`.
+  lodge's app socket, and its own private socket for `readctl`. On the
+  desktop, readd serves only its private socket
+  ([ADR-0008](docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)).
 - **The fetcher never reaches homelab, private, loopback, link-local or
   tailnet addresses.** Every outbound request goes through
   `internal/fetch`, built on lodge's `kit/netguard`, which checks each
@@ -119,6 +124,10 @@ counterpart of something those repositories do, read their file.
   lodge-content, with images inlined as `data:` URIs; the browser never
   loads a remote resource
   ([ADR-0005](docs/adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)).
+  On the desktop, the page comes from `items.render` and shows in a
+  `srcdoc` frame with `sandbox="allow-popups"`, without `allow-scripts`
+  or `allow-same-origin`, under a CSP with no network source; the webview
+  fetches nothing from the network (ADR-0008).
 - **Content URLs are MACs under a secret the daemon keeps,** never
   guessable ids (lodge's
   [lodge-http.md](https://github.com/frostyard/lodge/blob/main/docs/specs/lodge-http.md#content-routes),

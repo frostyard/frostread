@@ -1,6 +1,6 @@
 # 0005 — Articles are extracted, sanitized, and kept as sent
 
-- **Status:** Accepted (Brian, 2026-10-21)
+- **Status:** Accepted (Brian, 2026-10-21); amended in part by [0008](0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
 - **Date:** 2026-10-21
 
 ## Context
