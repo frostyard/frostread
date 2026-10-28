@@ -9,15 +9,17 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/frostyard/lodge/kit/jsonrpc"
+	"github.com/frostyard/lodge/kit/netguard"
+
 	"github.com/frostyard/frostread/api"
+	"github.com/frostyard/frostread/internal/content"
 	"github.com/frostyard/frostread/internal/engine"
 	"github.com/frostyard/frostread/internal/feed"
 	"github.com/frostyard/frostread/internal/fetch"
 	"github.com/frostyard/frostread/internal/notes"
 	"github.com/frostyard/frostread/internal/opml"
 	"github.com/frostyard/frostread/internal/store"
-
-	"github.com/frostyard/lodge/kit/netguard"
 )
 
 // Service is the API's read domain, over the engine.
@@ -26,9 +28,16 @@ type Service struct {
 	// Log receives a refusal's detail, which the client never sees; nil
 	// discards it.
 	Log *slog.Logger
+	// Stop stops readd once a reply has reached the client, for
+	// daemon.shutdown; nil is a readd that systemd owns on lodge's host,
+	// which answers unavailable (ADR-0008).
+	Stop func()
 }
 
-var _ api.ReadService = (*Service)(nil)
+var (
+	_ api.ReadService   = (*Service)(nil)
+	_ api.DaemonService = (*Service)(nil)
+)
 
 // New returns a Service.
 func New(e *engine.Engine, log *slog.Logger) *Service {
@@ -171,6 +180,35 @@ func (s *Service) SaveAsNote(ctx context.Context, id int64) (string, string, err
 	return path, route, s.fail(err)
 }
 
+// Render implements items.render.
+func (s *Service) Render(ctx context.Context, id int64, scheme string) (engine.Rendered, error) {
+	if !content.ValidScheme(scheme) {
+		return engine.Rendered{}, api.Errorf(api.CodeInvalidParams, "scheme %q is not light or dark", scheme)
+	}
+	out, err := s.Engine.Render(ctx, id, scheme)
+	if err != nil {
+		return engine.Rendered{}, s.fail(err)
+	}
+	return out, nil
+}
+
+// ExportMarkdown implements items.exportMarkdown.
+func (s *Service) ExportMarkdown(ctx context.Context, id int64) (filename, markdown string, err error) {
+	filename, markdown, err = s.Engine.ExportMarkdown(ctx, id)
+	return filename, markdown, s.fail(err)
+}
+
+// Shutdown implements daemon.shutdown: it answers, and then readd stops.
+// A readd that systemd runs on lodge's host is not the owner's to stop, so
+// it answers unavailable.
+func (s *Service) Shutdown(ctx context.Context) error {
+	if s.Stop == nil {
+		return api.Errorf(api.CodeUnavailable, "readd is lodge's: its service starts and stops it")
+	}
+	jsonrpc.AfterReply(ctx, s.Stop)
+	return nil
+}
+
 // NoteStatus implements items.noteStatus.
 func (s *Service) NoteStatus(ctx context.Context, id int64) (api.NoteStatusResult, error) {
 	st, err := s.Engine.NoteStatus(ctx, id)
@@ -253,6 +291,8 @@ func (s *Service) fail(err error) error {
 		return api.Errorf(api.CodeConflict, "%v", err)
 	case errors.Is(err, engine.ErrUnavailable), errors.Is(err, notes.ErrUnavailable):
 		return api.Errorf(api.CodeUnavailable, "%v", err)
+	case errors.Is(err, content.ErrTooLarge):
+		return api.Errorf(api.CodeTooLarge, "%v", err)
 	case errors.Is(err, engine.ErrReadOnly):
 		return api.Errorf(api.CodeInvalidParams, "%v", err)
 	case errors.Is(err, fetch.ErrRefused), errors.Is(err, fetch.ErrTooLarge),

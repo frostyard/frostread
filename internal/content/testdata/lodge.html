@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-scheme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>An article</title>
+<style>
+ 
+:root { color-scheme: light; --fg: #1a1a1a; --bg: #fdfdfc; --muted: #666; --link: #1a56db;
+  --code: rgba(127,127,127,.12); --line: rgba(127,127,127,.35); }
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; --fg: #e6e6e6; --bg: #17181a; --muted: #a0a4a8; --link: #8ab4f8;
+    --code: rgba(127,127,127,.18); --line: rgba(127,127,127,.45); }
+}
+:root[data-scheme="light"] { color-scheme: light; --fg: #1a1a1a; --bg: #fdfdfc; --muted: #666;
+  --link: #1a56db; --code: rgba(127,127,127,.12); --line: rgba(127,127,127,.35); }
+:root[data-scheme="dark"] { color-scheme: dark; --fg: #e6e6e6; --bg: #17181a; --muted: #a0a4a8;
+  --link: #8ab4f8; --code: rgba(127,127,127,.18); --line: rgba(127,127,127,.45); }
+body { margin: 0 auto; padding: 1.25rem; max-width: 42rem; line-height: 1.6;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  color: var(--fg); background: var(--bg); }
+header { border-bottom: 1px solid var(--line); margin-bottom: 1.5rem; padding-bottom: .75rem; }
+h1 { font-size: 1.6rem; line-height: 1.25; margin: .25rem 0 .5rem; }
+.byline { color: var(--muted); font-size: .9rem; margin: 0; }
+.byline span + span::before { content: " · "; }
+img { max-width: 100%; height: auto; }
+figure { margin: 1.5rem 0; }
+figcaption { font-size: .85rem; color: var(--muted); }
+pre { overflow-x: auto; padding: .75rem; background: var(--code); border-radius: .4rem; }
+blockquote { margin: 1.5rem 0; padding-left: 1rem; border-left: 3px solid var(--line); }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--line); padding: .35rem .5rem; text-align: left; }
+a { color: var(--link); }
+</style>
+</head>
+<body>
+<header>
+<h1>An article</h1>
+<p class="byline"><span>Ann</span><span>example.com</span><span>28 October 2026</span></p>
+</header>
+<article>
+<html><head></head><body><p>A paragraph.</p>
+<p><img src="data:image/png;base64,cG5nIGJ5dGVz" alt="A tomato"/></p>
+<p><span>A remote picture</span></p></body></html>
+</article>
+</body>
+</html>

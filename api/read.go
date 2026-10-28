@@ -171,6 +171,24 @@ type NoteStatusResult struct {
 	Error string    `json:"error,omitzero"`
 }
 
+// ItemRenderParams holds the params of items.render.
+type ItemRenderParams struct {
+	ID int64 `json:"id"`
+	// Scheme is the reader's theme, light or dark; empty follows the
+	// reader's own preference.
+	Scheme string `json:"scheme,omitzero"`
+}
+
+// ItemRender is items.render's result: the article's page, and how many of
+// its images it left out.
+type ItemRender = engine.Rendered
+
+// ItemMarkdown is items.exportMarkdown's result.
+type ItemMarkdown struct {
+	Filename string `json:"filename"`
+	Markdown string `json:"markdown"`
+}
+
 // Counts is the counts method's result.
 type Counts struct {
 	Views   map[string]int      `json:"views"`
@@ -211,6 +229,8 @@ type ReadService interface {
 	SetArchived(ctx context.Context, id int64, archived bool) error
 	SaveAsNote(ctx context.Context, id int64) (path, route string, err error)
 	NoteStatus(ctx context.Context, id int64) (NoteStatusResult, error)
+	Render(ctx context.Context, id int64, scheme string) (engine.Rendered, error)
+	ExportMarkdown(ctx context.Context, id int64) (filename, markdown string, err error)
 	SaveURL(ctx context.Context, url, title string) (engine.Summary, error)
 	Counts(ctx context.Context) (Counts, error)
 	SetNotesToken(ctx context.Context, token string) error
@@ -354,6 +374,24 @@ func registerRead(r *Router, s ReadService) {
 			return nil, err
 		}
 		return s.NoteStatus(ctx, p.ID)
+	})
+	r.handle("items.render", session, func(ctx context.Context, raw jsontext.Value) (any, error) {
+		var p ItemRenderParams
+		if err := decodeParams(raw, &p, []string{"id"}); err != nil {
+			return nil, err
+		}
+		return s.Render(ctx, p.ID, p.Scheme)
+	})
+	r.handle("items.exportMarkdown", local, func(ctx context.Context, raw jsontext.Value) (any, error) {
+		var p ItemParams
+		if err := decodeParams(raw, &p, []string{"id"}); err != nil {
+			return nil, err
+		}
+		filename, markdown, err := s.ExportMarkdown(ctx, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		return ItemMarkdown{Filename: filename, Markdown: markdown}, nil
 	})
 	r.handle("later.save", session, func(ctx context.Context, raw jsontext.Value) (any, error) {
 		var p SaveParams
@@ -508,6 +546,23 @@ func (x ReadClient) NoteStatus(ctx context.Context, id int64) (NoteStatusResult,
 	var out NoteStatusResult
 	err := x.c.Call(ctx, "items.noteStatus", NoteStatusParams{ID: id}, &out)
 	return out, err
+}
+
+// Render calls items.render; an empty scheme follows the reader's own
+// preference.
+func (x ReadClient) Render(ctx context.Context, id int64, scheme string) (engine.Rendered, error) {
+	var out engine.Rendered
+	p := ItemRenderParams{ID: id}
+	p.Scheme = scheme
+	err := x.c.Call(ctx, "items.render", p, &out)
+	return out, err
+}
+
+// ExportMarkdown calls items.exportMarkdown.
+func (x ReadClient) ExportMarkdown(ctx context.Context, id int64) (filename, markdown string, err error) {
+	var out ItemMarkdown
+	err = x.c.Call(ctx, "items.exportMarkdown", ItemParams{ID: id}, &out)
+	return out.Filename, out.Markdown, err
 }
 
 // SaveURL calls later.save, with the title when there is one.

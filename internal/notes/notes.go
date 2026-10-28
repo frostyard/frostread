@@ -315,16 +315,38 @@ func (c *Client) createNote(ctx context.Context, path, content string) (*mcp.Cal
 	return res, nil
 }
 
+// Export is an article as the Markdown file a desktop user saves: a note's
+// frontmatter and conversion, without the read_item marker and without the
+// line that links back to the reader, because Read holds no vault and no
+// Notes link on the desktop (ADR-0008, Notes is optional). The name is
+// <YYYY-MM-DD> <safe title>.md, a note's base name without its folder.
+func Export(a Article, now time.Time) (filename, markdown string, err error) {
+	body, err := markdownOf(a, now, false, "")
+	if err != nil {
+		return "", "", err
+	}
+	return now.UTC().Format("2006-01-02") + " " + safeTitle(a.Title) + ".md", body, nil
+}
+
 // note is the Markdown a note holds: the frontmatter, the title, the link
 // back to the reader, and the article's Markdown.
 func note(a Article, lodgeURL string, now time.Time) (string, error) {
+	return markdownOf(a, now, true, lodgeURL)
+}
+
+// markdownOf is an article as Markdown. A note carries the read_item marker
+// and the link back to the reader; an export for a desktop user carries
+// neither.
+func markdownOf(a Article, now time.Time, asNote bool, lodgeURL string) (string, error) {
 	body, err := md.ConvertString(imagesAsLinks(a.Content))
 	if err != nil {
 		return "", fmt.Errorf("markdown: %w", err)
 	}
 	var b strings.Builder
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "%s: %s\n", Marker, MarkerValue(a.ID))
+	if asNote {
+		fmt.Fprintf(&b, "%s: %s\n", Marker, MarkerValue(a.ID))
+	}
 	fmt.Fprintf(&b, "source: %s\n", yaml(a.URL))
 	fmt.Fprintf(&b, "saved: %s\n", now.UTC().Format("2006-01-02"))
 	if a.Author != "" {
@@ -335,11 +357,13 @@ func note(a Article, lodgeURL string, now time.Time) (string, error) {
 	}
 	b.WriteString("---\n\n")
 	fmt.Fprintf(&b, "# %s\n\n", strings.TrimSpace(a.Title))
-	link := "/read/item/" + strconv.FormatInt(a.ID, 10)
-	if lodgeURL != "" {
-		link = strings.TrimSuffix(lodgeURL, "/") + link
+	if asNote {
+		link := "/read/item/" + strconv.FormatInt(a.ID, 10)
+		if lodgeURL != "" {
+			link = strings.TrimSuffix(lodgeURL, "/") + link
+		}
+		fmt.Fprintf(&b, "[Open in Read](%s)\n\n", link)
 	}
-	fmt.Fprintf(&b, "[Open in Read](%s)\n\n", link)
 	b.WriteString(strings.TrimSpace(body))
 	b.WriteString("\n")
 	return b.String(), nil

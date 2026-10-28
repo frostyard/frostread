@@ -36,8 +36,8 @@ owner's daily use (2026-10-21). The founding ADRs, 0001 to
 0005, are Accepted (Brian, 2026-10-21), and ADR-0006, the bookmarklet, and
 ADR-0007, the blob sweep, are Accepted (Brian, 2026-10-22).
 ADR-0008, the standalone desktop Flatpak, is Accepted (Brian, 2026-10-28);
-[plan 0002](docs/plans/0002-the-standalone-desktop-flatpak.md) builds it,
-and nothing of it is built yet.
+[plan 0002](docs/plans/0002-the-standalone-desktop-flatpak.md) builds it:
+Phase 2, readd's desktop mode, is built (2026-10-28) and not merged.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -46,8 +46,12 @@ counterpart of something those repositories do, read their file.
 
 - `cmd/readd`: the daemon, with the app contract's socket rules as tests
   (kittest). It serves lodge's app socket, its private socket for `readctl`,
-  the content pages on `/content/`, and MCP on `/mcp`.
-- `cmd/readctl`: the CLI, over the private socket.
+  the content pages on `/content/`, and MCP on `/mcp`. With `-desktop` it
+  is the Flatpak's own readd: only the private socket, its own state
+  directory, the `flock`, the mode file `app.json`, and `-log`
+  ([ADR-0008](docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)).
+- `cmd/readctl`: the CLI, over the private socket; `-desktop` finds the
+  Flatpak's own.
 - `api/`, `internal/rpcserver`: the JSON-RPC API on `kit/jsonrpc`.
   `schema/rpc` is the contract, and `api/*.go` follow it by hand.
 - `internal/store`: the SQLite database: sources, items, blobs, full-text
@@ -65,12 +69,15 @@ counterpart of something those repositories do, read their file.
 - `internal/poller`: the poll loop's timing alone.
 - `internal/readapi`: the JSON-RPC contract over the engine, and the codes
   its errors become.
-- `internal/content`: the `lodgeapp.Server` content handler.
+- `internal/content`: the article's page, from one renderer: the
+  `lodgeapp.Server` content handler, and `items.render`, which the desktop
+  shows with its CSP and under the 12 MiB answer bound.
 - `internal/mcpserver`: MCP, on the MCP SDK, with the token's scope.
 - `internal/notes`: save-as-note, through notes' MCP on lodge's agent
   socket.
 - `internal/config`: `/etc/frostread/frostread.json` and the state
-  directory.
+  directory, and the desktop's XDG paths, its `app.json` mode file, its
+  socket and the Flatpak's build.
 - `scripts/dev-lodge.sh`: one command, `make dev-lodge`, that starts
   lodge's development build on loopback with Read and Notes, generated
   feeds, a generated vault and Read's scoped notes token. It reads the

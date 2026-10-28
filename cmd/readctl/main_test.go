@@ -12,6 +12,7 @@ import (
 	"github.com/frostyard/lodge/kit/rpctest"
 
 	"github.com/frostyard/frostread/api"
+	"github.com/frostyard/frostread/internal/config"
 	"github.com/frostyard/frostread/internal/rpcserver"
 )
 
@@ -129,5 +130,73 @@ func TestSweepRefusesAnArgument(t *testing.T) {
 func TestSweepIsKnown(t *testing.T) {
 	if !known("sweep") || !strings.Contains(usage, "sweep [-dry-run]") {
 		t.Fatal("sweep is not in the command list")
+	}
+}
+
+// The socket is --socket, then READ_SOCKET, then, on a desktop, the app's
+// own, and /run/frostread/readctl.sock on lodge's host (ADR-0008).
+func TestResolveSocket(t *testing.T) {
+	run := "/run/user/1000"
+	desktop := "/run/user/1000/app/org.frostyard.Frostread/frostread/readd.sock"
+	for _, c := range []struct {
+		name    string
+		flag    string
+		desktop bool
+		env     map[string]string
+		want    string
+	}{
+		{"--socket", "/s/flag.sock", true, map[string]string{"READ_SOCKET": "/s/env.sock"}, "/s/flag.sock"},
+		{"READ_SOCKET", "", false, map[string]string{"READ_SOCKET": "/s/env.sock"}, "/s/env.sock"},
+		{"-desktop", "", true, map[string]string{"XDG_RUNTIME_DIR": run}, "/run/user/1000/frostread/readd.sock"},
+		{"the Flatpak", "", false, map[string]string{"XDG_RUNTIME_DIR": run, "FLATPAK_ID": config.AppID}, desktop},
+		{"lodge's host", "", false, map[string]string{}, DefaultSocket},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			getenv := func(k string) string { return c.env[k] }
+			got, err := resolveSocket(c.flag, c.desktop, getenv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != c.want {
+				t.Fatalf("resolveSocket = %q, want %q", got, c.want)
+			}
+		})
+	}
+	// A -desktop run with no runtime directory says what to set.
+	if _, err := resolveSocket("", true, func(string) string { return "" }); err == nil ||
+		!strings.Contains(err.Error(), "READ_SOCKET") {
+		t.Fatalf("resolveSocket without a runtime directory = %v", err)
+	}
+}
+
+// stopper answers daemon.shutdown.
+type stopper struct {
+	api.DaemonService
+	stopped chan bool
+}
+
+func (s *stopper) Shutdown(context.Context) error {
+	s.stopped <- true
+	return nil
+}
+
+// readd's own methods.
+func TestShutdown(t *testing.T) {
+	s := &stopper{stopped: make(chan bool, 1)}
+	srv := rpcserver.New(rpcserver.Options{Name: "readd test", Logger: slog.New(slog.DiscardHandler)})
+	router, err := api.NewRouter(api.Services{RPC: srv, Read: &sweeper{dryRuns: make(chan bool, 1)}, Events: srv, Daemon: s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := rpctest.Serve(t, func(ctx context.Context, ln net.Listener) error { return srv.Serve(ctx, ln, router) })
+	var out, errOut bytes.Buffer
+	if err := run(t.Context(), []string{"--socket", served.Socket, "shutdown"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	if !<-s.stopped {
+		t.Fatal("daemon.shutdown was not called")
+	}
+	if !strings.Contains(out.String(), "readd stops") || !strings.Contains(usage, "shutdown") {
+		t.Fatalf("shutdown printed %q", out.String())
 	}
 }

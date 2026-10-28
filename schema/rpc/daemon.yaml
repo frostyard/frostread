@@ -1,0 +1,23 @@
+# The daemon domain: the daemon's own life, which no app data touches.
+# api/daemon.go is what a generator writes from this file, by hand until
+# the app adopts one.
+domain: daemon
+callers: [local]
+doc: >-
+  The daemon itself. Only a process of the owner's on readd's private
+  socket reaches these methods; a browser session does not.
+types:
+  - name: ShutdownResult
+    doc: daemon.shutdown's result: an empty object.
+    fields: []
+methods:
+  - name: shutdown
+    doc: >-
+      Stop readd: it answers, then stops its poller, its extraction workers
+      and its blob sweep, finishes the write it is in, releases the state
+      directory's lock and exits 0 (ADR-0008, Leaving local mode stops
+      readd). A desktop readd that the window leaves in local mode stops
+      this way. A readd that systemd runs on lodge's host answers
+      unavailable: its service owns it.
+    errors: [unavailable]
+    result: ShutdownResult

@@ -39,6 +39,18 @@ this document changes with each of its phases.
 configuration, opens the store and the
 blob directory, starts the poller and the extraction workers, and serves
 two Unix sockets: lodge's app socket, and its private socket for `readctl`.
+It holds a `flock` on its state directory, so one readd owns one directory.
+
+**The desktop's readd.** `readd -desktop` is the Flatpak's own
+([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
+[specs/api.md](../specs/api.md#desktop-mode)). It takes the same lock,
+then reads `app.json` before it opens the database: named lodge, it
+releases the lock and exits 0, because the window then uses lodge's readd
+and this computer keeps nothing. In local mode it serves only its private
+socket: no lodge socket, no content route, no MCP and no notes client, and
+no TCP port. `daemon.shutdown` lets the window stop it in order, and
+`items.exportMarkdown` gives the reader a Markdown file instead of a
+note.
 
 **The store.** SQLite on local disk, WAL, foreign keys on, migrations by
 `user_version`:
@@ -104,12 +116,16 @@ new path, a missing one turns the button back into "Save as note", and an
 unreachable notes keeps the link with the error shown
 ([specs/api.md](../specs/api.md#note-status)).
 
-**Content.** `internal/content` serves
-`/content/item/<id>/<mac>` (the public `CONTENT/read/item/<id>/<mac>`) as one
-HTML page with inline styles and `data:` image
-URIs, only from lodge-content. The MAC is `HMAC-SHA256` of `item:<id>`
-under the store's secret, base64url, 22 characters, and the id travels in
-the path after it.
+**Content.** `internal/content` renders one article's page: inline
+styles, `data:` image URIs, and no remote resource. Lodge's route serves it
+at `/content/item/<id>/<mac>` (the public `CONTENT/read/item/<id>/<mac>`),
+only from lodge-content; the MAC is `HMAC-SHA256` of `item:<id>` under the
+store's secret, base64url, 22 characters, and the id travels in the path
+after it. The desktop's window asks `items.render` for the same page,
+whose only difference is a CSP meta first in its head, and which keeps its
+encoded answer under 12 MiB by leaving images out
+([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
+[specs/api.md](../specs/api.md#rendering-for-the-desktop)).
 
 **The web bundle.** `web/` is on `@frostyard/lodge-client`
 **client/v0.3.2** and `@frostyard/lodge-ui` **ui/v0.6.0**: a source column,

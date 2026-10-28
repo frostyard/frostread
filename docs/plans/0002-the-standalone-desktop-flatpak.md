@@ -21,9 +21,10 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-10-28): **Phase 1 is in review:** ADR-0008 records Brian's
-3 answers of 2026-10-27 and is Accepted; core's plan 0010 Read row waits
-for Lucilla. Nothing is built.
+Status (2026-10-28): **Phase 2 is in review:** Phase 1 is done (ADR-0008
+records Brian's 3 answers of 2026-10-27 and is Accepted; core's plan 0010
+Read row waits for Lucilla), and readd's desktop mode is built and in
+review. Nothing of the shell, the Flatpak or the release is built.
 
 ## Who helps
 

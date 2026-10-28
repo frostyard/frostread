@@ -112,7 +112,18 @@ types:
     doc: status's result.
     fields:
       - {name: version, type: string, doc: "The daemon's version."}
+      - {name: build, type: string, optional: true, doc: "The Flatpak instance's build, app-commit of its /.flatpak-info, when it has one; absent off the Flatpak (ADR-0008)."}
       - {name: notes, type: Note}
+  - name: ItemRender
+    doc: items.render's result.
+    fields:
+      - {name: html, type: string, doc: "The article's page: one HTML document, its images inlined as data: URIs, its CSP meta first in its head."}
+      - {name: omittedImages, type: int, doc: "How many images the page left out to stay under the bound on the answer; each keeps its alt text."}
+  - name: ItemMarkdown
+    doc: items.exportMarkdown's result.
+    fields:
+      - {name: filename, type: string, doc: "The name a saved file takes, <YYYY-MM-DD> <title>.md."}
+      - {name: markdown, type: string, doc: "The article as Markdown: the note's frontmatter and conversion, without the read_item marker and without the link back to the reader."}
   - name: OPMLImport
     doc: opml.import's result.
     fields:
@@ -238,6 +249,35 @@ methods:
     params:
       - {name: id, type: int}
     result: NoteStatusResult
+    errors: [notFound, unavailable]
+  - name: items.render
+    doc: >-
+      Render the article's page for the desktop's window: the document the
+      content route serves, with a CSP meta first in its head, and its
+      images inlined as data: URIs in document order while the encoded
+      answer stays under the bound: 12 MiB, the transport's 16 MiB less a
+      reserve for the envelope (ADR-0008). An image that does not fit
+      loses its src and keeps its alt text, and omittedImages counts it; an
+      image repeated twice counts twice. An article whose text alone
+      reaches the bound answers tooLarge. The blobs stay in the store.
+    params:
+      - {name: id, type: int}
+      - {name: scheme, type: string, optional: true, doc: "The reader's theme: light or dark; absent follows the reader's own preference."}
+    result: ItemRender
+    errors: [invalidParams, notFound, tooLarge]
+  - name: items.exportMarkdown
+    callers: [local]
+    doc: >-
+      The article as the Markdown file a desktop user saves: the same
+      conversion and frontmatter as a note, without the read_item marker
+      and without the link back to the reader, and a name of
+      <YYYY-MM-DD> <title>.md (ADR-0008). The body is the extracted
+      article, or the sanitized summary when the extraction has not run; an
+      item with neither, whose extraction is pending or failed, answers
+      unavailable.
+    params:
+      - {name: id, type: int}
+    result: ItemMarkdown
     errors: [notFound, unavailable]
   - name: later.save
     writes: true

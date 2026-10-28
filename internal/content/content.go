@@ -1,14 +1,21 @@
-// Package content serves an article's page to lodge-content: one HTML
-// document, its images inlined as data: URIs, addressed by a MAC under a
-// secret the daemon keeps (ADR-0005, and lodge-http.md's content routes).
+// Package content renders an article's page: one HTML document, its images
+// inlined as data: URIs. Lodge serves it on /content/ to lodge-content,
+// addressed by a MAC under a secret the daemon keeps (ADR-0005, and
+// lodge-http.md's content routes); the desktop's window asks for it with
+// items.render, which adds a CSP that admits no network source
+// (ADR-0008). One renderer makes both pages.
 package content
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"html/template"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -22,15 +29,80 @@ import (
 	"github.com/frostyard/frostread/internal/store"
 )
 
-// Handler serves GET and HEAD /content/item/<id>/<mac>.
-type Handler struct {
-	Store  *store.DB
-	Blobs  *blobs.Store
-	Secret []byte
+// ErrTooLarge means an article's page alone is at or over the bound on the
+// answer, so items.render answers tooLarge and the reader shows the
+// excerpt and a link instead (ADR-0008, The answer stays under the
+// transport's limit).
+var ErrTooLarge = errors.New("the article is too large to show in the app")
+
+// DefaultLimit is the most bytes an items.render answer may take on the
+// wire, its JSON-RPC envelope included. The kit refuses a line of
+// jsonrpc.MaxMessageSize (16 MiB), so an answer under 12 MiB keeps 4 MiB
+// clear of that limit, whatever the id and the escaping cost.
+const DefaultLimit = 12 << 20 // 12 MiB
+
+// EnvelopeAllowance is what the renderer reserves for an items.render
+// answer's envelope: {"jsonrpc":"2.0","id":<id>,"result":<result>}, as
+// jsonrpc.reply writes it, and the line's newline. That fixed part takes 34
+// bytes, so the allowance holds an encoded request id of up to
+// MaxRequestID bytes; readd refuses a longer id before the kit dispatches
+// the request (the kit hands a handler no request id), so the bound holds
+// for every answer.
+const EnvelopeAllowance = 1 << 10 // 1 KiB
+
+// MaxRequestID is the most bytes a request's encoded id may take, its
+// quotes or digits included, for every answer to stay under the bound that
+// contains EnvelopeAllowance. It is the allowance less the reply's fixed
+// part, `{"jsonrpc":"2.0","id":` and `,"result":` and `}` (33 bytes), and
+// the line's newline: internal/rpcserver refuses a longer id with
+// invalidRequest, so no answer passes its bound.
+const MaxRequestID = EnvelopeAllowance - 34 // 990 bytes
+
+// TagAllowance is what inlining one image costs beyond its data: URI: the
+// <img src="…"> around it, and the alt span it replaces.
+const TagAllowance = 64
+
+// CSP is the desktop page's content policy, first in its head: no source
+// of any kind but data: images and the page's own inline style
+// (ADR-0008, Untrusted article content without lodge-content).
+const CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'"
+
+// Renderer renders an article's page. Lodge's content route and
+// items.render both use it.
+type Renderer struct {
+	Store *store.DB
+	Blobs *blobs.Store
 	// Location is the time zone an article's date is shown in: the
 	// daemon's own, time.Local, when nil. The app formats the same date in
 	// the reader's zone, so both show one day.
 	Location *time.Location
+	// Limit is the most bytes an items.render answer may take on the wire;
+	// DefaultLimit when 0. Tests render with small limits.
+	Limit int
+}
+
+// Handler serves GET and HEAD /content/item/<id>/<mac>: lodge's content
+// route.
+type Handler struct {
+	Renderer
+	Secret []byte
+}
+
+// Rendered is items.render's result: the page, and how many of its images
+// it left out to stay under the bound. It is the wire result itself, so
+// the size this package measures is the answer's size.
+type Rendered struct {
+	HTML          string `json:"html"`
+	OmittedImages int    `json:"omittedImages"`
+}
+
+// limit is the bound on an answer, DefaultLimit when the renderer names
+// none.
+func (r *Renderer) limit() int {
+	if r.Limit > 0 {
+		return r.Limit
+	}
+	return DefaultLimit
 }
 
 // Path is an item's content path relative to the content root:
@@ -63,6 +135,16 @@ func Scheme(r *http.Request) string {
 	return ""
 }
 
+// ValidScheme reports whether scheme is one a page follows: "", "light"
+// or "dark".
+func ValidScheme(scheme string) bool {
+	switch scheme {
+	case "", "light", "dark":
+		return true
+	}
+	return false
+}
+
 // ServeHTTP answers an article's page. A wrong MAC, an unknown item and a
 // malformed path all answer 404 alike, so a wrong MAC says nothing.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +171,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the item could not be read", http.StatusInternalServerError)
 		return
 	}
-	page, err := h.page(r, it)
+	page, err := h.page(r.Context(), it, Scheme(r))
 	if err != nil {
 		http.Error(w, "the article could not be read", http.StatusInternalServerError)
 		return
@@ -100,35 +182,93 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(page)
 }
 
-// page is the article's HTML: the style, the head of the article, and the
-// content with its images inlined.
-func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
-	// The extraction's HTML is already sanitized by the extractor, and its
-	// blob: markers are part of it; it is not sanitized again, which would
-	// drop them. The feed's summary is still untrusted when an item is
-	// read before its extraction, so it is sanitized here.
-	body := template.HTML(it.ContentHTML)
-	if strings.TrimSpace(string(body)) == "" || sanitize.PlainText(string(body)) == "" {
-		body = template.HTML(sanitize.HTML(it.SummaryHTML))
-	}
-	images, err := h.Store.ItemBlobs(r.Context(), it.ID)
+// page is lodge-content's page for an item: the article with every image
+// it stored inlined. It has no CSP of its own: lodge adds the sandbox
+// policy (ADR-0005).
+func (h *Handler) page(ctx context.Context, it store.Item, scheme string) ([]byte, error) {
+	images, err := h.Store.ItemBlobs(ctx, it.ID)
 	if err != nil {
 		return nil, err
 	}
-	cache := map[string]string{}
-	html := replaceBlobs(inlineOnly(string(body)), func(hash string) string {
-		if uri, ok := cache[hash]; ok {
-			return uri
+	content := replaceBlobs(inlineOnly(h.body(it)), imageResolver(h.Blobs, images))
+	return []byte(h.document(it, scheme, false, content)), nil
+}
+
+// Render answers items.render for an item: the desktop page, whose CSP is
+// first in its head, under the bound on the encoded answer (ADR-0008, The
+// answer stays under the transport's limit).
+func (r *Renderer) Render(ctx context.Context, it store.Item, scheme string) (Rendered, error) {
+	images, err := r.Store.ItemBlobs(ctx, it.ID)
+	if err != nil {
+		return Rendered{}, fmt.Errorf("render item %d: %w", it.ID, err)
+	}
+	limit := r.limit()
+	body := inlineOnly(r.body(it))
+
+	// Step 1: no image embedded, which is the smallest page the article
+	// can take. An image that is not inlined keeps its alt text. Only an
+	// image the store holds counts as left out: one it never fetched shows
+	// as its alt text in lodge's page too.
+	resolve := imageResolver(r.Blobs, images)
+	bare, all := imageRewrite(body, func(hash string) (string, bool) { return "", resolve(hash) != "" })
+	// The step-1 page is measured as step 3's fallback answers it, with
+	// every image counted as omitted: the count's digits are on the wire too.
+	plain := Rendered{HTML: r.document(it, scheme, true, bare), OmittedImages: all}
+	if answerSize(plain) >= limit {
+		return Rendered{}, ErrTooLarge
+	}
+
+	// Step 2: inline the images in document order while each one's data:
+	// URI still fits what the answer may take.
+	budget := limit - answerSize(plain)
+	content, omitted := imageRewrite(body, func(hash string) (string, bool) {
+		uri := resolve(hash)
+		if uri == "" {
+			return "", false
 		}
-		uri := ""
-		if b, ok := images[hash]; ok {
-			if data, err := h.Blobs.Get(b.Hash); err == nil {
-				uri = "data:" + b.Mime + ";base64," + base64.StdEncoding.EncodeToString(data)
-			}
+		if len(uri)+TagAllowance > budget {
+			return "", true
 		}
-		cache[hash] = uri
-		return uri
+		budget -= len(uri) + TagAllowance
+		return uri, false
 	})
+
+	// Step 3: measure the answer itself, and fall back to step 1's page
+	// when the escaping grew it past the bound.
+	out := Rendered{HTML: r.document(it, scheme, true, content), OmittedImages: omitted}
+	if answerSize(out) >= limit {
+		return plain, nil // measured in step 1, under the bound
+	}
+	return out, nil
+}
+
+// answerSize is the bytes an items.render answer takes on the wire: the
+// kit's json.Marshal of the result, and the envelope's allowance.
+func answerSize(p Rendered) int {
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return math.MaxInt // a result the kit cannot encode is not sent
+	}
+	return len(raw) + EnvelopeAllowance
+}
+
+// body is the article's HTML: the extraction's, or the feed's summary,
+// sanitized, when the extraction has no words yet. The extraction's HTML is
+// already sanitized by the extractor, and its blob: markers are part of
+// it; it is not sanitized again, which would drop them. The feed's summary
+// is still untrusted when an item is read before its extraction.
+func (r *Renderer) body(it store.Item) string {
+	if strings.TrimSpace(it.ContentHTML) == "" || sanitize.PlainText(it.ContentHTML) == "" {
+		return sanitize.HTML(it.SummaryHTML)
+	}
+	return it.ContentHTML
+}
+
+// document is the page around an article's HTML. The desktop's page, which
+// items.render answers, has its CSP first in its head, so an article's
+// frame loads no remote resource of any kind; lodge's page has none, and
+// lodge's sandbox policy decides. The two differ by that one line.
+func (r *Renderer) document(it store.Item, scheme string, csp bool, content string) string {
 	data := struct {
 		Scheme  string
 		Title   string
@@ -137,14 +277,99 @@ func (h *Handler) page(r *http.Request, it store.Item) ([]byte, error) {
 		Date    string
 		Content template.HTML
 	}{
-		Scheme: Scheme(r), Title: it.Title, Byline: it.Author, Site: siteOf(it.URL), Date: h.published(it),
-		Content: template.HTML(html),
+		Scheme: scheme, Title: it.Title, Byline: it.Author, Site: siteOf(it.URL),
+		Date: r.published(it), Content: template.HTML(content),
 	}
 	var out strings.Builder
 	if err := pageTemplate.Execute(&out, data); err != nil {
-		return nil, err
+		return content // a template this fixed cannot fail; keep the article
 	}
-	return []byte(out.String()), nil
+	page := out.String()
+	if !csp {
+		return page
+	}
+	meta := `<meta http-equiv="Content-Security-Policy" content="` + CSP + `">` + "\n"
+	return strings.Replace(page, "<head>\n", "<head>\n"+meta, 1)
+}
+
+// imageResolver answers an image's data: URI from the item's blobs, reading
+// each stored image once, and "" for one the item does not have.
+func imageResolver(b *blobs.Store, images map[string]store.Blob) func(hash string) string {
+	cache := map[string]string{}
+	return func(hash string) string {
+		if uri, ok := cache[hash]; ok {
+			return uri
+		}
+		uri := ""
+		if img, ok := images[hash]; ok {
+			if data, err := b.Get(img.Hash); err == nil {
+				uri = "data:" + img.Mime + ";base64," + base64.StdEncoding.EncodeToString(data)
+			}
+		}
+		cache[hash] = uri
+		return uri
+	}
+}
+
+// imageRewrite walks s's blob images in document order, and asks uri what
+// each one is: the data: URI to inline it, or "" to leave it out, which
+// keeps its alt text as text, as inlineOnly does with an image that is not
+// a blob. It returns the HTML and how many images uri said were left out
+// to stay under the bound.
+func imageRewrite(s string, uri func(hash string) (string, bool)) (string, int) {
+	doc, err := html.Parse(strings.NewReader(s))
+	if err != nil {
+		return s, 0
+	}
+	var images []*html.Node
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "img" {
+			if strings.HasPrefix(attr(n, "src"), "blob:") {
+				images = append(images, n)
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	omitted := 0
+	for _, n := range images {
+		u, left := uri(strings.TrimPrefix(attr(n, "src"), "blob:"))
+		if u != "" {
+			setAttr(n, "src", u)
+			continue
+		}
+		if left {
+			omitted++
+		}
+		replaceWithAlt(n)
+	}
+	var out strings.Builder
+	for c := doc.FirstChild; c != nil; c = c.NextSibling {
+		if err := html.Render(&out, c); err != nil {
+			return s, omitted
+		}
+	}
+	return out.String(), omitted
+}
+
+// replaceWithAlt puts n's alt text where n is, as text, which a page that
+// loads no image shows in its place.
+func replaceWithAlt(n *html.Node) {
+	alt := attr(n, "alt")
+	var replacement *html.Node
+	if alt != "" {
+		replacement = &html.Node{Type: html.ElementNode, Data: "span"}
+		replacement.AppendChild(&html.Node{Type: html.TextNode, Data: alt})
+	} else {
+		replacement = &html.Node{Type: html.TextNode, Data: ""}
+	}
+	if n.Parent != nil {
+		n.Parent.InsertBefore(replacement, n)
+		n.Parent.RemoveChild(n)
+	}
 }
 
 // inlineOnly keeps an image only when its source is a stored blob, which
@@ -169,18 +394,7 @@ func inlineOnly(s string) string {
 	}
 	walk(doc)
 	for _, n := range images {
-		alt := attr(n, "alt")
-		var replacement *html.Node
-		if alt != "" {
-			replacement = &html.Node{Type: html.ElementNode, Data: "span"}
-			replacement.AppendChild(&html.Node{Type: html.TextNode, Data: alt})
-		} else {
-			replacement = &html.Node{Type: html.TextNode, Data: ""}
-		}
-		if n.Parent != nil {
-			n.Parent.InsertBefore(replacement, n)
-			n.Parent.RemoveChild(n)
-		}
+		replaceWithAlt(n)
 	}
 	var out strings.Builder
 	for c := doc.FirstChild; c != nil; c = c.NextSibling {
@@ -199,6 +413,17 @@ func attr(n *html.Node, key string) string {
 		}
 	}
 	return ""
+}
+
+// setAttr sets n's attribute key to value, adding it when it has none.
+func setAttr(n *html.Node, key, value string) {
+	for i, a := range n.Attr {
+		if a.Key == key {
+			n.Attr[i].Val = value
+			return
+		}
+	}
+	n.Attr = append(n.Attr, html.Attribute{Key: key, Val: value})
 }
 
 // replaceBlobs rewrites every blob:<hash> source with what uri answers for
@@ -235,11 +460,11 @@ func siteOf(rawurl string) string {
 
 // published is the article's date in the daemon's time zone, or "" when it
 // has none.
-func (h *Handler) published(it store.Item) string {
+func (r *Renderer) published(it store.Item) string {
 	if it.PublishedAt.IsZero() {
 		return ""
 	}
-	loc := h.Location
+	loc := r.Location
 	if loc == nil {
 		loc = time.Local
 	}

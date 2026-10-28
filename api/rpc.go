@@ -15,7 +15,7 @@ import (
 const Protocol = 1
 
 // Error codes (schema/rpc/errors.yaml). JSON-RPC 2.0 defines the negative
-// ones; 1001 to 1005 are what every lodge app means by them.
+// ones; 1001 to 1006 are what every lodge app means by them.
 const (
 	CodeParseError       ErrorCode = -32700
 	CodeInvalidRequest   ErrorCode = -32600
@@ -27,6 +27,7 @@ const (
 	CodeProtocolMismatch ErrorCode = 1003
 	CodeNotReady         ErrorCode = 1004
 	CodeUnavailable      ErrorCode = 1005
+	CodeTooLarge         ErrorCode = 1006
 )
 
 // Sentinels for errors.Is.
@@ -61,6 +62,8 @@ func (c ErrorCode) String() string {
 		return "notReady"
 	case CodeUnavailable:
 		return "unavailable"
+	case CodeTooLarge:
+		return "tooLarge"
 	}
 	return fmt.Sprintf("ErrorCode(%d)", int(c))
 }
@@ -146,6 +149,7 @@ type Services struct {
 	RPC    RPCService
 	Read   ReadService
 	Events EventsService
+	Daemon DaemonService
 }
 
 func (s Services) register(r *Router) error {
@@ -159,15 +163,19 @@ func (s Services) register(r *Router) error {
 	if s.Events != nil {
 		registerEvents(r, s.Events)
 	}
+	if s.Daemon != nil {
+		registerDaemon(r, s.Daemon)
+	}
 	return nil
 }
 
 // Methods is every method the contract defines.
 var Methods = []string{
-	"rpc.hello", "rpc.ping", "events.subscribe",
+	"rpc.hello", "rpc.ping", "events.subscribe", "daemon.shutdown",
 	"status", "sources.list", "sources.add", "sources.remove", "sources.rename", "sources.refresh",
 	"opml.import", "opml.export",
 	"items.list", "items.get", "items.search", "items.setRead", "items.markAllRead",
 	"items.setStarred", "items.setArchived", "items.saveAsNote", "items.noteStatus",
+	"items.render", "items.exportMarkdown",
 	"later.save", "counts", "notes.setToken", "blobs.sweep",
 }

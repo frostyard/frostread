@@ -20,8 +20,8 @@ contract says. Two callers exist:
 
 | Caller | Connection | Methods |
 | --- | --- | --- |
-| `session` | lodge's `/app/read/api`, one WebSocket per browser | every method but `notes.setToken` and `blobs.sweep` |
-| `local` | `/run/frostread/readctl.sock` | every method, `notes.setToken` and `blobs.sweep` included |
+| `session` | lodge's `/app/read/api`, one WebSocket per browser | every method but `notes.setToken`, `blobs.sweep`, `items.exportMarkdown` and `daemon.shutdown` |
+| `local` | `/run/frostread/readctl.sock`, or the desktop's socket | every method, `notes.setToken`, `blobs.sweep`, `items.exportMarkdown` and `daemon.shutdown` included |
 
 A method a connection may not call answers `methodNotFound`, as does one
 that does not exist.
@@ -105,6 +105,9 @@ what search returns too, unless a query says otherwise.
 | `items.setArchived` | `{id, archived}` | `{}` | |
 | `items.saveAsNote` | `{id}` | `{path, route}` | writes the article into notes; `route` is `/notes/<vaultId>/<path segments, encoded>`, for lodge-client's `open` |
 | `items.noteStatus` | `{id}` | `NoteStatus` | asks notes where the item's note is; `present`, `moved` (and records the new path), `missing` (and clears `note_path`) or `unreachable` (keeping it), within 5 seconds |
+| `items.render` | `{id, scheme?}` | `{html, omittedImages}` | the article's page for the desktop's window: the content route's document, its CSP meta first in its head, and images inlined while the encoded answer stays under the bound (`tooLarge` when the text alone does not fit); `scheme` is `light` or `dark` ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)) |
+| `items.exportMarkdown` | `{id}` | `{filename, markdown}` | caller `local` only: the article as the Markdown file a desktop user saves, without the note's marker and link, named `<YYYY-MM-DD> <title>.md` |
+| `daemon.shutdown` | none | `{}` | caller `local` only: readd answers, then stops and releases its lock; a readd systemd runs answers `unavailable` |
 | `later.save` | `{url, title?}` | `{item: ItemSummary}` | saves a link to read later, with the page's title when there is one; saving it twice returns the same item |
 | `counts` | none | `{views: {unread, starred, later, archive, all}, sources: [{sourceId, unread}]}` | the sidebar's counts |
 | `notes.setToken` | `{token}` | `{}` | caller `local` only: writes the notes token, 0600, and uses it at once |
@@ -124,10 +127,12 @@ Times are RFC 3339 in UTC, with `omitzero`. A cursor is opaque to the
 client: it names the last item of the page it came with, and `items.list`
 answers a cursor it did not issue with `invalidParams`.
 
-Errors are the scaffold's codes: `invalidParams` (a bad view, limit, cursor
-or URL), `notFound` (an unknown item or source), `conflict` (a URL that is
-already a source), `unavailable` (save-as-note with no token or no vault,
-or notes is not reachable) and `internal`.
+Errors are the scaffold's codes: `invalidParams` (a bad view, limit, cursor,
+URL or scheme), `notFound` (an unknown item or source), `conflict` (a URL
+that is already a source), `unavailable` (save-as-note with no token or no
+vault, notes is not reachable, or an export of an article that has no
+text), `tooLarge` (an article whose page alone is at or over the bound on
+`items.render`'s answer) and `internal`.
 
 `NoteStatus`:
 
@@ -194,10 +199,60 @@ asks notes, with the token's own scope, which reads the whole vault
   path order. A renamed or moved note with its marker is found anywhere in
   the vault.
 
+#### Rendering for the desktop
+
+A desktop window has no lodge-content, so the daemon renders the page
+itself with `items.render` ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)).
+It is the same renderer that serves `/content/`, so the two documents are
+the same but for one line.
+
+- **The document** is the content route's page, with
+  `<meta http-equiv="Content-Security-Policy" content="default-src 'none';
+  img-src data:; style-src 'unsafe-inline'">` first in its `<head>`. The
+  window shows it in an `<iframe srcdoc sandbox="allow-popups">`, without
+  `allow-scripts` and without `allow-same-origin`, under the app's own CSP.
+- **The bound.** The whole JSON-RPC answer MUST stay under 12 MiB
+  (12 × 1024 × 1024 bytes): the kit refuses a line of
+  `jsonrpc.MaxMessageSize` (16 MiB), so 12 MiB keeps 4 MiB clear of it, and
+  a fixed envelope allowance of 1 KiB is counted inside the 12 MiB. The
+  allowance holds the envelope's fixed bytes and the line's newline (34
+  bytes), and an encoded request id of up to 990 bytes. readd MUST refuse a
+  request whose encoded id is longer with `invalidRequest` and id `null`,
+  on every connection, before the kit dispatches it: the kit gives a
+  handler no request id, so the guard sits on the connection, not on a
+  method. With the id bounded, no answer of `items.render` passes
+  12 MiB. Other methods have no such bound on their result. The renderer:
+  1. renders the page with no image embedded, an image keeping its alt
+     text, and measures the encoded answer with every stored image
+     counted in `omittedImages`; at or over the bound it answers
+     `tooLarge`;
+  2. otherwise embeds each image in document order while its `data:` URI
+     still fits, a small per-tag allowance included; an image repeated
+     twice counts twice, and each image left out is counted in
+     `omittedImages`; an image the store does not hold shows as its alt
+     text, as on lodge's page, and is not counted;
+  3. measures the final answer again, and falls back to step 1's page,
+     with every image counted as omitted, when it is at or over the bound.
+
+The blobs stay in the store: an omitted image is not fetched or removed,
+and a later call may show it when the bound allows.
+
+#### Export as Markdown
+
+`items.exportMarkdown` is the desktop's way to keep an article: the
+Markdown a note holds, from the same conversion in `internal/notes`,
+without the `read_item` marker and without the line that links back to
+the reader. The name is `<YYYY-MM-DD> <safe title>.md`, the note's base
+name without its folder. The body is the extracted article, or the
+sanitized summary when that is empty, as the content page chooses. The
+shell writes the file where the user picks, through the FileChooser
+portal's `SaveFile`; readd writes no file.
+
 ### MCP
 
 MCP Streamable HTTP at `/mcp`, for caller `agent`, wrapped in
-`kit/mcpsession`. The manifest sets `"mcp": true`.
+`kit/mcpsession`. The manifest sets `"mcp": true`. A desktop readd serves
+no MCP: an agent reaches Read only through lodge's `/mcp/read`.
 
 **The scope** is exactly `read` or `read;write`, and nothing else: a
 connection whose token's `Lodge-Scope` is anything else answers 403 at
@@ -329,11 +384,14 @@ shell's limit.
 ### `readctl`
 
 ```
-readctl [--socket PATH] COMMAND [ARGS]
+readctl [--socket PATH] [-desktop] COMMAND [ARGS]
 ```
 
-`--socket`, or `READ_SOCKET`, or `/run/frostread/readctl.sock`. It speaks
-the private socket's JSON-RPC as caller `local`.
+`--socket`, or `READ_SOCKET`, or, with `-desktop` or when `FLATPAK_ID` is
+`org.frostyard.Frostread`, the desktop's socket, or
+`/run/frostread/readctl.sock`. It speaks the private socket's JSON-RPC as
+caller `local`. In the Flatpak, `flatpak run --command=readctl
+org.frostyard.Frostread status` therefore finds the app's own readd.
 
 | Command | Does |
 | --- | --- |
@@ -348,14 +406,18 @@ the private socket's JSON-RPC as caller `local`.
 | `search <query>` | searches titles, authors and text |
 | `sweep [-dry-run]` | sweeps the blob store now through `blobs.sweep`, and prints the totals; `-dry-run` only reports |
 | `notes-token` | reads the notes token from stdin and sets it |
-| `status` | prints the version and whether save-as-note is ready |
+| `status` | prints the version, the build when the Flatpak has one, and whether save-as-note is ready |
+| `shutdown` | calls `daemon.shutdown`: readd answers, then stops and releases its lock |
 
 Exit status is 0 on success and 1 on an error, which it prints to stderr.
 
 ### Configuration
 
 `/etc/frostread/frostread.json`, or `READ_CONFIG`. It is optional, and an
-unknown member is an error.
+unknown member is an error. In desktop mode it is
+`$XDG_CONFIG_HOME/frostread/frostread.json`, or
+`$HOME/.config/frostread/frostread.json`; see
+[Desktop mode](#desktop-mode).
 
 ```json
 {
@@ -395,6 +457,76 @@ file's modification time are both older than the grace period
 Its row is deleted when the blob is used again, when its file is gone, and
 when the blob is removed.
 
+### Desktop mode
+
+On a desktop, `org.frostyard.Frostread` carries its own readd, and lodge
+is a connection the user chooses
+([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)).
+`readd -desktop` is that mode.
+
+**What it does not run.** It opens no lodge app socket, serves no
+`/content/` and no MCP, builds no notes client, and listens on no TCP
+port: only its private socket, which admits only the user's own
+processes. `items.get` answers no `contentPath`, `status.notes.configured`
+is false, and `notes.setToken` answers `unavailable`. The fetcher is
+unchanged: on a desktop too it refuses private, loopback, link-local and
+tailnet addresses.
+
+**Flags.**
+
+| Flag | What it does |
+| --- | --- |
+| `-desktop` | the desktop mode: the paths, the lock and the mode check below |
+| `-log FILE` | after readd holds the lock, move `FILE` to `FILE.1` when it is larger than 1 MiB, and append readd's output (stdout and stderr) to `FILE` |
+| `-build` | print the Flatpak instance's build, an empty line when there is none, and exit 0 |
+| `--socket PATH` | the private socket, in either mode; it wins over the derived one |
+| `-debug` | log at debug level |
+
+**Paths** (`internal/config` derives them; `web/src-tauri/src/paths.rs`
+derives the socket too, for the shell):
+
+| What | Where |
+| --- | --- |
+| state | `$XDG_DATA_HOME/frostread`, else `$HOME/.local/share/frostread`, mode 0700; `frostread.db`, `blobs/` and `readd.lock` in it |
+| configuration | `READ_CONFIG`, else `$XDG_CONFIG_HOME/frostread/frostread.json`, else `$HOME/.config/frostread/frostread.json` |
+| the mode file | `app.json` in the configuration's directory |
+| the socket | `READ_SOCKET`, else `$XDG_RUNTIME_DIR/app/org.frostyard.Frostread/frostread/readd.sock` when `FLATPAK_ID` is `org.frostyard.Frostread`, else `$XDG_RUNTIME_DIR/frostread/readd.sock` |
+| the log | the launcher passes `-log $XDG_STATE_HOME/frostread/readd.log` |
+
+Only an absolute `XDG_DATA_HOME`, `XDG_CONFIG_HOME` or `XDG_RUNTIME_DIR`
+counts. A missing `XDG_RUNTIME_DIR`, and no `READ_SOCKET`, is an error
+that says to set `READ_SOCKET`.
+
+**One readd per state directory.** readd takes `flock(LOCK_EX|LOCK_NB)` on
+`<state>/readd.lock` before it opens the database, and holds it until it
+exits. A second readd on the same directory exits 1 at once with "another
+readd uses <dir>", whatever its socket. This holds on lodge's host too.
+
+**The mode file.** `{"lodge": "https://lodge.example.ts.net"}` is lodge
+mode; no file, no `lodge` member, or an empty one, is local mode, and a
+member readd does not know is ignored. In desktop mode readd reads
+`app.json` after it holds the lock and before it opens the database; in
+lodge mode it releases the lock, logs one line and exits 0, and never
+opens the database. A file that does not parse is an error, and a
+non-zero exit: readd exits 1 and opens no database. Only the app writes
+the file; readd only reads it.
+
+**What the configuration changes.** `poll_interval`, `blob_sweep` and
+`blob_grace_days` apply as on lodge. `lodge_url`, `notes_vault` and a non-
+default `notes_folder` have no effect, and readd logs one line saying so
+when one is set.
+
+**The build.** `status.build` is the `app-commit` of the `[Instance]`
+group in `/.flatpak-info`, read at start; it is absent off the Flatpak.
+`readd -build` prints the same value, which the launcher compares with
+the latest deployment's to replace an old readd, forward only.
+
+**Stopping.** `daemon.shutdown` (caller `local`) answers, and then readd
+stops: it cancels the poller, the extraction workers and the blob sweep,
+waits for them, and only then closes the database and releases the lock.
+readd then exits 0, as it does after a signal. On lodge's host systemd
+owns readd, so the same call answers `unavailable`.
+
 ### Installation on lodge's host
 
 The daemon installs as lodge's `read` app, beside lodge and notes, with
@@ -431,7 +563,16 @@ The packaging test, `internal/packagecheck`, checks it.
 ## Rules
 
 - `readd` MUST listen only on Unix sockets. It MUST NOT open a TCP
-  listener, for any reason.
+  listener, for any reason. In desktop mode it serves only its private
+  socket.
+- An `items.render` answer MUST stay under 12 MiB encoded, and an article
+  whose page alone reaches that MUST answer `tooLarge` rather than send a
+  partial document
+  ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)).
+- readd MUST refuse a request whose encoded id is longer than 990 bytes,
+  with `invalidRequest` and id `null`, on every connection and before
+  dispatch, so the envelope allowance that `items.render`'s bound counts
+  holds every id.
 - Every outbound request MUST go through `internal/fetch`. No other package
   may import `net/http`'s client for a fetch of its own.
 - A content URL MUST be unguessable without the store's secret, and a wrong
@@ -514,6 +655,8 @@ vets and tests both.
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
   [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md),
-  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
+  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md),
+  [ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
 - Context: [design/overview.md](../design/overview.md)
-- Built in: [roadmap](../plans/0001-roadmap.md)
+- Built in: [roadmap](../plans/0001-roadmap.md), and the desktop in
+  [plan 0002](../plans/0002-the-standalone-desktop-flatpak.md)

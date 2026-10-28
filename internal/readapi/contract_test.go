@@ -248,6 +248,7 @@ func TestContract(t *testing.T) {
 		{"items.search", "items.search", `{"query":"tomatoes","limit":10}`},
 		{"items.saveAsNote", "items.saveAsNote", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`},
 		{"items.noteStatus", "items.noteStatus", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`},
+		{"items.render", "items.render", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `,"scheme":"dark"}`},
 		{"later.save", "later.save", `{"url":"https://example.org/read-later"}`},
 		{"events.subscribe", "events.subscribe", `{}`},
 		{"opml.export", "opml.export", `{}`},

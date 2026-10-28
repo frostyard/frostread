@@ -22,7 +22,7 @@ func setup(t *testing.T) (*Handler, *store.DB, int64) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	b := blobs.New(filepath.Join(dir, "blobs"))
-	h := &Handler{Store: db, Blobs: b, Secret: []byte(strings.Repeat("s", 32))}
+	h := &Handler{Renderer: Renderer{Store: db, Blobs: b}, Secret: []byte(strings.Repeat("s", 32))}
 	it, err := db.SaveLink(t.Context(), "https://example.com/an-article", "example.com")
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +214,7 @@ func TestDateIsTheDaemonsLocal(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	b := blobs.New(filepath.Join(dir, "blobs"))
-	h := &Handler{Store: db, Blobs: b, Secret: []byte("secret"), Location: time.FixedZone("ahead", 2*60*60)}
+	h := &Handler{Renderer: Renderer{Store: db, Blobs: b, Location: time.FixedZone("ahead", 2*60*60)}, Secret: []byte("secret")}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	src, err := db.AddSource(t.Context(), store.Source{URL: "https://example.com/feed.xml", Title: "Example"}, time.Now())
