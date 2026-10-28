@@ -17,6 +17,7 @@ import (
 
 	"github.com/frostyard/frostread/internal/blobs"
 	"github.com/frostyard/frostread/internal/config"
+	"github.com/frostyard/frostread/internal/content"
 	"github.com/frostyard/frostread/internal/extract"
 	"github.com/frostyard/frostread/internal/feed"
 	"github.com/frostyard/frostread/internal/fetch"
@@ -47,6 +48,9 @@ type Options struct {
 	// Interval is a source's poll interval; the configuration's when 0.
 	Interval time.Duration
 	Version  string
+	// Build is the Flatpak instance's build, when there is one: the
+	// app-commit of /.flatpak-info (ADR-0008).
+	Build string
 	// Notes writes save-as-note; nil when the feature is not configured.
 	Notes NoteSaver
 	// SetNotesToken writes a new notes token and rebuilds Notes; nil
@@ -75,6 +79,10 @@ type Engine struct {
 	mu    sync.Mutex
 	notes NoteSaver
 
+	// page renders an article's page for items.render, with the same code
+	// lodge's content route uses (ADR-0008).
+	page *content.Renderer
+
 	queue  chan int64
 	busy   sync.Map // item id -> struct{}, extraction in flight
 	notify func(views []string)
@@ -100,7 +108,8 @@ func New(o Options) *Engine {
 	if o.Log == nil {
 		o.Log = slog.New(slog.DiscardHandler)
 	}
-	e := &Engine{o: o, log: o.Log, now: o.Now, notes: o.Notes, queue: make(chan int64, 512)}
+	e := &Engine{o: o, log: o.Log, now: o.Now, notes: o.Notes, queue: make(chan int64, 512),
+		page: &content.Renderer{Store: o.Store, Blobs: o.Blobs}}
 	e.notify = o.OnChange
 	return e
 }
@@ -108,7 +117,10 @@ func New(o Options) *Engine {
 // Status is the daemon's state for the web app.
 type Status struct {
 	Version string `json:"version"`
-	Notes   Note   `json:"notes"`
+	// Build is the Flatpak instance's build, absent off the Flatpak; the
+	// launcher replaces a readd whose build is not the latest (ADR-0008).
+	Build string `json:"build,omitzero"`
+	Notes Note   `json:"notes"`
 }
 
 // Note says whether save-as-note is ready.
@@ -123,7 +135,7 @@ func (e *Engine) Status(context.Context) Status {
 	e.mu.Lock()
 	configured := e.notes != nil
 	e.mu.Unlock()
-	return Status{Version: e.o.Version, Notes: Note{
+	return Status{Version: e.o.Version, Build: e.o.Build, Notes: Note{
 		Configured: configured && e.o.Config.NotesVault != 0,
 		VaultID:    e.o.Config.NotesVault,
 		Folder:     e.o.Config.NotesFolder,
@@ -580,6 +592,57 @@ func (e *Engine) SaveAsNote(ctx context.Context, id int64) (path, route string, 
 	}
 	e.change("all")
 	return path, notes.Route(e.o.Config.NotesVault, path), nil
+}
+
+// Rendered is items.render's result: an article's page, and how many of its
+// images it left out to stay under the bound on the answer (ADR-0008).
+type Rendered = content.Rendered
+
+// Render returns an item's page for the desktop's window: the content
+// route's document with its CSP meta, its images inlined while the encoded
+// answer stays under the transport's bound. An article whose text alone
+// reaches the bound answers content.ErrTooLarge.
+func (e *Engine) Render(ctx context.Context, id int64, scheme string) (Rendered, error) {
+	it, err := e.o.Store.Item(ctx, id)
+	if err != nil {
+		return Rendered{}, err
+	}
+	return e.page.Render(ctx, it, scheme)
+}
+
+// ExportMarkdown returns an item as the Markdown file a desktop user saves:
+// its name and its text, with a note's frontmatter and conversion, and
+// without the note's marker and link (ADR-0008, Notes is optional). The
+// body is the extracted article, or the sanitized summary when that is
+// empty, as the content page chooses.
+func (e *Engine) ExportMarkdown(ctx context.Context, id int64) (filename, markdown string, err error) {
+	it, err := e.o.Store.Item(ctx, id)
+	if err != nil {
+		return "", "", err
+	}
+	body := it.ContentHTML
+	if strings.TrimSpace(body) == "" || sanitize.PlainText(body) == "" {
+		body = sanitize.HTML(it.SummaryHTML)
+	}
+	if strings.TrimSpace(body) == "" || sanitize.PlainText(body) == "" {
+		if it.ExtractState == store.ExtractFailed {
+			return "", "", fmt.Errorf("export as markdown: the article could not be extracted (%s): %w",
+				it.ExtractError, ErrUnavailable)
+		}
+		return "", "", fmt.Errorf("export as markdown: the article is still being extracted: %w", ErrUnavailable)
+	}
+	site := ""
+	if it.SourceID != nil {
+		if src, err := e.o.Store.Source(ctx, *it.SourceID); err == nil {
+			site = src.Title
+		}
+	}
+	filename, markdown, err = notes.Export(notes.Article{ID: it.ID, URL: it.URL, Title: it.Title,
+		Author: it.Author, Site: site, Content: body}, e.now())
+	if err != nil {
+		return "", "", err
+	}
+	return filename, markdown, nil
 }
 
 // NoteStatus asks notes about an item's note, and keeps the item's

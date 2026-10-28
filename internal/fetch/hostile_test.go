@@ -148,10 +148,10 @@ func newWorld(t *testing.T) *world {
 		Extractor: &extract.Extractor{Fetch: client, Blobs: b},
 		Config:    config.Config{PollInterval: "20m", NotesFolder: "Reading/", NotesVault: 1},
 		Interval:  20 * time.Minute, Version: "test",
-		ContentPath: (&content.Handler{Store: db, Blobs: b, Secret: secret}).Path,
+		ContentPath: (&content.Handler{Renderer: content.Renderer{Store: db, Blobs: b}, Secret: secret}).Path,
 		Now:         func() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC) },
 	})
-	page := &content.Handler{Store: db, Blobs: b, Secret: secret}
+	page := &content.Handler{Renderer: content.Renderer{Store: db, Blobs: b}, Secret: secret}
 	return &world{srv: srv, engine: eng, store: db, content: page}
 }
 

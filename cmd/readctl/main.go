@@ -1,9 +1,10 @@
 // Command readctl is frostread's CLI, over readd's private socket
 // (docs/specs/api.md, readctl).
 //
-//	readctl [--socket PATH] COMMAND [ARGS]
+//	readctl [--socket PATH] [-desktop] COMMAND [ARGS]
 //
-// The socket is --socket, or READ_SOCKET, or /run/frostread/readctl.sock.
+// The socket is --socket, or READ_SOCKET, or, on a desktop, the Flatpak's
+// own (/run/frostread/readctl.sock on lodge's host).
 package main
 
 import (
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/frostyard/frostread/api"
+	"github.com/frostyard/frostread/internal/config"
 )
 
 // DefaultSocket is readd's private socket, as its service unit names it.
@@ -38,7 +40,7 @@ func main() {
 	}
 }
 
-const usage = `usage: readctl [--socket PATH] COMMAND [ARGS]
+const usage = `usage: readctl [--socket PATH] [-desktop] COMMAND [ARGS]
 
 COMMAND:
   save <url>          save a link to read later
@@ -52,14 +54,17 @@ COMMAND:
   search <query>      search titles, authors and article text
   sweep [-dry-run]    remove the blobs no item has named for the grace period; -dry-run only reports
   notes-token         read the notes MCP token from stdin and set it
-  status              print the version and whether save-as-note is ready
+  status              print the version, the build and whether save-as-note is ready
+  shutdown            stop the desktop's readd, after the answer it sends
 
-The socket is --socket, or READ_SOCKET, or ` + DefaultSocket + `.`
+The socket is --socket, or READ_SOCKET, or the desktop's socket with
+-desktop or in the Flatpak (` + config.AppID + `), or ` + DefaultSocket + `.`
 
 // known reports whether command is one readctl has.
 func known(command string) bool {
 	switch command {
-	case "save", "add", "sources", "note", "note-status", "import", "export", "poll", "search", "notes-token", "sweep", "status":
+	case "save", "add", "sources", "note", "note-status", "import", "export", "poll", "search",
+		"notes-token", "sweep", "status", "shutdown":
 		return true
 	}
 	return false
@@ -70,16 +75,16 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	fs := flag.NewFlagSet("readctl", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	socket := fs.String("socket", "", "readd's private socket")
+	desktop := fs.Bool("desktop", false, "reach the desktop's readd: "+config.AppID)
 	fs.Usage = func() { fmt.Fprintln(errOut, usage) }
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *socket == "" {
-		*socket = os.Getenv("READ_SOCKET")
+	resolved, err := resolveSocket(*socket, *desktop, os.Getenv)
+	if err != nil {
+		return err
 	}
-	if *socket == "" {
-		*socket = DefaultSocket
-	}
+	*socket = resolved
 	rest := fs.Args()
 	if len(rest) == 0 {
 		fmt.Fprintln(errOut, usage)
@@ -267,16 +272,43 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return err
 		}
 		fmt.Fprintf(out, "readd %s\n", st.Version)
+		if st.Build != "" {
+			fmt.Fprintf(out, "build %s\n", st.Build)
+		}
 		if st.Notes.Configured {
 			fmt.Fprintf(out, "save as a note: yes, vault %d, folder %s\n", st.Notes.VaultID, st.Notes.Folder)
 		} else {
 			fmt.Fprintln(out, "save as a note: not configured")
 		}
 		return nil
+	case "shutdown":
+		if len(args) != 0 {
+			return errors.New("usage: readctl shutdown")
+		}
+		if err := c.Daemon().Shutdown(ctx); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "readd stops")
+		return nil
 	default:
 		fmt.Fprintln(errOut, usage)
 		return fmt.Errorf("unknown command %q", command)
 	}
+}
+
+// resolveSocket is the socket readctl dials: --socket, READ_SOCKET, then the
+// desktop's socket when -desktop is given or FLATPAK_ID is this app (the
+// window and readd meet only there, in one runtime directory Flatpak shares
+// between the app's sandboxes), and /run/frostread/readctl.sock on lodge's
+// host (ADR-0008, readd's desktop mode).
+func resolveSocket(flagSocket string, desktop bool, getenv func(string) string) (string, error) {
+	if flagSocket != "" {
+		return flagSocket, nil
+	}
+	if desktop || getenv("READ_SOCKET") != "" || getenv("FLATPAK_ID") == config.AppID {
+		return config.DesktopSocket(getenv)
+	}
+	return DefaultSocket, nil
 }
 
 // printSweep writes a sweep's totals, one per line.

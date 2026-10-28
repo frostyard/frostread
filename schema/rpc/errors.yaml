@@ -20,3 +20,9 @@ errors:
   - name: unavailable
     code: 1005
     doc: The operation cannot run now; retrying later can succeed.
+  - name: tooLarge
+    code: 1006
+    doc: >-
+      The result is larger than one message may carry, so it is not sent:
+      the article's text alone is at or over the bound on an answer
+      (docs/adr/0008, The answer stays under the transport's limit).

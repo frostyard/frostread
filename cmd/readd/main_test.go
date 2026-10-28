@@ -71,10 +71,10 @@ func start(t *testing.T) (*app, *engine.Engine, *kittest.Lodge) {
 	eng := engine.New(engine.Options{
 		Store: db, Blobs: b, Fetch: f, Extractor: &extract.Extractor{Fetch: f, Blobs: b},
 		Config: config.Config{PollInterval: "20m", NotesFolder: "Reading/"}, Interval: 20 * time.Minute,
-		Version: "test", ContentPath: (&content.Handler{Store: db, Blobs: b, Secret: secret}).Path,
+		Version: "test", ContentPath: (&content.Handler{Renderer: content.Renderer{Store: db, Blobs: b}, Secret: secret}).Path,
 		OnChange: srv.Broadcast, Log: log,
 	})
-	page := &content.Handler{Store: db, Blobs: b, Secret: secret}
+	page := &content.Handler{Renderer: content.Renderer{Store: db, Blobs: b}, Secret: secret}
 	mcp := mcpsession.New(mcpserver.Handler(mcpserver.Options{Engine: eng, Version: "test", Log: log}),
 		mcpsession.Options{CheckScope: mcpserver.CheckScope, Logger: log})
 	t.Cleanup(func() { _ = mcp.Close() })
