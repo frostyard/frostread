@@ -125,9 +125,9 @@ counterpart of something those repositories do, read their file.
   loads a remote resource
   ([ADR-0005](docs/adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)).
   On the desktop, the page comes from `items.render` and shows in a
-  `srcdoc` frame without `allow-scripts` or `allow-same-origin`, under a
-  CSP with no network source; the webview fetches nothing from the
-  network (ADR-0008).
+  `srcdoc` frame with `sandbox="allow-popups"`, without `allow-scripts`
+  or `allow-same-origin`, under a CSP with no network source; the webview
+  fetches nothing from the network (ADR-0008).
 - **Content URLs are MACs under a secret the daemon keeps,** never
   guessable ids (lodge's
   [lodge-http.md](https://github.com/frostyard/lodge/blob/main/docs/specs/lodge-http.md#content-routes),
