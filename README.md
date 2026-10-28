@@ -105,7 +105,9 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
 
 2. **Create the user and start the socket.** The sysusers entry makes
    `frostread`, with its home at `/var/lib/frostread`, in group
-   `lodge-apps` and in group `lodge-agents` (the agent socket).
+   `lodge-apps` and in group `lodge-agents` (the agent socket), and user
+   `lodge`, with lodge's own line byte for byte, because readd's
+   `lodgeapp.LoadEnv` looks that user up.
 
    ```sh
    sudo systemd-sysusers /usr/lib/sysusers.d/frostread.conf
