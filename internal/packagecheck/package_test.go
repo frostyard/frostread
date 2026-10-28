@@ -19,6 +19,15 @@ const (
 	version  = "v1.2.3-4-gabc"
 	unitDir  = "usr/lib/systemd/system"
 	binaries = "readd readctl"
+
+	// lodgeUserLine is user lodge's line in lodge's own
+	// packaging/sysusers.d/lodge.conf
+	// (https://github.com/frostyard/lodge/blob/main/packaging/sysusers.d/lodge.conf),
+	// byte for byte: readd's lodgeapp.LoadEnv looks user lodge up, so the
+	// staged entry must declare it without lodge's sysext. The two lines
+	// must stay identical, or systemd-sysusers warns and keeps only the
+	// first.
+	lodgeUserLine = `u lodge - "lodge, the tailnet web shell for frostyard's apps" /var/lib/lodge`
 )
 
 // stage runs packaging/lodge/stage.sh, as make lodge-package does.
@@ -179,7 +188,11 @@ func TestSysusers(t *testing.T) {
 	root := staged(t)
 	body := read(t, filepath.Join(root, "usr/lib/sysusers.d/frostread.conf"))
 	var have []string
+	lodge := false
 	for _, l := range lines(body) {
+		if l == lodgeUserLine {
+			lodge = true
+		}
 		have = append(have, strings.Join(strings.Fields(l), " "))
 	}
 	has := func(prefix string) bool {
@@ -194,6 +207,9 @@ func TestSysusers(t *testing.T) {
 		if !has(want) {
 			t.Errorf("sysusers.d entry lacks %q", want)
 		}
+	}
+	if !lodge {
+		t.Errorf("sysusers.d entry lacks user lodge's line, byte for byte: %q", lodgeUserLine)
 	}
 	for _, l := range have {
 		if f := strings.Fields(l); len(f) >= 3 && f[0] == "m" && f[1] == user && f[2] == "lodge" {
