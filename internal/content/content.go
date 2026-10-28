@@ -43,7 +43,12 @@ const DefaultLimit = 12 << 20 // 12 MiB
 
 // EnvelopeAllowance is what the renderer reserves for an items.render
 // answer's envelope: {"jsonrpc":"2.0","id":<id>,"result":<result>}, as
-// jsonrpc.reply writes it, with an id of any length.
+// jsonrpc.reply writes it. The fixed part and the line's newline take 34
+// bytes, so the allowance holds an encoded id of up to 990 bytes. The kit hands a
+// handler no request id, so a longer id is not counted: the shell's
+// bridge and readctl send integer ids, and a client that sends a longer
+// one may get an answer over 12 MiB. The kit still sends no line of
+// jsonrpc.MaxMessageSize or more: it answers internal in its place.
 const EnvelopeAllowance = 1 << 10 // 1 KiB
 
 // TagAllowance is what inlining one image costs beyond its data: URI: the

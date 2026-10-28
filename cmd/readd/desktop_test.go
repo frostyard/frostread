@@ -37,6 +37,16 @@ func (x xdgTree) data() string   { return filepath.Join(x.root, "data") }
 func (x xdgTree) config() string { return filepath.Join(x.root, "config") }
 func (x xdgTree) run() string    { return filepath.Join(x.root, "run") }
 
+// state is readd's state directory in the tree, as the daemon derives it.
+func (x xdgTree) state(t *testing.T) string {
+	t.Helper()
+	dir, err := config.DesktopStateDir(x.env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // env is the environment readd and readctl see, with extra's names added.
 func (x xdgTree) env(extra map[string]string) func(string) string {
 	m := map[string]string{
@@ -202,12 +212,29 @@ func TestOneReaddPerStateDirectory(t *testing.T) {
 	_, errs, cancel := startRead(t, o, "-desktop")
 	defer func() { stopRead(t, cancel, errs) }()
 
-	// -log would rotate the log, which only the readd that holds the lock
-	// may do: the second one must fail before that.
-	err := run(t.Context(), []string{"-desktop", "-log", filepath.Join(t.TempDir(), "readd.log")},
+	// The running readd holds the lock on its own state directory, and its
+	// database is there.
+	state := x.state(t)
+	if _, err := os.Stat(filepath.Join(state, "frostread.db")); err != nil {
+		t.Fatalf("the running readd's database: %v", err)
+	}
+	if lock, err := lockStateDir(state); err == nil {
+		_ = lock.Close()
+		t.Fatalf("the lock on %s is free while readd runs", state)
+	}
+
+	// A second readd on another socket fails at once. -log would rotate
+	// the log, which only the readd that holds the lock may do: the second
+	// one must fail before that, so it writes no log.
+	logPath := filepath.Join(t.TempDir(), "readd.log")
+	other := filepath.Join(x.root, "other.sock")
+	err := run(t.Context(), []string{"-desktop", "-log", logPath, "--socket", other},
 		options{getenv: x.env(nil)})
 	if err == nil || !strings.Contains(err.Error(), "another readd uses") {
 		t.Fatalf("a second readd = %v, want \"another readd uses\"", err)
+	}
+	if _, err := os.Stat(logPath); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the second readd wrote its log: %v", err)
 	}
 }
 
@@ -231,11 +258,11 @@ func TestLodgeModeOpensNoDatabase(t *testing.T) {
 	if err := run(t.Context(), []string{"-desktop"}, options{getenv: x.env(nil)}); err != nil {
 		t.Fatalf("run = %v, want a clean stop", err)
 	}
-	if _, err := os.Stat(filepath.Join(x.data(), "frostread.db")); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(x.state(t), "frostread.db")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("the database exists: %v", err)
 	}
 	// The lock is free again: nothing holds the directory.
-	lock, err := lockStateDir(x.data())
+	lock, err := lockStateDir(x.state(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +291,7 @@ func TestShutdownStopsReadd(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("readd did not stop after daemon.shutdown")
 	}
-	lock, err := lockStateDir(x.data())
+	lock, err := lockStateDir(x.state(t))
 	if err != nil {
 		t.Fatalf("the lock is still held: %v", err)
 	}

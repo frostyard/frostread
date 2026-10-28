@@ -214,8 +214,13 @@ the same but for one line.
 - **The bound.** The whole JSON-RPC answer MUST stay under 12 MiB
   (12 × 1024 × 1024 bytes): the kit refuses a line of
   `jsonrpc.MaxMessageSize` (16 MiB), so 12 MiB keeps 4 MiB clear of it, and
-  a fixed envelope allowance of 1 KiB, plus the id, is counted inside the
-  12 MiB. The renderer:
+  a fixed envelope allowance of 1 KiB is counted inside the 12 MiB. The
+  allowance holds the envelope's fixed bytes and the line's newline (34
+  bytes), and an encoded request id of up to 990 bytes. The kit gives a handler no request id, so a longer
+  id is not counted: a client SHOULD send an integer id, as `readctl` and
+  the shell's bridge do. With a longer id the answer can pass 12 MiB; the
+  kit still sends no line of 16 MiB or more, and answers `internal` in its
+  place. The renderer:
   1. renders the page with no image embedded, an image keeping its alt
      text, and measures the encoded answer; at or over the bound it
      answers `tooLarge`;
