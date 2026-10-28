@@ -57,7 +57,10 @@ func (s *syncBuf) String() string {
 	return s.b.String()
 }
 
-// sweepDoneHandler tells a test when a sweep logs its totals.
+// sweepDoneHandler tells a test when a sweep logs its totals. It never
+// blocks: a schedule of 1ns keeps sweeping after the test has read its
+// signals, and a blocked send would keep RunBlobSweep from seeing its
+// context end.
 type sweepDoneHandler struct {
 	slog.Handler
 	done chan struct{}
@@ -66,7 +69,10 @@ type sweepDoneHandler struct {
 func (h sweepDoneHandler) Handle(ctx context.Context, r slog.Record) error {
 	err := h.Handler.Handle(ctx, r)
 	if r.Message == "blob sweep done" {
-		h.done <- struct{}{}
+		select {
+		case h.done <- struct{}{}:
+		default:
+		}
 	}
 	return err
 }
