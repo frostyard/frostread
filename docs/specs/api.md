@@ -220,11 +220,12 @@ the same but for one line.
   request whose encoded id is longer with `invalidRequest` and id `null`,
   on every connection, before the kit dispatches it: the kit gives a
   handler no request id, so the guard sits on the connection, not on a
-  method. No answer of any method, `items.render` included, therefore
-  passes 12 MiB. The renderer:
+  method. With the id bounded, no answer of `items.render` passes
+  12 MiB. Other methods have no such bound on their result. The renderer:
   1. renders the page with no image embedded, an image keeping its alt
-     text, and measures the encoded answer; at or over the bound it
-     answers `tooLarge`;
+     text, and measures the encoded answer with every stored image
+     counted in `omittedImages`; at or over the bound it answers
+     `tooLarge`;
   2. otherwise embeds each image in document order while its `data:` URI
      still fits, a small per-tag allowance included; an image repeated
      twice counts twice, and each image left out is counted in
@@ -570,7 +571,8 @@ The packaging test, `internal/packagecheck`, checks it.
   ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)).
 - readd MUST refuse a request whose encoded id is longer than 990 bytes,
   with `invalidRequest` and id `null`, on every connection and before
-  dispatch, so every answer stays under the bound it is counted in.
+  dispatch, so the envelope allowance that `items.render`'s bound counts
+  holds every id.
 - Every outbound request MUST go through `internal/fetch`. No other package
   may import `net/http`'s client for a fetch of its own.
 - A content URL MUST be unguessable without the store's secret, and a wrong

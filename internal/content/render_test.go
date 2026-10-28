@@ -2,6 +2,7 @@ package content
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"flag"
 	"fmt"
 	"os"
@@ -293,5 +294,54 @@ func TestAMissingImageIsNotOmitted(t *testing.T) {
 	}
 	if !strings.Contains(got.HTML, `<img src="data:image/png;base64,`) {
 		t.Fatalf("the stored image is not inlined:\n%s", got.HTML)
+	}
+}
+
+// The page step 1 measures is the page the fallback answers, with every
+// stored image counted: an omittedImages of several digits is counted too.
+// At the exact bound, the line the kit writes for the longest id the guard
+// admits stays under it.
+func TestTheFallbackCountsItsOmissions(t *testing.T) {
+	const images = 100
+	var html strings.Builder
+	html.WriteString("<p>Many pictures.</p>")
+	data := make([][]byte, images)
+	for i := range images {
+		data[i] = []byte(fmt.Sprintf("png bytes %03d", i))
+		fmt.Fprintf(&html, `<p><img src="blob:<%d>" alt="Picture"></p>`, i+1)
+	}
+	_, r, it := item(t, html.String(), data...)
+
+	// The answer step 1 measures: no image, all 100 counted.
+	bare, all := imageRewrite(inlineOnly(r.body(it)), func(string) (string, bool) { return "", true })
+	if all != images {
+		t.Fatalf("the article has %d stored images, want %d", all, images)
+	}
+	size := answerSize(Rendered{HTML: r.document(it, "", true, bare), OmittedImages: images})
+
+	// At the bound: tooLarge, though the page with a count of 0 would fit.
+	r.Limit = size
+	if _, err := r.Render(t.Context(), it, ""); !isTooLarge(err) {
+		t.Fatalf("at the bound, Render = %v, want tooLarge", err)
+	}
+
+	// One byte over: the page, with no image (none fits a budget of 1) and
+	// all 100 counted, and its line under the bound with a 990-byte id.
+	r.Limit = size + 1
+	got, err := r.Render(t.Context(), it, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.OmittedImages != images || strings.Contains(got.HTML, "data:image/") {
+		t.Fatalf("omittedImages = %d, want %d and no image", got.OmittedImages, images)
+	}
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := `"` + strings.Repeat("i", MaxRequestID-2) + `"`
+	line := `{"jsonrpc":"2.0","id":` + id + `,"result":` + string(raw) + "}\n"
+	if len(line) >= r.Limit {
+		t.Fatalf("the line takes %d bytes, want under %d", len(line), r.Limit)
 	}
 }

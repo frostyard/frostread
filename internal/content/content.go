@@ -211,7 +211,9 @@ func (r *Renderer) Render(ctx context.Context, it store.Item, scheme string) (Re
 	// as its alt text in lodge's page too.
 	resolve := imageResolver(r.Blobs, images)
 	bare, all := imageRewrite(body, func(hash string) (string, bool) { return "", resolve(hash) != "" })
-	plain := Rendered{HTML: r.document(it, scheme, true, bare)}
+	// The step-1 page is measured as step 3's fallback answers it, with
+	// every image counted as omitted: the count's digits are on the wire too.
+	plain := Rendered{HTML: r.document(it, scheme, true, bare), OmittedImages: all}
 	if answerSize(plain) >= limit {
 		return Rendered{}, ErrTooLarge
 	}
@@ -235,7 +237,7 @@ func (r *Renderer) Render(ctx context.Context, it store.Item, scheme string) (Re
 	// when the escaping grew it past the bound.
 	out := Rendered{HTML: r.document(it, scheme, true, content), OmittedImages: omitted}
 	if answerSize(out) >= limit {
-		return Rendered{HTML: plain.HTML, OmittedImages: all}, nil
+		return plain, nil // measured in step 1, under the bound
 	}
 	return out, nil
 }
