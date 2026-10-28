@@ -49,17 +49,19 @@ func New(opts Options) *Server {
 }
 
 // Serve accepts connections on the private socket (jsonrpc.Listen) until
-// ctx ends, each as a local caller.
+// ctx ends, each as a local caller. Every connection is guarded: no request
+// with an id too long to answer under items.render's bound reaches the kit.
 func (s *Server) Serve(ctx context.Context, ln net.Listener, r *api.Router) error {
-	return s.rpc.Serve(ctx, ln, r, func(ctx context.Context) context.Context {
-		return api.WithCaller(ctx, api.CallerLocal)
-	})
+	return s.rpc.Serve(ctx, guardListener{Listener: ln, log: s.opts.Logger}, r,
+		func(ctx context.Context) context.Context {
+			return api.WithCaller(ctx, api.CallerLocal)
+		})
 }
 
 // ServeConn serves one connection whose listener has authenticated it as
-// caller: lodge's /api as a session.
+// caller: lodge's /api as a session. Its lines are guarded too.
 func (s *Server) ServeConn(ctx context.Context, nc net.Conn, r *api.Router, caller api.CallerKind) {
-	s.rpc.ServeConn(api.WithCaller(ctx, caller), nc, r)
+	s.rpc.ServeConn(api.WithCaller(ctx, caller), newGuardConn(nc, s.opts.Logger), r)
 }
 
 // Hello implements rpc.hello.

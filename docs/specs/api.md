@@ -216,11 +216,12 @@ the same but for one line.
   `jsonrpc.MaxMessageSize` (16 MiB), so 12 MiB keeps 4 MiB clear of it, and
   a fixed envelope allowance of 1 KiB is counted inside the 12 MiB. The
   allowance holds the envelope's fixed bytes and the line's newline (34
-  bytes), and an encoded request id of up to 990 bytes. The kit gives a handler no request id, so a longer
-  id is not counted: a client SHOULD send an integer id, as `readctl` and
-  the shell's bridge do. With a longer id the answer can pass 12 MiB; the
-  kit still sends no line of 16 MiB or more, and answers `internal` in its
-  place. The renderer:
+  bytes), and an encoded request id of up to 990 bytes. readd MUST refuse a
+  request whose encoded id is longer with `invalidRequest` and id `null`,
+  on every connection, before the kit dispatches it: the kit gives a
+  handler no request id, so the guard sits on the connection, not on a
+  method. No answer of any method, `items.render` included, therefore
+  passes 12 MiB. The renderer:
   1. renders the page with no image embedded, an image keeping its alt
      text, and measures the encoded answer; at or over the bound it
      answers `tooLarge`;
@@ -567,6 +568,9 @@ The packaging test, `internal/packagecheck`, checks it.
   whose page alone reaches that MUST answer `tooLarge` rather than send a
   partial document
   ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)).
+- readd MUST refuse a request whose encoded id is longer than 990 bytes,
+  with `invalidRequest` and id `null`, on every connection and before
+  dispatch, so every answer stays under the bound it is counted in.
 - Every outbound request MUST go through `internal/fetch`. No other package
   may import `net/http`'s client for a fetch of its own.
 - A content URL MUST be unguessable without the store's secret, and a wrong

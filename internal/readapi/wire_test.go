@@ -91,7 +91,7 @@ func TestRenderAnswerOnTheWire(t *testing.T) {
 	call("0", "rpc.hello", `{"protocol":1,"client":"test"}`)
 
 	// The longest string id the allowance holds: 990 encoded bytes.
-	longID := `"` + strings.Repeat("i", content.EnvelopeAllowance-34-2) + `"`
+	longID := `"` + strings.Repeat("i", content.MaxRequestID-2) + `"`
 	for _, id := range []string{"1", longID} {
 		line := call(id, "items.render", `{"id":`+itoa(it.ID)+`}`)
 		if len(line) >= content.DefaultLimit {
@@ -120,5 +120,29 @@ func TestRenderAnswerOnTheWire(t *testing.T) {
 		if len(line) < content.DefaultLimit-150<<10 {
 			t.Fatalf("id %.10s…: the answer takes %d bytes, not close to the bound", id, len(line))
 		}
+	}
+
+	// One byte over the allowance: readd refuses the request before the kit
+	// dispatches it, so no answer passes the bound, whatever the id.
+	over := `"` + strings.Repeat("i", content.MaxRequestID-1) + `"`
+	line := call(over, "items.render", `{"id":`+itoa(it.ID)+`}`)
+	var refused struct {
+		ID    jsontext.Value `json:"id"`
+		Error *struct {
+			Code int `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(line), &refused); err != nil {
+		t.Fatal(err)
+	}
+	if refused.Error == nil || refused.Error.Code != int(api.CodeInvalidRequest) {
+		t.Fatalf("an id of %d bytes = %s, want invalidRequest", len(over), line)
+	}
+	if string(refused.ID) != "null" {
+		t.Fatalf("an id of %d bytes answered id %s, want null", len(over), refused.ID)
+	}
+	// The connection lives on: the next call is served, still in the bound.
+	if next := call("7", "items.render", `{"id":`+itoa(it.ID)+`}`); len(next) >= content.DefaultLimit {
+		t.Fatalf("the call after a refusal takes %d bytes, want under %d", len(next), content.DefaultLimit)
 	}
 }
