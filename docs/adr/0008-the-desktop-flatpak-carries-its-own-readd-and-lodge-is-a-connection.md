@@ -1,7 +1,10 @@
 # 0008 — The desktop Flatpak carries its own readd; lodge is a connection the user chooses
 
-- **Status:** Proposed
+- **Status:** Accepted (Brian, 2026-10-28)
 - **Date:** 2026-10-27
+- **Decided:** Brian chose the 3 proposals of plan 0002's open questions
+  on 2026-10-27: lodge is a connection, the move from lodge is OPML only,
+  and local mode exports Markdown.
 
 ## Context
 

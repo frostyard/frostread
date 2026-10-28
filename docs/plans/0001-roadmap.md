@@ -11,7 +11,7 @@ ticked as its work lands.
 The standalone desktop Flatpak, with its own readd and lodge as an
 option, is [plan 0002](0002-the-standalone-desktop-flatpak.md)
 ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
-proposed). This roadmap stays the lodge app's.
+accepted). This roadmap stays the lodge app's.
 
 ## Phase 1 — Scaffold and documents (2026-10-21)
 

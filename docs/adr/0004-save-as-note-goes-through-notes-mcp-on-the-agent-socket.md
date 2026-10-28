@@ -1,6 +1,6 @@
 # 0004 — Save as a note goes through notes' MCP on the agent socket
 
-- **Status:** Accepted (Brian, 2026-10-21)
+- **Status:** Accepted (Brian, 2026-10-21); amended in part by [0008](0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
 - **Date:** 2026-10-21
 
 ## Context
