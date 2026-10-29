@@ -35,7 +35,7 @@ this document changes with each of its phases.
 
 ## Design
 
-**The daemon.** `readd`, on lodge's kit **v0.3.0**, loads its
+**The daemon.** `readd`, on lodge's kit **v0.3.1**, loads its
 configuration, opens the store and the
 blob directory, starts the poller and the extraction workers, and serves
 two Unix sockets: lodge's app socket, and its private socket for `readctl`.

@@ -12,8 +12,8 @@ github.com/coder/websocket v1.8.15 h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNU
 github.com/coder/websocket v1.8.15/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
-github.com/frostyard/lodge/kit v0.3.0 h1:OYnKS5OqAUksxxFZPm01RNVV0ZC+9TqMUsgoC7pLhno=
-github.com/frostyard/lodge/kit v0.3.0/go.mod h1:yUmjbBwrliFAxmFPf/kUAi7Vlxa1mtICAiSRkFsTHec=
+github.com/frostyard/lodge/kit v0.3.1 h1:KEXdkrk+6KMSaatAeJeRSj3Vbwi6X0A7rsaKaGMMgg0=
+github.com/frostyard/lodge/kit v0.3.1/go.mod h1:u1oc0QWL29ZESg/nQlLs8q9hFDlteKHxcY/lFQcMZaU=
 github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c h1:wpkoddUomPfHiOziHZixGO5ZBS73cKqVzZipfrLmO1w=
 github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c/go.mod h1:oVDCh3qjJMLVUSILBRwrm+Bc6RNXGZYtoh9xdvf1ffM=
 github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f h1:3BSP1Tbs2djlpprl7wCLuiqMaUh5SJkkzI2gDs+FgLs=
