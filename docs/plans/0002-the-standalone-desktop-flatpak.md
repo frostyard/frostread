@@ -21,10 +21,12 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-10-28): **Phase 2 is in review:** Phase 1 is done (ADR-0008
+Status (2026-10-29): **Phase 3 is planned:** Phase 1 is done (ADR-0008
 records Brian's 3 answers of 2026-10-27 and is Accepted; core's plan 0010
-Read row waits for Lucilla), and readd's desktop mode is built and in
-review. Nothing of the shell, the Flatpak or the release is built.
+Read row waits for Lucilla). Phase 2, readd's desktop mode, is built and
+merged (frostread#25, 2026-10-28). Phase 3 has its
+[steps](#phase-3s-steps), and none is built. Nothing of the shell, the
+Flatpak or the release is built.
 
 ## Who helps
 
@@ -115,6 +117,188 @@ All UI and Rust work runs in the nsl machine.
   script and makes no network request from the frame; a click on an
   article's link reaches a stand-in opener on the app's `PATH`; and `make
   ci` passes.
+
+### Phase 3's steps
+
+Each step is one pull request, with its own **Done when**. The steps
+add no reader feature, and the lodge entry (`main.tsx`) and its build do
+not change in any of them. Every step's PR passes `make check`, and every
+step that touches `web/` passes `make web-check`, in the nsl machine.
+
+Owners. The **planner** (Irulan) plans each step, gives its code to a
+coding agent, reviews the diff, runs the gates and the cross-review, and
+opens the PR. **Duncan** owns the nsl machine. **Brian** reviews and
+merges each PR, and decides about required checks. Lucilla has no part
+in Phase 3.
+
+The order. 3.0 and 3.1 can start at once, in parallel. 3.3 needs only
+3.1, so it can run beside 3.2. 3.4 and 3.5 can run in parallel once 3.2
+is merged. 3.6 needs 3.2 and 3.3; 3.7 follows 3.6; and 3.8 closes the
+phase after 3.4, 3.5 and 3.7.
+
+**3.0 — An nsl machine for the shell (small).**
+- An nsl machine with Node and pnpm, Rust, the WebKitGTK 4.1 development
+  files, `WebKitWebDriver` and `xvfb-run`: frostnotes' `frostnotes`
+  machine, or a new one from its `dev/nsl/provision.sh`. Duncan chooses.
+  The `lodge` machine keeps serving `make web-check` and `make web-build`.
+- Its name goes in the Makefile in 3.2, as `APP_NSL_MACHINE`, beside
+  `NSL_MACHINE`.
+- **Done when:** in that machine, `cargo --version`, `pnpm --version`,
+  `pkg-config --modversion webkit2gtk-4.1`, `WebKitWebDriver --version`
+  and `xvfb-run true` succeed, and `make web-check
+  NSL_MACHINE=<machine>` passes.
+- **Owners:** Duncan; the planner records the name.
+- **Depends on:** nothing.
+
+**3.1 — The desktop entry, on the mock transport (medium; web only).**
+- `web/desktop.html` and `web/src/desktop.tsx`, a second Vite entry that
+  builds into `build/desktop`. The lodge entry builds into `build/web`
+  as now.
+- A `Shell` interface in place of `lodge.ts`'s direct calls (`openRoute`,
+  `openOutside`, `contentSrc`, `reportRoute`), with a lodge
+  implementation (today's code) and a desktop one. The components call
+  only the interface.
+- The desktop entry follows the system's color scheme
+  (`prefers-color-scheme`, and its changes), keeps its routes in the
+  window's own history, and leaves out the save page, the bookmarklet and
+  their sidebar entry.
+- Until 3.2, the desktop entry runs on the mock transport
+  (`rpc/mock.ts`), as the lodge entry does in `vite dev`.
+- **Done when:** `make web-check` passes, and Vitest shows that the
+  desktop entry lists the mock's sources, changes theme when the system's
+  scheme changes, moves between routes and back with no shell, and shows
+  no save page and no bookmarklet entry; the lodge entry's tests pass
+  unchanged, and `make web-build` makes the same files as before.
+- **Owners:** the planner.
+- **Depends on:** nothing (it runs in the `lodge` machine).
+
+**3.2 — The Rust shell, the bridge and the Tauri transport (large).**
+- `web/src-tauri/`: `Cargo.toml` and `Cargo.lock` (Tauri v2, the opener,
+  dialog and single-instance plugins); `tauri.conf.json` with the
+  identifier `org.frostyard.Frostread`, `build/desktop` as the frontend,
+  and ADR-0008's CSP exactly; `capabilities/default.json`, which grants
+  the window the bridge's commands and nothing else.
+- `bridge.rs`: lines to readd's private socket and back, never parsed,
+  as frostnotes' and frostmail's bridges do; a closed socket is an event
+  to the window, and the next call connects again.
+- `paths.rs`: the socket as `internal/config` derives it (`READ_SOCKET`
+  first, then `FLATPAK_ID` and `XDG_RUNTIME_DIR`). One table of cases in
+  a test data file, which a Go test and a Rust test both read, keeps the
+  two derivations the same.
+- `on_navigation` admits only the app itself. `on_new_window` opens
+  `http`, `https` and `mailto` with the opener plugin and always answers
+  Deny. A second start focuses the first window (single instance).
+- `web/src/rpc/transport/tauri.ts`: lodge-client's `Transport` over the
+  bridge's commands and events. `desktop.tsx` uses it when Tauri is
+  there, and the mock when it is not.
+- The Makefile: `APP_NSL_MACHINE`; `app-build` (the release binary into
+  `build/frostread-app`), `app-test` (`cargo test`), and `app-check`
+  (Biome, tsc, Vitest, `cargo fmt --check`, `cargo clippy` and `cargo
+  test`), in the style of frostnotes'. `make ci` gains `app-check`.
+- **Done when:** in the nsl machine, `make app-check` and `make
+  app-build` pass; Rust tests show the shared path table, a line that
+  crosses the bridge both ways unchanged (one of them close to the kit's
+  16 MiB bound), and the URL tables of `on_navigation` and
+  `on_new_window` (`javascript:`, `file:`, `data:` and unknown schemes
+  denied, and never a new window); Vitest shows the Tauri transport
+  against a fake IPC; and the built app, started against `readd
+  -desktop` with a temporary XDG tree, shows the empty unread view (a
+  screenshot in the PR).
+- **Owners:** the planner; Duncan's machine.
+- **Depends on:** 3.0 and 3.1.
+
+**3.3 — The reader's frame from `items.render` (medium; web only).**
+- `api.ts` gains `items.render {id, scheme}` → `{html, omittedImages}`
+  and the `tooLarge` error, checked against the golden
+  `web/src/rpc/testdata/items.render.json` that Phase 2 wrote.
+- On the desktop, the reader shows `<iframe srcdoc
+  sandbox="allow-popups">` with the rendered page: no `src`, no
+  `allow-scripts`, no `allow-same-origin`. A change of scheme renders the
+  page again. With `omittedImages` above 0, the reader says how many
+  images were left out. On `tooLarge`, it shows the excerpt, "This
+  article is too large to show in the app", and a link to the original.
+- The lodge reader (`contentSrc`, lodge-content) does not change.
+- **Done when:** `make web-check` passes, and Vitest shows the frame's
+  exact attributes, a new render on a scheme change, the omitted-images
+  text, and the `tooLarge` fallback; the lodge reader's tests pass
+  unchanged.
+- **Owners:** the planner.
+- **Depends on:** 3.1. It can run beside 3.2.
+
+**3.4 — Files through the shell (medium).**
+- A shell command that saves a file the user picks: in a Flatpak, the
+  FileChooser portal's `SaveFile` (as frostmail's `portal.rs`); elsewhere,
+  the dialog plugin's save dialog. The window gives it a suggested name
+  and the text; the shell writes the file.
+- OPML export on the desktop goes through it; the lodge entry keeps its
+  download (`lib/download.ts`). Phase 7's "Export as Markdown…" uses the
+  same command later.
+- OPML import keeps the file input, which WebKitGTK serves with the
+  FileChooser portal in a Flatpak.
+- **Done when:** Rust tests show the portal request's options and the
+  dialog path's write (with a stand-in dialog); Vitest shows that the
+  desktop's export calls the command with `opml.export`'s text, and the
+  lodge entry still downloads. The real portals wait for Phase 5.
+- **Owners:** the planner.
+- **Depends on:** 3.2.
+
+**3.5 — The app checks in CI (small).**
+- A new job in `.github/workflows/ci.yml` runs `make app-check`'s checks
+  on a runner with the WebKitGTK development packages, SHA-pinned with
+  least privilege; `internal/workflowcheck` covers it. No existing job
+  changes its name, because the required checks match the names exactly.
+- **Done when:** the new job passes on its PR, and
+  `internal/workflowcheck`'s tests (in `make check`) pass with it.
+- **Owners:** the planner; Brian decides whether the new job is a
+  required check (a repository setting).
+- **Depends on:** 3.2.
+
+**3.6 — The end-to-end harness and the first run (medium).**
+- `web/e2e/harness.ts` and `make app-e2e`, as frostmail's `ui-e2e`:
+  build `readd` with the `devfetch` tag and `readdev` with the
+  `devfeeds` tag; start readdev on a free loopback port (`-addr`); start
+  `readd -desktop` on a temporary XDG tree with `READ_DEV_ALLOW` set to
+  that port; import readdev's OPML with `readctl` on the same socket;
+  and start the
+  built app under `xvfb-run` and `WebKitWebDriver`, with a stand-in
+  `xdg-open` on its `PATH` that writes each URL to a file.
+- Tests: the window lists readdev's feeds; an article shows in the frame
+  with its image as a `data:` URI (WebDriver enters the frame); a click on
+  the article's link reaches the stand-in opener with that URL.
+- **Done when:** `make app-e2e` passes in the nsl machine 2 times in a
+  row and leaves no readd, readdev or app process behind.
+- **Owners:** the planner; Duncan's machine.
+- **Depends on:** 3.2 and 3.3.
+
+**3.7 — The hostile corpus (medium).**
+- A corpus under `web/e2e/hostile/` that points at a loopback canary:
+  scripts, event handlers, `javascript:` and `data:` links, meta refresh,
+  `base`, CSS `url()` and `@import`, `srcset`, `picture`, `link`
+  preloads, `object` and `embed`, SVG with script, forms that submit
+  themselves, nested frames, `video` posters and `audio`.
+- Two paths, as frostmail's suite: the raw corpus in the frame (the
+  harness sets `srcdoc`), which tests the sandbox and the CSP alone; and
+  the corpus through readd, served by readdev as a hostile feed (the
+  `devfeeds` tag), which adds the sanitizer. The canary's port is not in
+  `READ_DEV_ALLOW`, so readd's own fetches never reach it.
+- **Done when:** in `make app-e2e`, the canary counts no request on
+  either path, no corpus script runs, and the stand-in opener gets no URL
+  except from a click on an `http`, `https` or `mailto` link; and the PR
+  records that the suite fails when the frame's sandbox gains
+  `allow-scripts` (a check of the check, not committed).
+- **Owners:** the planner; Duncan's machine.
+- **Depends on:** 3.6.
+
+**3.8 — Phase 3's record (small; docs).**
+- This plan records the evidence of Phase 3's Done when: the commit, the
+  date, the machine, and the 4 checks with their results.
+- AGENTS.md's map and gates name `web/src-tauri`, the desktop entry and
+  the `app-*` targets. [design/overview.md](../design/overview.md) gains
+  the shell as built; Phase 5 adds what the real desktop shows.
+- **Done when:** the PR merges with the evidence, and this plan's Status
+  says Phase 3 is done.
+- **Owners:** the planner.
+- **Depends on:** 3.4, 3.5 and 3.7.
 
 ## Phase 4 — The Flatpak in CI (planner, medium)
 

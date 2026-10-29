@@ -37,7 +37,8 @@ owner's daily use (2026-10-21). The founding ADRs, 0001 to
 ADR-0007, the blob sweep, are Accepted (Brian, 2026-10-22).
 ADR-0008, the standalone desktop Flatpak, is Accepted (Brian, 2026-10-28);
 [plan 0002](docs/plans/0002-the-standalone-desktop-flatpak.md) builds it:
-Phase 2, readd's desktop mode, is built (2026-10-28) and not merged.
+Phase 2, readd's desktop mode, is merged (frostread#25, 2026-10-28), and
+Phase 3, the desktop shell, is planned in steps (2026-10-29).
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
