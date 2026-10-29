@@ -194,7 +194,8 @@ phase after 3.4, 3.5 and 3.7.
 - The Makefile: `APP_NSL_MACHINE`; `app-build` (the release binary into
   `build/frostread-app`), `app-test` (`cargo test`), and `app-check`
   (Biome, tsc, Vitest, `cargo fmt --check`, `cargo clippy` and `cargo
-  test`), in the style of frostnotes'. `make ci` gains `app-check`.
+  test`), in the style of frostnotes'. `make ci` gains `app-check` and
+  `app-build`.
 - **Done when:** in the nsl machine, `make app-check` and `make
   app-build` pass; Rust tests show the shared path table, a line that
   crosses the bridge both ways unchanged (one of them close to the kit's
@@ -244,7 +245,8 @@ phase after 3.4, 3.5 and 3.7.
 
 **3.5 — The app checks in CI (small).**
 - A new job in `.github/workflows/ci.yml` runs `make app-check`'s checks
-  on a runner with the WebKitGTK development packages, SHA-pinned with
+  and the release build of `make app-build` on a runner with the
+  WebKitGTK development packages, SHA-pinned with
   least privilege; `internal/workflowcheck` covers it. No existing job
   changes its name, because the required checks match the names exactly.
 - **Done when:** the new job passes on its PR, and
@@ -256,9 +258,10 @@ phase after 3.4, 3.5 and 3.7.
 **3.6 — The end-to-end harness and the first run (medium).**
 - `web/e2e/harness.ts` and `make app-e2e`, as frostmail's `ui-e2e`:
   build `readd` with the `devfetch` tag and `readdev` with the
-  `devfeeds` tag; start readdev on a free loopback port (`-addr`); start
-  `readd -desktop` on a temporary XDG tree with `READ_DEV_ALLOW` set to
-  that port; import readdev's OPML with `readctl` on the same socket;
+  `devfeeds` tag; start readdev with `-addr 127.0.0.1:<port>` on a free
+  port; start `readd -desktop` on a temporary XDG tree with
+  `READ_DEV_ALLOW=127.0.0.1:<port>`, the same host and port (readd
+  compares the whole `host:port`); import readdev's OPML with `readctl` on the same socket;
   and start the
   built app under `xvfb-run` and `WebKitWebDriver`, with a stand-in
   `xdg-open` on its `PATH` that writes each URL to a file.
@@ -279,8 +282,8 @@ phase after 3.4, 3.5 and 3.7.
 - Two paths, as frostmail's suite: the raw corpus in the frame (the
   harness sets `srcdoc`), which tests the sandbox and the CSP alone; and
   the corpus through readd, served by readdev as a hostile feed (the
-  `devfeeds` tag), which adds the sanitizer. The canary's port is not in
-  `READ_DEV_ALLOW`, so readd's own fetches never reach it.
+  `devfeeds` tag), which adds the sanitizer. The canary's `host:port` is
+  not in `READ_DEV_ALLOW`, so readd's own fetches never reach it.
 - **Done when:** in `make app-e2e`, the canary counts no request on
   either path, no corpus script runs, and the stand-in opener gets no URL
   except from a click on an `http`, `https` or `mailto` link; and the PR
