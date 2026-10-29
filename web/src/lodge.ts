@@ -2,19 +2,20 @@
 // open an article outside, read the article's content URL. Outside lodge
 // (vite dev) there is no shell, and the article's text is not available.
 import type { Lodge } from "@frostyard/lodge-client";
+import type { Shell } from "./shell.js";
 
-/** Shell is the part of lodge-client's Lodge this app uses. */
-export type Shell = Pick<Lodge, "open" | "contentURL" | "route">;
+/** LodgeConnection is the part of lodge-client's Lodge this app uses. */
+export type LodgeConnection = Pick<Lodge, "open" | "contentURL" | "route">;
 
-let current: Shell | null = null;
+let current: LodgeConnection | null = null;
 
 /** setLodge keeps the connection main.tsx made, or null outside lodge. */
-export function setLodge(shell: Shell | null): void {
+export function setLodge(shell: LodgeConnection | null): void {
   current = shell;
 }
 
 /** lodge is the shell connection, or null outside lodge. */
-export function lodge(): Shell | null {
+export function lodge(): LodgeConnection | null {
   return current;
 }
 
@@ -48,3 +49,6 @@ export function contentSrc(contentPath: string | undefined, scheme?: "light" | "
   const url = shell.contentURL(contentPath);
   return scheme === undefined ? url : `${url}?scheme=${scheme}`;
 }
+
+/** lodgeShell is the lodge frame's Shell, over the functions above. */
+export const lodgeShell: Shell = { savePages: true, reportRoute, openRoute, openOutside, contentSrc };

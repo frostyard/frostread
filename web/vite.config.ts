@@ -10,11 +10,16 @@ import { defineConfig } from "vite";
 // watcher polls (as frostmail's vite.config does).
 const poll = process.env.NSL === "1";
 
-export default defineConfig({
-  base: "/app/read/",
+// Mode desktop builds the standalone Flatpak's entry (ADR-0008) into
+// build/desktop; every other mode builds the lodge bundle.
+export default defineConfig(({ mode }) => ({
+  base: mode === "desktop" ? "/" : "/app/read/",
   plugins: [react(), tailwindcss()],
   server: poll ? { watch: { usePolling: true, interval: 300 } } : {},
-  build: { target: "es2022", outDir: "../build/web", emptyOutDir: true },
+  build:
+    mode === "desktop"
+      ? { target: "es2022", outDir: "../build/desktop", emptyOutDir: true, rolldownOptions: { input: "desktop.html" } }
+      : { target: "es2022", outDir: "../build/web", emptyOutDir: true },
   test: {
     environment: "happy-dom",
     // Dates read the same in UTC wherever the tests run.
@@ -22,4 +27,4 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["src/testing/setup.ts"],
   },
-});
+}));

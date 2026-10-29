@@ -7,12 +7,14 @@ import { type ChangeEvent, useRef, useState } from "react";
 import { downloadOPML } from "../lib/download.js";
 import { BOOKMARKLET, type Route } from "../lib/routes.js";
 import { type Source, VIEW_TITLES, VIEWS } from "../rpc/api.js";
+import { useShell } from "../shell.js";
 import { useRead } from "./context.js";
 import { SourceSheet } from "./SourceSheet.js";
 import { UrlSheet } from "./UrlSheet.js";
 
 /** Sidebar is the left pane, or the narrow window's first pane. */
 export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void }) {
+  const shell = useShell();
   const sources = useRead((state) => state.sources);
   const counts = useRead((state) => state.counts);
   const listRoute = useRead((state) => state.listRoute);
@@ -99,15 +101,17 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
         ))}
       </ul>
 
-      <div className="mt-auto border-t border-separator px-1 py-2">
-        <button
-          type="button"
-          onClick={() => go(BOOKMARKLET)}
-          className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row text-secondary hover:bg-selection-inactive"
-        >
-          <span className="min-w-0 flex-1 truncate">Save from your phone</span>
-        </button>
-      </div>
+      {shell.savePages && (
+        <div className="mt-auto border-t border-separator px-1 py-2">
+          <button
+            type="button"
+            onClick={() => go(BOOKMARKLET)}
+            className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row text-secondary hover:bg-selection-inactive"
+          >
+            <span className="min-w-0 flex-1 truncate">Save from your phone</span>
+          </button>
+        </div>
+      )}
 
       {managing !== null && <SourceSheet source={managing} onClose={() => setManagingId(null)} />}
 

@@ -4,7 +4,7 @@
 import { IconButton, iconButtonClass, useNarrow } from "@frostyard/lodge-ui/react";
 import { Archive, ArrowLeft, ExternalLink, Mail, MailOpen, Star } from "lucide-react";
 import { headerDate } from "../lib/format.js";
-import { contentSrc, openRoute } from "../lodge.js";
+import { useShell } from "../shell.js";
 import { useRead } from "./context.js";
 
 /** Reader is the right pane, or the narrow window's item. */
@@ -23,6 +23,7 @@ export function Reader(props: { onBack?: () => void }) {
   const archive = useRead((state) => state.archive);
   const saveAsNote = useRead((state) => state.saveAsNote);
   const narrow = useNarrow();
+  const shell = useShell();
 
   if (item === null) {
     return (
@@ -39,13 +40,13 @@ export function Reader(props: { onBack?: () => void }) {
     const st = await checkNote(item.id);
     if (st === null || st.state === "missing" || st.state === "unreachable") return;
     const target = st.route ?? noteRoute;
-    if (target !== null) openRoute(target);
+    if (target !== null) shell.openRoute(target);
   };
   const meta = [item.sourceTitle, item.author, headerDate(item.published)]
     .filter((part): part is string => part !== undefined && part !== "")
     .join(" · ");
   const configured = status?.notes.configured === true;
-  const src = contentSrc(item.contentPath, scheme);
+  const src = shell.contentSrc(item.contentPath, scheme);
 
   const title = (
     <div className="min-w-0 flex-1">
