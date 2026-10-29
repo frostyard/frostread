@@ -289,15 +289,88 @@ Roll back to the commit you ran before.
 
 ## After the sysexts
 
-This is planned, not built. In core's
-[Plan 0010](https://github.com/frostyard/core/blob/main/docs/plans/0010-suite-packaging.md),
-Phase 3 ships readd as the sysext `readd` for Snosi images (Floe), not
-for this host. lodge's host stays hand-installed, as above (Phase 4 is
-deferred, 2026-10-23). On a Snosi image the planned commands are
-`sudo updex features update --component=readd` and a reboot to update,
-and `sudo updex features rollback readd`, which takes effect at the next
-boot. A sysext rollback does not undo a database migration, so keep a
-backup of `/var/lib/frostread` there too.
+The sysext `readd` is built and published for Snosi bootc images (Floe).
+[snosi#1169](https://github.com/frostyard/snosi/pull/1169) added the
+first two suite sysexts (notesd, maild).
+[snosi#1173](https://github.com/frostyard/snosi/pull/1173) added lodge,
+readd and porterd.
+[snosi#1175](https://github.com/frostyard/snosi/pull/1175) pinned readd
+0.2.0 and porterd 0.1.1 (lodge stays 0.1.0). Updex downloads the image
+from `https://repository.frostyard.org/ext/readd/` and checks its
+signature. lodge's own host stays hand-installed (core Plan 0010 Phase 4
+is deferred, 2026-10-23), so the steps above stay valid for that host.
+The full steps for an image are on
+[the site page](https://frostyard.org/docs/sysexts/readd/).
+
+Back up the state before you update. The units are upheld
+(`Upholds=`), so a plain `systemctl stop` does not hold: mask them. The
+state is not in the sysext. It holds the notes token, so keep the
+archive root-only:
+
+```sh
+sudo systemctl mask --now frostread.socket frostread.service
+sudo sh -c 'umask 077; tar -czpf /root/frostread-state-$(date -u +%Y%m%dT%H%MZ).tar.gz /var/lib/frostread'
+sudo systemctl unmask frostread.socket frostread.service
+sudo systemctl start frostread.socket frostread.service
+```
+
+Update on an image:
+
+```sh
+sudo updex features update --component=readd
+sudo systemctl restart frostread.socket frostread.service
+sudo lodgectl reload
+```
+
+With Updex v2.1.3 and later
+([ADR-0019](https://github.com/frostyard/updex/blob/main/docs/adr/0019-apply-merged-sysusers-and-tmpfiles-on-a-live-refresh.md)),
+the update is a live refresh. The new files merge at once,
+`systemd-sysusers` and `systemd-tmpfiles --create` run, and systemd
+reloads its unit files. Updex does not restart units, so the running
+readd keeps its old binary until you restart it. No reboot is necessary.
+`lodgectl reload` makes lodge read the new manifest.
+
+Reboot only when the update waits for the next boot: you passed
+`--no-refresh`, the automatic update timer installed it, or the output
+says `refresh skipped`. With an Updex older than v2.1.3
+(`updex --version` shows it), run `sudo systemd-sysusers`,
+`sudo systemd-tmpfiles --create` and
+`sudo systemctl daemon-reload` first, or reboot.
+
+Check the version:
+
+```sh
+sudo -u frostread readctl status
+sudo lodgectl apps
+```
+
+`readctl status` prints `readd <version>`. `lodgectl apps` lists `read`
+up at the new version. lodge polls every 15 seconds, so if it shows
+`down` at once, run it again after 15 seconds.
+
+Roll back:
+
+```sh
+sudo updex features rollback readd
+```
+
+The rollback takes effect at the next boot. Add `--now` to apply it at
+once, then restart and reload as above. A rollback does not undo a
+database migration. If the journal of the older readd
+(`journalctl -u frostread.service -n 50`) shows
+`database schema N is newer than this readd`, restore the state from
+the backup. Replace `ARCHIVE` with its path:
+
+```sh
+sudo systemctl mask --now frostread.socket frostread.service
+sudo rm -rf /var/lib/frostread
+sudo tar -xzpf ARCHIVE -C / var/lib/frostread
+sudo systemctl unmask frostread.socket frostread.service
+sudo systemctl start frostread.socket frostread.service
+```
+
+The restore loses what changed after the backup: new items, reads and
+saves.
 
 ## Release
 
@@ -326,9 +399,10 @@ Verify a downloaded package:
 gh attestation verify frostyard-readd_X.Y.Z_amd64.deb --repo frostyard/frostread
 ```
 
-Snosi picks the package up later (core
-[Plan 0010](https://github.com/frostyard/core/blob/main/docs/plans/0010-suite-packaging.md),
-Phase 3).
+Snosi pins each release's `.deb` in a reviewed checksum PR, then builds
+and publishes the sysext `readd`
+([snosi#1173](https://github.com/frostyard/snosi/pull/1173)). See
+[After the sysexts](#after-the-sysexts).
 
 ## Docs
 
