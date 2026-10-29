@@ -61,6 +61,10 @@ func TestTheTwoPagesDifferByTheCSPMeta(t *testing.T) {
 <p><img src="blob:<1>" alt="A tomato"></p>
 <p><img src="https://example.com/remote.png" alt="A remote picture"></p>`,
 		[]byte("png bytes"))
+	// SaveLink stamps the current time; pin the date and the zone, or the
+	// golden pages change each day and with the machine's zone.
+	it.PublishedAt = time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	r.Location = time.UTC
 	lodge, err := h.page(t.Context(), it, "dark")
 	if err != nil {
 		t.Fatal(err)
