@@ -249,8 +249,8 @@ phase after 3.4, 3.5 and 3.7.
   WebKitGTK development packages, SHA-pinned with
   least privilege; `internal/workflowcheck` covers it. No existing job
   changes its name, because the required checks match the names exactly.
-- **Done when:** the new job passes on its PR, and
-  `internal/workflowcheck`'s tests (in `make check`) pass with it.
+- **Done when:** the new job passes on its PR, the release build
+  included, and `internal/workflowcheck`'s tests (in `make check`) pass with it.
 - **Owners:** the planner; Brian decides whether the new job is a
   required check (a repository setting).
 - **Depends on:** 3.2.
