@@ -1,9 +1,11 @@
 // The desktop entry on the mock transport, with no lodge: the sources, the
 // system's scheme, the fragment's routes, and no save pages.
+import type { Transport } from "@frostyard/lodge-client/rpc";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesktopShell, desktopRoute } from "./desktop/shell.js";
 import { type Desktop, startDesktop } from "./desktop/start.js";
+import { createMockTransport } from "./rpc/mock.js";
 
 let started: Desktop | null = null;
 let root: HTMLElement;
@@ -112,6 +114,43 @@ describe("the desktop entry", () => {
     await screen.findByRole("button", { name: /^Starred/ });
     await waitFor(() => expect(window.location.hash).toBe("#/"));
     expect(window.history.length).toBe(before);
+  });
+
+  it("keeps a view chosen while the transport opens", async () => {
+    // The first list answer is held, so connect() is pending while the app
+    // already takes clicks.
+    const mock = createMockTransport();
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let first = true;
+    const transport: Transport = {
+      call: async <T,>(method: string, params: unknown): Promise<T> => {
+        if (method === "items.list" && first) {
+          first = false;
+          await held;
+        }
+        return mock.call<T>(method, params);
+      },
+      onEvent: (handler) => mock.onEvent(handler),
+      onClose: (handler) => mock.onClose(handler),
+    };
+    const before = window.history.length;
+    const pending = startDesktop({ root, transport });
+    fireEvent.click(await screen.findByRole("button", { name: /^Starred/ }));
+    await waitFor(() => expect(window.location.hash).toBe("#/view/starred"));
+    release();
+    started = await pending;
+    const store = started.store;
+    expect(store.getState().route).toEqual({ kind: "view", view: "starred" });
+    await waitFor(() => {
+      const { items } = store.getState();
+      expect(items.length).toBeGreaterThan(0);
+      expect(items.every((item) => item.starred)).toBe(true);
+    });
+    expect(window.location.hash).toBe("#/view/starred");
+    expect(window.history.length).toBe(before + 1);
   });
 
   it("has no save page and no bookmarklet entry", async () => {

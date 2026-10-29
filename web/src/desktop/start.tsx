@@ -57,7 +57,9 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   // on mount, so the store must hold the fragment's route before the first
   // render: else App reports the default "/", and the start route is lost.
   // setRoute sets the route synchronously and loads nothing while there is
-  // no API; the call after connect loads the route's list.
+  // no API. The app takes navigation from the render on, so after connect
+  // the store's CURRENT route loads, not the start route: a view the person
+  // chose while the transport opened must stay.
   const startRoute = desktopRoute(win.location.hash);
   void store.getState().setRoute(startRoute);
 
@@ -81,7 +83,7 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   const transport = options.transport ?? (await import("../rpc/mock.js")).createMockTransport();
   const unwatch = watchChanges(transport, () => void store.getState().changed());
   await store.getState().connect(readAPI(transport));
-  await store.getState().setRoute(startRoute);
+  await store.getState().setRoute(store.getState().route);
 
   return {
     store,
