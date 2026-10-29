@@ -21,7 +21,7 @@ the canonical paths, and keep content tool-agnostic.
 ## Status
 
 Pre-release, 2026-10-22, and public since 2026-10-23. Built on lodge's
-kit **v0.3.0**, and its web bundle on `@frostyard/lodge-client`
+kit **v0.3.1**, and its web bundle on `@frostyard/lodge-client`
 **client/v0.3.2** and on `@frostyard/lodge-ui` **ui/v0.6.0**. Built: the
 daemon and its store, the
 guarded fetcher, feeds and OPML, extraction and the blob store, polling,
@@ -115,6 +115,29 @@ counterpart of something those repositories do, read their file.
 - Fix a lint finding rather than loosening `.golangci.yml`.
 - Tests run unfiltered (`go test ./...`). No test reaches the network: it
   uses `httptest`, and never sleeps to synchronize.
+
+## Releases and dependencies
+
+- Tags look like `v1.2.3`: svu (`.svu.yml`, prefix `v`, v0 mode).
+- The push of a `v*` tag runs `.github/workflows/release.yml`. It builds the
+  web bundle and `frostyard-readd`'s `.deb` (`make deb`, nFPM), attests its
+  provenance, and makes the GitHub release with `gh release create`.
+- Brian tags. Agents never tag, push a tag or release. `make bump` is the
+  only way: on a clean, current `main` it runs `make check`, tags `svu next`
+  and pushes the tag.
+- The version comes from `svu next` over Conventional Commits. On v0, a
+  breaking change gives a minor.
+- Go module: `github.com/frostyard/lodge/kit` v0.3.1 (`go.mod`). It uses
+  `kit/jsonrpc`, `lodgeapp`, `mcpsession` and `netguard`; its tests use
+  `kittest`, `manifest` and `rpctest`.
+- Web pins in `web/package.json`: `@frostyard/lodge-client` as
+  `github:frostyard/lodge#client/v0.3.2`, and `@frostyard/lodge-ui` as
+  `github:frostyard/lodge#ui/v0.6.0`. Update the version text in README.md,
+  `docs/design/overview.md` and Status above with a bump.
+- `mise.toml` pins only third-party tools (golangci-lint, svu, nfpm). No
+  workflow or script pins a frostyard module.
+- Users: lodge hosts frostread as app `read` and serves its web bundle;
+  agents reach `/mcp/read` with a scoped token. Other callers: not stated.
 
 ## Invariants (decided; binding from the first line of code)
 

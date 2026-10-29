@@ -7,7 +7,7 @@ toolchain go1.27.3
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.3
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
-	github.com/frostyard/lodge/kit v0.3.0
+	github.com/frostyard/lodge/kit v0.3.1
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mmcdole/gofeed v1.5.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
