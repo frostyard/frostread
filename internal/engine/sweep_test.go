@@ -16,6 +16,7 @@ import (
 
 	"github.com/frostyard/frostread/internal/blobs"
 	"github.com/frostyard/frostread/internal/config"
+	"github.com/frostyard/frostread/internal/extract"
 	"github.com/frostyard/frostread/internal/store"
 )
 
@@ -89,6 +90,7 @@ type sweepEnv struct {
 	log   *syncBuf
 	raw   *sql.DB
 	dir   string // the blob store's directory
+	net   *net   // the fake network a poll and an extraction reach
 	src   int64
 	n     int
 }
@@ -111,7 +113,8 @@ func newSweepEnv(t *testing.T, cfg config.Config) *sweepEnv {
 	db.Now = c.Now
 	b := blobs.New(filepath.Join(dir, "blobs"))
 	logs := &syncBuf{}
-	env := &sweepEnv{t: t, db: db, blobs: b, clock: c, log: logs, raw: raw, dir: filepath.Join(dir, "blobs")}
+	n := &net{pages: map[string]answer{}}
+	env := &sweepEnv{t: t, db: db, blobs: b, clock: c, log: logs, raw: raw, dir: filepath.Join(dir, "blobs"), net: n}
 	if cfg.BlobSweep == "" {
 		cfg.BlobSweep = config.SweepOn
 	}
@@ -119,6 +122,7 @@ func newSweepEnv(t *testing.T, cfg config.Config) *sweepEnv {
 		cfg.BlobGraceDays = 7
 	}
 	env.e = New(Options{Store: db, Blobs: b, Config: cfg, Now: c.Now,
+		Fetch: n, Extractor: &extract.Extractor{Fetch: n, Blobs: b},
 		Log: slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))})
 	env.src = env.source()
 	return env
@@ -329,6 +333,59 @@ func TestSweepKeepsBlobsInUse(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A feed item's original survives the sweep for as long as its item names
+// it, and the feed original that a fetched page replaced goes after the
+// grace period, like any other blob no row names (ADR-0005, ADR-0007).
+func TestSweepKeepsAFeedItemsOriginal(t *testing.T) {
+	h := newSweepEnv(t, config.Config{})
+	h.net.pages["https://example.com/feed.xml"] = answer{body: feedXML()}
+	h.net.pages["https://example.com/first"] = answer{body: pageHTML}
+	h.net.pages["https://example.com/tomato.png"] = answer{body: string(png)}
+	src, err := h.e.AddSource(t.Context(), "https://example.com/feed.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := h.e.ListItems(t.Context(), store.ListOptions{View: store.ViewAll, Limit: 50, SourceID: &src.ID})
+	if err != nil || len(items) != 2 {
+		t.Fatalf("items = %+v, %v", items, err)
+	}
+	for _, it := range items {
+		if err := h.e.ExtractItem(t.Context(), it.ID); err != nil {
+			t.Fatalf("%s: %v", it.Title, err)
+		}
+	}
+	originals := feedOriginals(t)
+	full, err := h.e.Item(t.Context(), items[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := h.e.Item(t.Context(), items[1].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first post's feed original lost its row to the page's original.
+	replaced := blobs.ID(originals["1"])
+	if first.OriginalHash == replaced || !h.exists(replaced) {
+		t.Fatalf("first post's original = %s; its feed original exists = %v", first.OriginalHash[:8], h.exists(replaced))
+	}
+	// Every file is old: only a reference keeps one past two sweeps a
+	// grace period apart.
+	for _, id := range h.files() {
+		h.age(id, 30*day)
+	}
+	h.sweep(false)
+	h.clock.Advance(8 * day)
+	res := h.sweep(false)
+	if res.Removed != 1 {
+		t.Fatalf("result = %+v, want the replaced feed original removed", res)
+	}
+	if h.exists(replaced) {
+		t.Error("the replaced feed original survived its grace period")
+	}
+	assertOriginal(t, h.blobs, "the full article's feed original", full.OriginalHash, originals["2"])
+	assertOriginal(t, h.blobs, "the first post's page original", first.OriginalHash, []byte(pageHTML))
 }
 
 // An orphan whose record and whose file are past the grace period goes,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strconv"
@@ -416,6 +417,37 @@ func (d *DB) SetExtraction(ctx context.Context, id int64, e Extraction) error {
 		}
 		return nil
 	})
+}
+
+// KnownOriginals returns, for each of guids that the source already has as
+// an item, the original hash that item records now. A guid the source does
+// not have is absent from the map.
+func (d *DB) KnownOriginals(ctx context.Context, sourceID int64, guids []string) (map[string]string, error) {
+	out := map[string]string{}
+	if len(guids) == 0 {
+		return out, nil
+	}
+	list, err := json.Marshal(guids)
+	if err != nil {
+		return nil, fmt.Errorf("list known originals: %w", err)
+	}
+	rows, err := d.db.QueryContext(ctx, `SELECT guid, original_hash FROM items
+		WHERE source_id = ? AND guid IN (SELECT value FROM json_each(?))`, sourceID, string(list))
+	if err != nil {
+		return nil, fmt.Errorf("list known originals: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var guid, hash string
+		if err := rows.Scan(&guid, &hash); err != nil {
+			return nil, fmt.Errorf("list known originals: %w", err)
+		}
+		out[guid] = hash
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list known originals: %w", err)
+	}
+	return out, nil
 }
 
 // SetOriginal records the hash of an item's body as sent.
