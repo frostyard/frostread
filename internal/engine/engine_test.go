@@ -34,6 +34,7 @@ type answer struct {
 	body    string
 	err     error
 	etag    string
+	lastMod string
 	retryAf time.Duration
 }
 
@@ -56,6 +57,7 @@ func (n *net) Get(_ context.Context, rawurl string, o fetch.Options) (*fetch.Res
 		res.Header.Set("ETag", p.etag)
 		res.ETag = p.etag
 	}
+	res.LastModified = p.lastMod
 	if p.status == http.StatusNotModified {
 		res.NotModified = true
 		return res, nil
@@ -422,6 +424,50 @@ func TestPollFailsWhenAnOriginalCannotBeStored(t *testing.T) {
 	}
 	for guid, want := range feedOriginals(t) {
 		assertOriginal(t, e.o.Blobs, "item "+guid, stored[guid], want)
+	}
+}
+
+// A later poll whose second new original cannot be stored fails, keeps the
+// source's ETag and Last-Modified, and stores neither new item, though the
+// first original was written.
+func TestPollKeepsItsValidatorsWhenALaterOriginalFails(t *testing.T) {
+	e, n, _, _ := setup(t)
+	const lastMod = "Tue, 20 Oct 2026 10:00:00 GMT"
+	n.pages["https://example.com/feed.xml"] = answer{body: feedXML(), etag: `"v1"`, lastMod: lastMod}
+	src, err := e.AddSource(t.Context(), "https://example.com/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := e.o.Store.Source(t.Context(), src.ID)
+	if err != nil || before.ETag != `"v1"` || before.LastModified != lastMod {
+		t.Fatalf("source = %+v, %v; want both validators", before, err)
+	}
+	more := `<item><title>Tiny</title><link>https://example.com/tiny</link><guid>3</guid>
+	<description>Tiny.</description></item>
+	<item><title>Huge</title><link>https://example.com/huge</link><guid>4</guid>
+	<description>` + strings.ReplaceAll(longText, "\n", " ") + `</description></item>
+	</channel>`
+	n.pages["https://example.com/feed.xml"] = answer{
+		body: strings.Replace(feedXML(), "</channel>", more, 1), etag: `"v2"`, lastMod: "Wed, 21 Oct 2026 10:00:00 GMT"}
+	// Items 1 and 2 are known with their blobs, so they write nothing; the
+	// limit admits item 3's original and refuses item 4's.
+	e.o.Blobs.MaxBytes = 100
+	if err := e.Refresh(t.Context(), &src.ID); err == nil {
+		t.Fatal("a poll whose original cannot be stored succeeded")
+	}
+	if _, err := e.o.Blobs.Size(blobs.ID([]byte("Tiny."))); err != nil {
+		t.Fatalf("item 3's original = %v, want it written before item 4 failed", err)
+	}
+	after, err := e.o.Store.Source(t.Context(), src.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.ETag != `"v1"` || after.LastModified != lastMod || after.LastError == "" {
+		t.Fatalf("source = %+v, want the old validators and a poll error", after)
+	}
+	known, err := e.o.Store.KnownOriginals(t.Context(), src.ID, []string{"1", "2", "3", "4"})
+	if err != nil || len(known) != 2 {
+		t.Fatalf("known items = %v, %v; want items 1 and 2 only", known, err)
 	}
 }
 

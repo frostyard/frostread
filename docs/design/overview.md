@@ -92,8 +92,8 @@ the feed gave it, the summary and then the content, before it is
 absolutized or sanitized; the poll writes it to the blob store before the
 item's row names its hash. A fetched page's original is the page's body,
 written before `SetOriginal` names it, and it takes the place of the feed
-item's original on the row; the feed item's blob then has no row, and the
-sweep removes it after the grace period.
+item's original on the row; the sweep removes the feed item's blob after
+the grace period, when no other row names the same bytes.
 
 **The engine.** `internal/engine` is the app's logic over the store,
 fetcher, feed parser, extractor and notes client. Every change sends a
@@ -172,9 +172,11 @@ runes, and the address is checked with `fetch.Check` before it is stored
   (`blob_grace_days`, 7), after a second check under the store's lock; `Put`
   touches a blob that exists. It runs 10 minutes after start, then every
   24 hours (`blob_sweep`), and `readctl sweep [-dry-run]` runs it now.
-- **Feed items polled before 2026-10-30** have an `original_hash` with no
+- **Feed items polled before 2026-10-30** whose row still names their
+  feed original (not a fetched page's) have an `original_hash` with no
   blob: the poll recorded the hash of the feed item's HTML and did not
-  store the bytes. A later poll stores them when the feed still sends that
+  store the bytes. An item whose page was fetched names the page's body,
+  which was stored, and has no gap. A later poll stores them when the feed still sends that
   item with the same bytes, because their SHA-256 then proves they are the
   bytes first sent. An item that has left its feed, or whose feed text has
   changed, keeps a hash with no blob: no re-fetch can give the bytes as
