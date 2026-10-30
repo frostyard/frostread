@@ -6,7 +6,7 @@ import { Sheet, Splitter, useNarrow } from "@frostyard/lodge-ui/react";
 import { useEffect, useRef, useState } from "react";
 import { commandFor } from "../lib/keys.js";
 import { formatRoute, routeTitle, UNREAD } from "../lib/routes.js";
-import { openOutside, reportRoute } from "../lodge.js";
+import { useShell } from "../shell.js";
 import { BookmarkletPage } from "./BookmarkletPage.js";
 import { ConfirmSheet } from "./ConfirmSheet.js";
 import { useRead, useReadStore } from "./context.js";
@@ -32,6 +32,7 @@ export function App() {
   const confirmMarkAll = useRead((state) => state.confirmMarkAll);
   const cancelMarkAll = useRead((state) => state.cancelMarkAll);
   const narrow = useNarrow();
+  const shell = useShell();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(224);
@@ -49,16 +50,16 @@ export function App() {
     if (route.kind === "save" && path.length > MAX_ROUTE) return;
     const title = routeTitle(route, sources, item?.title ?? "Read");
     if (path === reported.current.path && title === reported.current.title) return;
-    reportRoute(path, title, path === reported.current.path);
+    shell.reportRoute(path, title, path === reported.current.path);
     reported.current = { path, title };
-  }, [route, sources, item]);
+  }, [route, sources, item, shell]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const command = commandFor(event);
       if (command === null) return;
       const state = store.getState();
-      if (state.route.kind === "save" || state.route.kind === "bookmarklet") {
+      if (shell.savePages && (state.route.kind === "save" || state.route.kind === "bookmarklet")) {
         // These pages are not the reader: no key acts on them, except that
         // Escape may leave. An open Sheet takes its own Escape.
         if (command !== "escape" || state.error !== null) return;
@@ -90,7 +91,7 @@ export function App() {
         case "openOriginal":
           if (state.item !== null) {
             event.preventDefault();
-            openOutside(state.item.url);
+            shell.openOutside(state.item.url);
           }
           break;
         case "focusSearch":
@@ -117,7 +118,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [store, narrow, sidebarOpen]);
+  }, [store, narrow, sidebarOpen, shell]);
 
   const errorSheet =
     error === null ? null : (
@@ -138,7 +139,7 @@ export function App() {
 
   // The save page and the bookmarklet page stand over the whole frame, in
   // both layouts: they are no list and no reader.
-  if (route.kind === "save" || route.kind === "bookmarklet") {
+  if (shell.savePages && (route.kind === "save" || route.kind === "bookmarklet")) {
     return (
       <div className="flex h-full flex-col bg-window text-primary">
         {route.kind === "save" ? <SavePage url={route.url} title={route.title} /> : <BookmarkletPage />}
