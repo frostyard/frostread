@@ -1,9 +1,11 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"sync"
 	"time"
 
@@ -108,11 +110,43 @@ func (e *Engine) pollSource(ctx context.Context, src store.Source) error {
 }
 
 // polled stores a successful poll's new items and its next time.
+//
+// Each item's original is its HTML as the feed gave it: the summary, then
+// the content, before they are absolutized or sanitized. Those bytes are
+// written to the blob store before the item's row names their hash, as an
+// extraction writes a page's body before SetOriginal, so a crash between
+// the two leaves at most a blob that no row names, which the sweep removes
+// (ADR-0005, ADR-0007). A blob write that fails fails the poll, which
+// keeps the source's old ETag, so the next poll offers the items again.
 func (e *Engine) polled(ctx context.Context, src store.Source, res *fetch.Response, items []feed.Item) error {
+	guids := make([]string, 0, len(items))
+	for _, it := range items {
+		guids = append(guids, it.GUID)
+	}
+	known, err := e.o.Store.KnownOriginals(ctx, src.ID, guids)
+	if err != nil {
+		return e.pollFailed(ctx, src, err, 0)
+	}
 	newItems := make([]store.NewItem, 0, len(items))
 	for _, it := range items {
+		original := []byte(it.SummaryHTML + it.ContentHTML)
+		if recorded, ok := known[it.GUID]; ok {
+			// The source has the item already. When its row names exactly
+			// these bytes and their blob is missing (an item polled before
+			// originals were stored), the hash proves they are the bytes
+			// first sent, so they are stored now. Any other bytes are not
+			// that item's original, and are left alone.
+			if err := e.restoreOriginal(ctx, recorded, original); err != nil {
+				return e.pollFailed(ctx, src, err, 0)
+			}
+			continue
+		}
+		hash, err := e.o.Blobs.Put(ctx, bytes.NewReader(original), "text/html")
+		if err != nil {
+			return e.pollFailed(ctx, src, fmt.Errorf("store an original: %w", err), 0)
+		}
 		// The feed's HTML is untrusted: it is sanitized before the store
-		// holds it, and its bytes are kept as sent, by hash.
+		// holds it.
 		// A feed's links and image sources are often relative; resolving
 		// them first keeps its images, which the extraction fetches later.
 		summary := sanitize.HTML(extract.Absolutize(it.SummaryHTML, it.URL))
@@ -129,7 +163,7 @@ func (e *Engine) polled(ctx context.Context, src store.Source, res *fetch.Respon
 			GUID: it.GUID, URL: it.URL, Title: it.Title, Author: it.Author,
 			Published: it.Published, SummaryHTML: summary, ContentHTML: content,
 			Text:         extract.StripTitle(sanitize.PlainText(summary+" "+content), it.Title),
-			OriginalHash: blobs.ID([]byte(it.SummaryHTML + it.ContentHTML)),
+			OriginalHash: hash,
 		})
 	}
 	added, err := e.o.Store.AddItems(ctx, src.ID, newItems)
@@ -146,6 +180,25 @@ func (e *Engine) polled(ctx context.Context, src store.Source, res *fetch.Respon
 	if len(added) > 0 {
 		e.log.Info("new items", "source", src.ID, "host", host(src.URL), "count", len(added))
 		e.change("unread", "all")
+	}
+	return nil
+}
+
+// restoreOriginal stores original when its hash is recorded and its blob is
+// missing. It writes nothing for bytes whose hash is not recorded.
+func (e *Engine) restoreOriginal(ctx context.Context, recorded string, original []byte) error {
+	if recorded == "" || recorded != blobs.ID(original) {
+		return nil
+	}
+	_, err := e.o.Blobs.Size(recorded)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("check an original: %w", err)
+	}
+	if _, err := e.o.Blobs.Put(ctx, bytes.NewReader(original), "text/html"); err != nil {
+		return fmt.Errorf("restore an original: %w", err)
 	}
 	return nil
 }

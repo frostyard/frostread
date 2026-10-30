@@ -82,7 +82,7 @@ what search returns too, unless a query says otherwise.
 | `contentPath` | string | the article's path relative to the content root, `item/<id>/<mac>`, for lodge-client's `contentURL`, which builds `CONTENT/read/<contentPath>` |
 | `extractState` | string | `pending`, `done` or `failed` |
 | `extractError` | string | why extraction failed, empty when it did not |
-| `originalHash` | string | the SHA-256 of the body as sent |
+| `originalHash` | string | the SHA-256 of the body as sent: a fetched page's body, or a feed item's summary HTML followed by its content HTML, as the feed gave them |
 
 #### Methods
 
@@ -591,6 +591,14 @@ The packaging test, `internal/packagecheck`, checks it.
   MUST hold that lock shared while it finds, touches or publishes a file.
   Any new column that names a blob MUST join the sweep's mark. A dry run
   MUST NOT remove a file or write a row. Only caller `local` may sweep.
+- A row MUST NOT name a blob before the blob is stored: a poll writes each
+  new feed item's original before it inserts the item, and an extraction
+  writes a page's body before `SetOriginal`. A poll whose blob write fails
+  MUST fail, keep the source's old `ETag` and `Last-Modified`, and store
+  none of its new items. A poll MAY store an existing item's missing
+  original only when the bytes the feed sends now hash to the item's
+  `original_hash`
+  ([ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md)).
 - A poll error MUST be stored on the source and shown in `Source.lastError`,
   and it MUST NOT stop the poller.
 - A URL the fetcher refuses MUST answer `invalidParams` with one sentence

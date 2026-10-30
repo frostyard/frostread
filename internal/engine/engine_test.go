@@ -1,9 +1,11 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/frostyard/frostread/internal/blobs"
 	"github.com/frostyard/frostread/internal/config"
 	"github.com/frostyard/frostread/internal/extract"
+	"github.com/frostyard/frostread/internal/feed"
 	"github.com/frostyard/frostread/internal/fetch"
 	"github.com/frostyard/frostread/internal/notes"
 	"github.com/frostyard/frostread/internal/store"
@@ -31,6 +34,7 @@ type answer struct {
 	body    string
 	err     error
 	etag    string
+	lastMod string
 	retryAf time.Duration
 }
 
@@ -53,6 +57,7 @@ func (n *net) Get(_ context.Context, rawurl string, o fetch.Options) (*fetch.Res
 		res.Header.Set("ETag", p.etag)
 		res.ETag = p.etag
 	}
+	res.LastModified = p.lastMod
 	if p.status == http.StatusNotModified {
 		res.NotModified = true
 		return res, nil
@@ -266,6 +271,203 @@ func TestExtraction(t *testing.T) {
 	// ExtractItem again changes nothing.
 	if err := e.ExtractItem(t.Context(), items[0].ID); err != nil {
 		t.Fatalf("a second extraction = %v", err)
+	}
+}
+
+// feedOriginals is each item's original in feedXML, by GUID: its summary,
+// then its content, as the feed parser gives them.
+func feedOriginals(t *testing.T) map[string][]byte {
+	t.Helper()
+	f, err := feed.Parse([]byte(feedXML()), "https://example.com/feed.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string][]byte{}
+	for _, it := range f.Items {
+		out[it.GUID] = []byte(it.SummaryHTML + it.ContentHTML)
+	}
+	return out
+}
+
+// assertOriginal checks that hash names a stored blob whose bytes are want.
+func assertOriginal(t *testing.T, b *blobs.Store, name, hash string, want []byte) {
+	t.Helper()
+	if hash != blobs.ID(want) {
+		t.Fatalf("%s: original hash = %q, want the hash of its bytes as sent, %q", name, hash, blobs.ID(want))
+	}
+	got, err := b.Get(hash)
+	if err != nil {
+		t.Fatalf("%s: original blob: %v", name, err)
+	}
+	if !bytes.Equal(got, want) || blobs.ID(got) != hash {
+		t.Fatalf("%s: original blob = %q, want %q", name, got, want)
+	}
+}
+
+// A feed item's original is stored when the item is, and stays when the
+// feed's own content is its article (ADR-0005).
+func TestFeedItemsKeepTheirOriginal(t *testing.T) {
+	e, _, _, _ := setup(t)
+	src, err := e.AddSource(t.Context(), "https://example.com/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	originals := feedOriginals(t)
+	if len(originals) != 2 || len(originals["1"]) == 0 || len(originals["2"]) == 0 {
+		t.Fatalf("feed originals = %q", originals)
+	}
+	stored, err := e.o.Store.KnownOriginals(t.Context(), src.ID, []string{"1", "2", "3"})
+	if err != nil || len(stored) != 2 {
+		t.Fatalf("known originals = %v, %v", stored, err)
+	}
+	for guid, want := range originals {
+		assertOriginal(t, e.o.Blobs, "item "+guid, stored[guid], want)
+	}
+	items, _, err := e.ListItems(t.Context(), store.ListOptions{View: store.ViewUnread, Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if err := e.ExtractItem(t.Context(), it.ID); err != nil {
+			t.Fatalf("%s: %v", it.Title, err)
+		}
+	}
+	// items[0] is the full article: its extraction took the feed's content
+	// and kept the feed's original.
+	full, err := e.Item(t.Context(), items[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOriginal(t, e.o.Blobs, "the full article", full.OriginalHash, originals["2"])
+	// items[1]'s page was fetched: its original is the page as sent.
+	first, err := e.Item(t.Context(), items[1].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOriginal(t, e.o.Blobs, "the fetched page", first.OriginalHash, []byte(pageHTML))
+}
+
+// A re-poll stores the original of an item polled before originals were
+// stored, when the feed still sends the bytes its row names, and only then.
+func TestPollRestoresAMissingOriginal(t *testing.T) {
+	e, _, _, _ := setup(t)
+	src, err := e.AddSource(t.Context(), "https://example.com/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	originals := feedOriginals(t)
+	items, _, err := e.ListItems(t.Context(), store.ListOptions{View: store.ViewUnread, Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make the rows of an older daemon: the full article (GUID 2) names its
+	// bytes with no blob, and the first post (GUID 1) names bytes the feed
+	// no longer sends.
+	for _, b := range originals {
+		if _, _, err := e.o.Blobs.RemoveIf(blobs.ID(b), func(time.Time) (bool, error) { return true, nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	changed := blobs.ID([]byte("a summary the feed sent once"))
+	if err := e.o.Store.SetOriginal(t.Context(), items[1].ID, changed); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Refresh(t.Context(), &src.ID); err != nil {
+		t.Fatal(err)
+	}
+	full, err := e.Item(t.Context(), items[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOriginal(t, e.o.Blobs, "the restored original", full.OriginalHash, originals["2"])
+	// The first post's row still names bytes nobody has: nothing is stored
+	// under its hash, and the bytes the feed sends now are not stored.
+	for _, h := range []string{changed, blobs.ID(originals["1"])} {
+		if _, err := e.o.Blobs.Size(h); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("blob %s = %v, want none", h[:8], err)
+		}
+	}
+	first, err := e.Item(t.Context(), items[1].ID)
+	if err != nil || first.OriginalHash != changed {
+		t.Fatalf("first post's original = %q, %v; want %q kept", first.OriginalHash, err, changed)
+	}
+}
+
+// A blob write that fails fails the poll and keeps no ETag, so the next
+// poll offers the items again, and no item is stored without its original.
+func TestPollFailsWhenAnOriginalCannotBeStored(t *testing.T) {
+	e, _, _, _ := setup(t)
+	e.o.Blobs.MaxBytes = 4
+	src, err := e.AddSource(t.Context(), "https://example.com/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.o.Store.Source(t.Context(), src.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastError == "" || got.ETag != "" {
+		t.Fatalf("source = %+v, want a poll error and no ETag", got)
+	}
+	items, _, err := e.ListItems(t.Context(), store.ListOptions{View: store.ViewAll, Limit: 50})
+	if err != nil || len(items) != 0 {
+		t.Fatalf("items = %+v, %v; want none", items, err)
+	}
+	// The store recovers: the next poll stores the items and their originals.
+	e.o.Blobs.MaxBytes = 0
+	if err := e.Refresh(t.Context(), &src.ID); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := e.o.Store.KnownOriginals(t.Context(), src.ID, []string{"1", "2"})
+	if err != nil || len(stored) != 2 {
+		t.Fatalf("known originals = %v, %v", stored, err)
+	}
+	for guid, want := range feedOriginals(t) {
+		assertOriginal(t, e.o.Blobs, "item "+guid, stored[guid], want)
+	}
+}
+
+// A later poll whose second new original cannot be stored fails, keeps the
+// source's ETag and Last-Modified, and stores neither new item, though the
+// first original was written.
+func TestPollKeepsItsValidatorsWhenALaterOriginalFails(t *testing.T) {
+	e, n, _, _ := setup(t)
+	const lastMod = "Tue, 20 Oct 2026 10:00:00 GMT"
+	n.pages["https://example.com/feed.xml"] = answer{body: feedXML(), etag: `"v1"`, lastMod: lastMod}
+	src, err := e.AddSource(t.Context(), "https://example.com/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := e.o.Store.Source(t.Context(), src.ID)
+	if err != nil || before.ETag != `"v1"` || before.LastModified != lastMod {
+		t.Fatalf("source = %+v, %v; want both validators", before, err)
+	}
+	more := `<item><title>Tiny</title><link>https://example.com/tiny</link><guid>3</guid>
+	<description>Tiny.</description></item>
+	<item><title>Huge</title><link>https://example.com/huge</link><guid>4</guid>
+	<description>` + strings.ReplaceAll(longText, "\n", " ") + `</description></item>
+	</channel>`
+	n.pages["https://example.com/feed.xml"] = answer{
+		body: strings.Replace(feedXML(), "</channel>", more, 1), etag: `"v2"`, lastMod: "Wed, 21 Oct 2026 10:00:00 GMT"}
+	// Items 1 and 2 are known with their blobs, so they write nothing; the
+	// limit admits item 3's original and refuses item 4's.
+	e.o.Blobs.MaxBytes = 100
+	if err := e.Refresh(t.Context(), &src.ID); err == nil {
+		t.Fatal("a poll whose original cannot be stored succeeded")
+	}
+	if _, err := e.o.Blobs.Size(blobs.ID([]byte("Tiny."))); err != nil {
+		t.Fatalf("item 3's original = %v, want it written before item 4 failed", err)
+	}
+	after, err := e.o.Store.Source(t.Context(), src.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.ETag != `"v1"` || after.LastModified != lastMod || after.LastError == "" {
+		t.Fatalf("source = %+v, want the old validators and a poll error", after)
+	}
+	known, err := e.o.Store.KnownOriginals(t.Context(), src.ID, []string{"1", "2", "3", "4"})
+	if err != nil || len(known) != 2 {
+		t.Fatalf("known items = %v, %v; want items 1 and 2 only", known, err)
 	}
 }
 
