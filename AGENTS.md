@@ -40,7 +40,9 @@ ADR-0008, the standalone desktop Flatpak, is Accepted (Brian, 2026-10-28);
 Phase 2, readd's desktop mode, is merged (frostread#25, 2026-10-28), and
 Phase 3, the desktop shell, is planned in steps (2026-10-29): step 3.1,
 the desktop entry, is merged (frostread#30, 2026-10-29), and step 3.3,
-the reader's `srcdoc` frame from `items.render`, is built (2026-10-30).
+the reader's `srcdoc` frame from `items.render`, is merged (frostread#32,
+2026-10-31). The Rust shell (step 3.2), the Flatpak and the clean-install
+gate are not built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
