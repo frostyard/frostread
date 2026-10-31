@@ -128,9 +128,13 @@ describe("the daemon's answers match api.ts", () => {
 
   it("items.render: the desktop's page, its CSP first, no image left out", () => {
     expect(rendered.html.startsWith("<!doctype html>")).toBe(true);
-    expect(rendered.html).toContain(
-      "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data:; style-src 'unsafe-inline'\">",
-    );
+    // The CSP meta is the head's first element, before any markup it governs.
+    const head = rendered.html.slice(rendered.html.indexOf("<head>") + "<head>".length).trimStart();
+    expect(
+      head.startsWith(
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data:; style-src 'unsafe-inline'\">",
+      ),
+    ).toBe(true);
     expect(rendered.omittedImages).toBe(0);
   });
 
