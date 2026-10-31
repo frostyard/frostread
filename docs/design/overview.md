@@ -131,7 +131,13 @@ after it. The desktop's window asks `items.render` for the same page,
 whose only difference is a CSP meta first in its head, and which keeps its
 encoded answer under 12 MiB by leaving images out
 ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
-[specs/api.md](../specs/api.md#rendering-for-the-desktop)).
+[specs/api.md](../specs/api.md#rendering-for-the-desktop)). The desktop's
+reader shows it in `<iframe srcdoc sandbox="allow-popups">`, with no `src`,
+no `allow-scripts` and no `allow-same-origin`, and renders it again when
+the scheme changes. It says how many images were left out, and on
+`tooLarge` it shows the excerpt, "This article is too large to show in the
+app" and a link to the original
+([plan 0002, step 3.3](../plans/0002-the-standalone-desktop-flatpak.md#phase-3s-steps)).
 
 **The web bundle.** `web/` is on `@frostyard/lodge-client`
 **client/v0.3.2** and `@frostyard/lodge-ui` **ui/v0.6.0**: a source column,

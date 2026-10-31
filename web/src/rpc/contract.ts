@@ -7,6 +7,7 @@ import type {
   ExtractState,
   ImportResult,
   ItemDetail,
+  ItemRender,
   ItemsChanged,
   Note,
   Page,
@@ -263,6 +264,16 @@ export function validateOPML(v: unknown): Problems {
   return p;
 }
 
+/** validateRender checks items.render's result: the page, and the images
+ * the answer's bound left out (docs/specs/api.md, items.render). */
+export function validateRender(v: unknown): Problems {
+  const p: Problems = [];
+  if (!object(v, "items.render", ["html", "omittedImages"], p)) return p;
+  field(v, "html", "items.render", p, isString);
+  field(v, "omittedImages", "items.render", p, isNumber);
+  return p;
+}
+
 /** validateItemResult checks later.save's result. */
 export function validateItemResult(v: unknown): Problems {
   const p: Problems = [];
@@ -329,6 +340,7 @@ export type GoldenTypes = {
   source: Source;
   page: Page;
   detail: ItemDetail;
+  render: ItemRender;
   note: Note;
   imported: ImportResult;
   changed: ItemsChanged;

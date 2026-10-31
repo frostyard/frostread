@@ -21,11 +21,13 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-10-29): **Phase 3 is planned:** Phase 1 is done (ADR-0008
+Status (2026-10-30): **Phase 3 is in progress:** Phase 1 is done (ADR-0008
 records Brian's 3 answers of 2026-10-27 and is Accepted; core's plan 0010
 Read row waits for Lucilla). Phase 2, readd's desktop mode, is built and
 merged (frostread#25, 2026-10-28). Phase 3 has its
-[steps](#phase-3s-steps), and none is built. Nothing of the shell, the
+[steps](#phase-3s-steps): 3.1, the desktop entry on the mock transport,
+is merged (frostread#30, 2026-10-29), and 3.3, the reader's frame from
+`items.render`, is built (2026-10-30). Nothing of the Rust shell, the
 Flatpak or the release is built.
 
 ## Who helps
