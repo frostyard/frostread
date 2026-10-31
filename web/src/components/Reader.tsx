@@ -1,11 +1,14 @@
 // The reader: the item's title, source, author and date, its actions, and
-// its article in lodge's content frame. Save as note writes the item into
-// notes and then opens it there (docs/specs/api.md, items.saveAsNote).
+// its article. In lodge that is the content frame; on the desktop it comes
+// from items.render in a sandboxed srcdoc frame (ADR-0008). Save as note
+// writes the item into notes and then opens it there (docs/specs/api.md,
+// items.saveAsNote).
 import { IconButton, iconButtonClass, useNarrow } from "@frostyard/lodge-ui/react";
 import { Archive, ArrowLeft, ExternalLink, Mail, MailOpen, Star } from "lucide-react";
 import { headerDate } from "../lib/format.js";
 import { useShell } from "../shell.js";
 import { useRead } from "./context.js";
+import { RenderedArticle } from "./RenderedArticle.js";
 
 /** Reader is the right pane, or the narrow window's item. */
 export function Reader(props: { onBack?: () => void }) {
@@ -127,7 +130,11 @@ export function Reader(props: { onBack?: () => void }) {
         </p>
       )}
 
-      <div className="min-h-0 flex-1">
+      <div
+        className={
+          shell.renderArticles && item.extractState === "done" ? "flex min-h-0 flex-1 flex-col" : "min-h-0 flex-1"
+        }
+      >
         {item.extractState === "pending" ? (
           <p className="p-[var(--pad-x)] text-secondary">Extracting…</p>
         ) : item.extractState === "failed" ? (
@@ -135,6 +142,8 @@ export function Reader(props: { onBack?: () => void }) {
             <p className="text-flag-1">{item.extractError ?? "The article could not be extracted."}</p>
             <p className="mt-3 whitespace-pre-wrap text-reader-body text-secondary">{item.excerpt ?? ""}</p>
           </div>
+        ) : shell.renderArticles ? (
+          <RenderedArticle item={item} scheme={scheme} />
         ) : src === null ? (
           <div className="h-full overflow-y-auto p-[var(--pad-x)]">
             <p className="whitespace-pre-wrap text-reader-body text-secondary">{item.excerpt ?? ""}</p>

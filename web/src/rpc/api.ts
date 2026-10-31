@@ -138,6 +138,15 @@ export interface ItemsChanged {
   views: string[];
 }
 
+/** ItemRender is the article's page for the desktop's window, from
+ * items.render (docs/specs/api.md, and ADR-0008). */
+export interface ItemRender {
+  /** The whole document, its CSP meta first in its head, its images inlined. */
+  html: string;
+  /** The images the answer's bound left out; their alt text stays. */
+  omittedImages: number;
+}
+
 /** ErrorCode values of docs/specs/api.md, Errors. */
 export const Code = {
   notFound: 1001,
@@ -145,7 +154,20 @@ export const Code = {
   protocolMismatch: 1003,
   notReady: 1004,
   unavailable: 1005,
+  tooLarge: 1006,
 } as const;
+
+/**
+ * isTooLarge says whether an error is items.render's tooLarge: the article's
+ * text alone is at or over the bound on an answer (ADR-0008). It reads the
+ * error's code, which both lodge-client's RPCError and the mock's MockError
+ * carry.
+ */
+export function isTooLarge(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "number" && code === Code.tooLarge;
+}
 
 /** ReadAPI is readd's methods, typed. The subscription to items.changed is
  * watchChanges' (events.ts): it is made on each connection. */
@@ -168,6 +190,8 @@ export interface ReadAPI {
   setArchived(id: number, archived: boolean): Promise<void>;
   saveAsNote(id: number): Promise<Note>;
   noteStatus(id: number): Promise<NoteStatus>;
+  /** renderItem is the article's page for the desktop's frame, in a scheme. */
+  renderItem(id: number, scheme?: "light" | "dark"): Promise<ItemRender>;
   /** saveLater saves a link to read later, with the page's title when there is one. */
   saveLater(url: string, title?: string): Promise<ItemSummary>;
 }
@@ -215,6 +239,7 @@ export function readAPI(transport: Transport): ReadAPI {
     },
     saveAsNote: (id) => call<Note>("items.saveAsNote", { id }),
     noteStatus: (id) => call<NoteStatus>("items.noteStatus", { id }),
+    renderItem: (id, scheme) => call<ItemRender>("items.render", scheme === undefined ? { id } : { id, scheme }),
     saveLater: (url, title) =>
       call<{ item: ItemSummary }>("later.save", title === undefined || title === "" ? { url } : { url, title }).then(
         (r) => r.item,

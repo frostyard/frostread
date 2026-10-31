@@ -37,7 +37,9 @@ export function createDesktopShell(win: Window = window): Shell {
     openOutside(url) {
       win.open(url, "_blank", "noopener");
     },
-    // Null until step 3.3: the article then shows in a srcdoc frame from items.render.
+    // The desktop has no content route (ADR-0008): the reader shows the
+    // article from items.render in a sandboxed srcdoc frame instead.
+    renderArticles: true,
     contentSrc() {
       return null;
     },

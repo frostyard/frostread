@@ -14,6 +14,11 @@ export interface Shell {
   openRoute(route: string): void;
   /** openOutside opens an article or a link outside the app. */
   openOutside(url: string): void;
+  /**
+   * renderArticles: the article comes from items.render into a srcdoc frame
+   * (the desktop, ADR-0008), not from lodge-content's contentSrc.
+   */
+  readonly renderArticles: boolean;
   /** contentSrc is an item's article frame source, or null when there is none. */
   contentSrc(contentPath: string | undefined, scheme?: "light" | "dark"): string | null;
 }

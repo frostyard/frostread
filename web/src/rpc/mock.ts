@@ -236,6 +236,12 @@ export function createMockTransport(): Transport {
           .map((item) => ({ ...summary(item), snippet: snippet(item.excerpt, query) }));
         return { items: found } as T;
       }
+      case "items.render": {
+        const item = byId(Number(params.id));
+        if (item === undefined) throw new MockError(1001, "no such item");
+        const scheme = params.scheme === "light" || params.scheme === "dark" ? params.scheme : "";
+        return { html: renderPage(item, scheme), omittedImages: 0 } as T;
+      }
       case "items.setRead": {
         const ids = Array.isArray(params.ids) ? params.ids.map(Number) : [];
         const read = params.read === true;
@@ -358,6 +364,27 @@ function mockItem(id: number, source: MockSource | null, authored: boolean): Moc
     extractError: id % 7 === 0 ? "the page answered 403" : "",
     originalHash: `hash${id}`,
   };
+}
+
+/** CSP is the policy items.render's page carries: no network source. */
+const CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'";
+
+/** renderPage is an item's article as items.render answers it: the document
+ * the content route serves, its CSP meta first in its head. */
+function renderPage(item: MockItem, scheme: string): string {
+  const attr = scheme === "" ? "" : ` data-scheme="${scheme}"`;
+  const title = escapeHTML(item.title);
+  return (
+    `<!doctype html><html lang="en"${attr}><head>` +
+    `<meta http-equiv="Content-Security-Policy" content="${CSP}">` +
+    `<meta charset="utf-8"><title>${title}</title></head>` +
+    `<body><h1>${title}</h1><p>${escapeHTML(item.excerpt)}</p></body></html>`
+  );
+}
+
+/** escapeHTML writes text in element content, with its &, <, > and " escaped. */
+function escapeHTML(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
 /** snippet marks the query's first match in text the way the API does. */

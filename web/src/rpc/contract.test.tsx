@@ -11,7 +11,17 @@ import { ItemRow } from "../components/ItemRow.js";
 import { Reader } from "../components/Reader.js";
 import { SourceRow } from "../components/Sidebar.js";
 import { createReadStore } from "../store.js";
-import type { Counts, ImportResult, ItemDetail, ItemSummary, Note, NoteStatus, Source, Status } from "./api.js";
+import type {
+  Counts,
+  ImportResult,
+  ItemDetail,
+  ItemRender,
+  ItemSummary,
+  Note,
+  NoteStatus,
+  Source,
+  Status,
+} from "./api.js";
 import {
   checked,
   type Problems,
@@ -25,6 +35,7 @@ import {
   validateNull,
   validateOPML,
   validatePage,
+  validateRender,
   validateSourceResult,
   validateSources,
   validateStatus,
@@ -38,6 +49,7 @@ import savedJSON from "./testdata/items.get.saved.json";
 import allJSON from "./testdata/items.list.all.json";
 import unreadJSON from "./testdata/items.list.unread.json";
 import noteStatusJSON from "./testdata/items.noteStatus.json";
+import renderJSON from "./testdata/items.render.json";
 import saveAsNoteJSON from "./testdata/items.saveAsNote.json";
 import searchJSON from "./testdata/items.search.json";
 import laterJSON from "./testdata/later.save.json";
@@ -64,6 +76,7 @@ const failed: ItemDetail = checked<ItemDetail>(failedJSON, validateItemDetail);
 const saved: ItemDetail = checked<ItemDetail>(savedJSON, validateItemDetail);
 const later: ItemSummary = checked<{ item: ItemSummary }>(laterJSON, validateItemResult).item;
 const note: Note = checked<Note>(saveAsNoteJSON, validateNote);
+const rendered: ItemRender = checked<ItemRender>(renderJSON, validateRender);
 
 describe("the daemon's answers match api.ts", () => {
   it("rpc.hello", () => {
@@ -111,6 +124,18 @@ describe("the daemon's answers match api.ts", () => {
     expect(status.state).toBe("present");
     expect(status.path?.endsWith(".md")).toBe(true);
     expect(status.route?.startsWith("/notes/1/")).toBe(true);
+  });
+
+  it("items.render: the desktop's page, its CSP first, no image left out", () => {
+    expect(rendered.html.startsWith("<!doctype html>")).toBe(true);
+    // The CSP meta is the head's first element, before any markup it governs.
+    const head = rendered.html.slice(rendered.html.indexOf("<head>") + "<head>".length).trimStart();
+    expect(
+      head.startsWith(
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data:; style-src 'unsafe-inline'\">",
+      ),
+    ).toBe(true);
+    expect(rendered.omittedImages).toBe(0);
   });
 
   it("items.saveAsNote and later.save", () => {
