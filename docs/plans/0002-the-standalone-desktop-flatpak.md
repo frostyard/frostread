@@ -21,14 +21,23 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-10-30): **Phase 3 is in progress:** Phase 1 is done (ADR-0008
-records Brian's 3 answers of 2026-10-27 and is Accepted; core's plan 0010
-Read row waits for Lucilla). Phase 2, readd's desktop mode, is built and
-merged (frostread#25, 2026-10-28). Phase 3 has its
-[steps](#phase-3s-steps): 3.1, the desktop entry on the mock transport,
-is merged (frostread#30, 2026-10-29), and 3.3, the reader's frame from
-`items.render`, is built (2026-10-30). Nothing of the Rust shell, the
-Flatpak or the release is built.
+Status (2026-10-31): **Phase 3 is in progress.**
+
+- **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
+  Accepted (frostread#24, 2026-10-28). The other half of its Done when,
+  the Read row of core's plan 0010, waits for Lucilla.
+- **Phase 2,** readd's desktop mode, is merged (frostread#25,
+  2026-10-28).
+- **Phase 3** has its [steps](#phase-3s-steps) (frostread#29,
+  2026-10-29). 2 are merged, both web only and on the mock transport
+  until 3.2: 3.1, the desktop entry (frostread#30, 2026-10-29), and 3.3,
+  the reader's `srcdoc` frame from `items.render` (frostread#32,
+  2026-10-31). Left: 3.0, the nsl machine for the shell (no machine is
+  recorded yet); 3.2, the Rust shell, the bridge and the Tauri transport;
+  3.4 to 3.7, which wait for 3.2; and 3.8, Phase 3's record.
+- **Phases 4 to 11** have not started. Nothing of the Rust shell, the
+  Flatpak, the lodge connection or the release candidate is built, and
+  the clean-install gate (Phase 10) has no run yet.
 
 ## Who helps
 
