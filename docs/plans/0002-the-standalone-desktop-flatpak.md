@@ -21,7 +21,7 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-10-31): **Phase 3 is in progress.**
+Status (2026-11-01): **Phase 3 is in progress.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
@@ -32,9 +32,11 @@ Status (2026-10-31): **Phase 3 is in progress.**
   2026-10-29). 2 are merged, both web only and on the mock transport
   until 3.2: 3.1, the desktop entry (frostread#30, 2026-10-29), and 3.3,
   the reader's `srcdoc` frame from `items.render` (frostread#32,
-  2026-10-31). Left: 3.0, the nsl machine for the shell (no machine is
-  recorded yet); 3.2, the Rust shell, the bridge and the Tauri transport;
-  3.4 to 3.7, which wait for 3.2; and 3.8, Phase 3's record.
+  2026-10-31). 3.0 is done: Duncan chose frostnotes' `frostnotes`
+  machine, and its checks pass (2026-11-01; the evidence is under
+  [3.0](#phase-3s-steps)).
+  Left: 3.2, the Rust shell, the bridge and the Tauri transport; 3.4 to
+  3.7, which wait for 3.2; and 3.8, Phase 3's record.
 - **Phases 4 to 11** have not started. Nothing of the Rust shell, the
   Flatpak, the lodge connection or the release candidate is built, and
   the clean-install gate (Phase 10) has no run yet.
@@ -49,8 +51,8 @@ Status (2026-10-31): **Phase 3 is in progress.**
   catalogue that serves a candidate's digest (Phase 9); the promotion and
   the listing in `flatpak-index/apps.json` (Phase 11).
 - **Duncan** (nsl and test machines): an nsl machine with Node, Rust and
-  WebKitGTK for `web/src-tauri` (frostnotes' `frostnotes` machine, or a
-  new one from its `dev/nsl/provision.sh`); a disposable Snow VM with real
+  WebKitGTK for `web/src-tauri` (he chose frostnotes' `frostnotes`
+  machine, 2026-11-01); a disposable Snow VM with real
   portals for Phases 5, 6, 8 and 10, with snapshots, and a route to
   lodge's development build.
 
@@ -151,15 +153,35 @@ phase after 3.4, 3.5 and 3.7.
 - An nsl machine with Node and pnpm, Rust, the WebKitGTK 4.1 development
   files, `WebKitWebDriver` and `xvfb-run`: frostnotes' `frostnotes`
   machine, or a new one from its `dev/nsl/provision.sh`. Duncan chooses.
-  The `lodge` machine keeps serving `make web-check` and `make web-build`.
 - Its name goes in the Makefile in 3.2, as `APP_NSL_MACHINE`, beside
   `NSL_MACHINE`.
 - **Done when:** in that machine, `cargo --version`, `pnpm --version`,
-  `pkg-config --modversion webkit2gtk-4.1`, `WebKitWebDriver --version`
-  and `xvfb-run true` succeed, and `make web-check
-  NSL_MACHINE=<machine>` passes.
+  `pkg-config --modversion webkit2gtk-4.1`, `command -v WebKitWebDriver`
+  and `dpkg-query -W webkit2gtk-driver` (WebKitGTK 2.54's
+  `WebKitWebDriver` has no `--version`), and `xvfb-run true` succeed, and
+  `make web-check NSL_MACHINE=<machine>` passes.
 - **Owners:** Duncan; the planner records the name.
 - **Depends on:** nothing.
+
+**3.0's evidence (2026-11-01, done).** Duncan
+chose the existing `frostnotes` machine (Debian 13 trixie). On
+2026-11-01, at `main` 19f0925, in that machine: cargo 1.99.0, pnpm
+12.16.1, Node 24.21.0, `webkit2gtk-4.1` 2.54.0, `/usr/bin/WebKitWebDriver`
+from `webkit2gtk-driver` 2.54.0-1~deb13u3, `xvfb-run true` exits 0, and
+`make web-check NSL_MACHINE=frostnotes` passes (18 files, 103 tests).
+What the run found:
+
+- `nsl list` shows no `lodge` machine on 2026-11-01, so the Makefile's
+  default `NSL_MACHINE ?= lodge` reaches nothing. 3.2 makes `frostnotes`
+  the default of `NSL_MACHINE` and of `APP_NSL_MACHINE`, and AGENTS.md
+  names it.
+- The machine sets `CARGO_TARGET_DIR=/var/tmp/frostnotes/target` for
+  frostnotes. frostread's `app-*` targets set their own,
+  `/var/tmp/frostread/target`, so the two apps never share a build
+  folder.
+- `nsl` needs the user's `XDG_RUNTIME_DIR` and
+  `DBUS_SESSION_BUS_ADDRESS`. In a shell without them, `nsl list` exits 1
+  and prints nothing.
 
 **3.1 — The desktop entry, on the mock transport (medium; web only).**
 - `web/desktop.html` and `web/src/desktop.tsx`, a second Vite entry that
@@ -202,11 +224,13 @@ phase after 3.4, 3.5 and 3.7.
 - `web/src/rpc/transport/tauri.ts`: lodge-client's `Transport` over the
   bridge's commands and events. `desktop.tsx` uses it when Tauri is
   there, and the mock when it is not.
-- The Makefile: `APP_NSL_MACHINE`; `app-build` (the release binary into
+- The Makefile: `APP_NSL_MACHINE` and `NSL_MACHINE`, both `frostnotes`
+  by default; `app-build` (the release binary into
   `build/frostread-app`), `app-test` (`cargo test`), and `app-check`
   (Biome, tsc, Vitest, `cargo fmt --check`, `cargo clippy` and `cargo
-  test`), in the style of frostnotes'. `make ci` gains `app-check` and
-  `app-build`.
+  test`), in the style of frostnotes'. The `app-*` targets set
+  `CARGO_TARGET_DIR=/var/tmp/frostread/target`, not the machine's
+  frostnotes folder. `make ci` gains `app-check` and `app-build`.
 - **Done when:** in the nsl machine, `make app-check` and `make
   app-build` pass; Rust tests show the shared path table, a line that
   crosses the bridge both ways unchanged (one of them close to the kit's
