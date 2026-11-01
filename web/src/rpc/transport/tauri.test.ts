@@ -25,6 +25,8 @@ class FakeBridge implements BridgeIPC {
   refuses = false;
   /** Whether a greeting is answered at once, as readd does. */
   greets = true;
+  /** Whether readd closes the connection in the same tick as the greeting's answer. */
+  hangsUpOnGreeting = false;
   private listener: ((message: BridgeMessage) => void) | undefined;
 
   invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -39,6 +41,7 @@ class FakeBridge implements BridgeIPC {
     const last = this.sent.length - 1;
     if (this.greets && this.request(last).method === "rpc.hello") {
       this.answer(last, { protocol: 1, client: "read-test" });
+      if (this.hangsUpOnGreeting) this.receive({ kind: "closed", error: "readd closed the connection" });
     }
     return Promise.resolve(undefined as T);
   }
@@ -145,6 +148,26 @@ describe("connectTauri", () => {
     bridge.answer(bridge.indexOf("counts"), { unread: 0 });
     await expect(status).resolves.toEqual({});
     await expect(counts).resolves.toEqual({ unread: 0 });
+  });
+
+  it("refuses a session that closed during its greeting, and connects again", async () => {
+    const bridge = new FakeBridge();
+    bridge.hangsUpOnGreeting = true;
+    const transport = connectTauri(bridge);
+
+    const failure = await transport.call("status", {}).catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(RPCError);
+    expect((failure as RPCError).code).toBe(CodeNotConnected);
+    expect(bridge.connects).toBe(1);
+    expect(bridge.methods()).toEqual(["rpc.hello"]);
+
+    // The next call connects again, instead of using the closed session.
+    bridge.hangsUpOnGreeting = false;
+    const next = transport.call<{ build: string }>("status", {});
+    await vi.waitFor(() => expect(bridge.methods()).toEqual(["rpc.hello", "rpc.hello", "status"]));
+    expect(bridge.connects).toBe(2);
+    bridge.answer(bridge.indexOf("status"), { build: "abc" });
+    await expect(next).resolves.toEqual({ build: "abc" });
   });
 
   it("fails the pending call and tells onClose when the connection ends", async () => {

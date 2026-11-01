@@ -4,7 +4,7 @@
 //! by a Rust test, so the two derivations cannot drift.
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 /// The application ID, as internal/config.AppID.
 const APP_ID: &str = "org.frostyard.Frostread";
@@ -36,7 +36,29 @@ fn socket_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, Str
     }
     runtime.push("frostread");
     runtime.push("readd.sock");
-    Ok(runtime)
+    // Go's filepath.Join cleans the path it makes; READ_SOCKET stays as it
+    // was given, as in DesktopSocket.
+    Ok(clean(&runtime))
+}
+
+/// clean is filepath.Clean for an absolute path, as filepath.Join applies
+/// it: a `.` element and repeated or trailing separators go, and `..` goes
+/// up one element but never above the root.
+fn clean(path: &Path) -> PathBuf {
+    let mut clean = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::RootDir => clean.push("/"),
+            Component::CurDir => {}
+            // pop leaves the root alone, so ".." never goes above it.
+            Component::ParentDir => {
+                clean.pop();
+            }
+            Component::Normal(name) => clean.push(name),
+            Component::Prefix(_) => {}
+        }
+    }
+    clean
 }
 
 #[cfg(test)]

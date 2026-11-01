@@ -20,7 +20,17 @@ fn main() {
         // The opener opens a link outside the app (ADR-0008, "Links open in
         // the browser"); the dialog is step 3.4's. Neither grants the page a
         // command: capabilities/default.json grants the bridge's two alone.
-        .plugin(tauri_plugin_opener::init())
+        //
+        // open_js_links_on_click(false): by default the plugin injects a
+        // script that turns a click on a _blank link into a call of
+        // plugin:opener|open_url. The page may not call that command, and a
+        // click already arrives as a new-window request, which
+        // open_new_window answers (ADR-0008, "Links open in the browser").
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .manage(bridge::Bridge::default())
         .invoke_handler(tauri::generate_handler![
@@ -122,10 +132,22 @@ fn open_new_window(app: &tauri::AppHandle, url: &tauri::Url) -> NewWindowRespons
 }
 
 /// open_outside hands one web or mail link to the system's default handler:
-/// in the Flatpak, xdg-open asks the OpenURI portal.
+/// in the Flatpak, xdg-open asks the OpenURI portal. A failure logs the
+/// scheme and the host, never the URL or an error that may hold it
+/// (AGENTS.md: never log an article's text or a token; a link's own parts
+/// stay out of the log for the same reason).
 fn open_outside(app: &tauri::AppHandle, url: &tauri::Url) {
-    if let Err(e) = app.opener().open_url(url.as_str(), None::<&str>) {
-        eprintln!("open {url}: {e}");
+    if app.opener().open_url(url.as_str(), None::<&str>).is_err() {
+        match url.host_str().filter(|host| !host.is_empty()) {
+            Some(host) => {
+                eprintln!(
+                    "open a {} link to {host}: the system's opener failed",
+                    url.scheme()
+                );
+            }
+            // A mailto link has no host, and its address is not logged.
+            None => eprintln!("open a {} link: the system's opener failed", url.scheme()),
+        }
     }
 }
 

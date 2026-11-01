@@ -51,10 +51,15 @@ export function connectTauri(ipc?: BridgeIPC): Transport {
   /** open makes one session, connects readd to it, and says hello. */
   const open = async (): Promise<JsonRpcSession> => {
     const next = new JsonRpcSession((line) => bridge.invoke("readd_send", { line }));
+    // A connection may end during its own greeting, so each attempt keeps
+    // its own end: a session that closed is never the caller's, or every
+    // later call would fail on it.
+    let ended: string | undefined;
     next.onEvent((event) => {
       for (const handler of eventHandlers) handler(event);
     });
     next.onClose((reason) => {
+      ended = reason;
       // The session is the connection: the next call connects again.
       if (session === next) session = undefined;
       for (const handler of closeHandlers) handler(reason);
@@ -68,6 +73,9 @@ export function connectTauri(ipc?: BridgeIPC): Transport {
     // rpc.hello with notReady until it has one (docs/specs/api.md). The
     // session is the caller's only after it, so no call goes before it.
     await next.call("rpc.hello", { protocol: PROTOCOL, client: CLIENT });
+    if (ended !== undefined) {
+      throw new RPCError(CodeNotConnected, `the connection closed: ${ended}`);
+    }
     session = next;
     return next;
   };

@@ -52,5 +52,40 @@
     "name": "an empty READ_SOCKET falls through to the runtime directory",
     "env": { "READ_SOCKET": "", "XDG_RUNTIME_DIR": "/run/user/1000" },
     "socket": "/run/user/1000/frostread/readd.sock"
+  },
+  {
+    "name": "a runtime directory with a step back",
+    "env": { "XDG_RUNTIME_DIR": "/tmp/missing/../runtime" },
+    "socket": "/tmp/runtime/frostread/readd.sock"
+  },
+  {
+    "name": "a runtime directory with repeated and trailing separators",
+    "env": { "XDG_RUNTIME_DIR": "/run//user/1000/" },
+    "socket": "/run/user/1000/frostread/readd.sock"
+  },
+  {
+    "name": "a runtime directory with a dot element",
+    "env": { "XDG_RUNTIME_DIR": "/run/./user/1000" },
+    "socket": "/run/user/1000/frostread/readd.sock"
+  },
+  {
+    "name": "the root as the runtime directory",
+    "env": { "XDG_RUNTIME_DIR": "/" },
+    "socket": "/frostread/readd.sock"
+  },
+  {
+    "name": "a step back above the root",
+    "env": { "XDG_RUNTIME_DIR": "/.." },
+    "socket": "/frostread/readd.sock"
+  },
+  {
+    "name": "a step back in the Flatpak's runtime directory",
+    "env": { "XDG_RUNTIME_DIR": "/run/user/1000/..", "FLATPAK_ID": "org.frostyard.Frostread" },
+    "socket": "/run/user/app/org.frostyard.Frostread/frostread/readd.sock"
+  },
+  {
+    "name": "READ_SOCKET keeps its own steps",
+    "env": { "READ_SOCKET": "/tmp/a/../b.sock", "XDG_RUNTIME_DIR": "/run/user/1000" },
+    "socket": "/tmp/a/../b.sock"
   }
 ]
