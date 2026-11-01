@@ -79,7 +79,9 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   const onPop = () => void store.getState().setRoute(desktopRoute(win.location.hash));
   win.addEventListener("popstate", onPop);
 
-  // The mock, until the Tauri transport (step 3.2). The import is lazy.
+  // The mock when the caller names no transport: a test, or a browser on
+  // Vite's development server. desktop.tsx passes the shell's bridge when
+  // it runs in Tauri. The import is lazy either way.
   const transport = options.transport ?? (await import("../rpc/mock.js")).createMockTransport();
   const unwatch = watchChanges(transport, () => void store.getState().changed());
   await store.getState().connect(readAPI(transport));

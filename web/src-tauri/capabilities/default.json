@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The main window, and only the bridge's two commands (readd_connect and readd_send): the page reaches readd through them. No core:default, no dialog and no opener permission, so the page opens nothing by itself.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "allow-readd-connect",
+    "allow-readd-send"
+  ]
+}

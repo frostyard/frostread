@@ -100,7 +100,7 @@ func ReadMode(path string) (Mode, error) {
 // FLATPAK_ID is AppID. Flatpak shares $XDG_RUNTIME_DIR/app/<id> between
 // every sandbox of the app, and the rest of $XDG_RUNTIME_DIR is private to
 // each one, so the window and readd meet only there
-// (ADR-0008, readd's desktop mode). app/src-tauri/src/paths.rs must stay in
+// (ADR-0008, readd's desktop mode). web/src-tauri/src/paths.rs must stay in
 // step with this function.
 func DesktopSocket(getenv func(string) string) (string, error) {
 	if s := getenv("READ_SOCKET"); s != "" {

@@ -116,7 +116,7 @@ counterpart of something those repositories do, read their file.
   `make check` fails when a golden is stale. After a change to `api/` or
   the engine's types, run `make contract-update`, then `make web-check`.
 - Never run pnpm, node or cargo on the host. `web/` builds in the nsl
-  machine `lodge` (`make web-build`), as lodge's apps do.
+  machine `frostnotes` (`make web-build`), as lodge's apps do.
 - Fix a lint finding rather than loosening `.golangci.yml`.
 - Tests run unfiltered (`go test ./...`). No test reaches the network: it
   uses `httptest`, and never sleeps to synchronize.

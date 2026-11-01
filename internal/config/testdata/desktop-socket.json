@@ -1,0 +1,56 @@
+[
+  {
+    "name": "READ_SOCKET wins over the runtime directory",
+    "env": { "READ_SOCKET": "/run/frostread/readd.sock", "XDG_RUNTIME_DIR": "/run/user/1000" },
+    "socket": "/run/frostread/readd.sock"
+  },
+  {
+    "name": "a relative READ_SOCKET is used as it is",
+    "env": { "READ_SOCKET": "readd.sock", "XDG_RUNTIME_DIR": "/run/user/1000" },
+    "socket": "readd.sock"
+  },
+  {
+    "name": "READ_SOCKET wins inside the Flatpak too",
+    "env": {
+      "READ_SOCKET": "/tmp/readd.sock",
+      "XDG_RUNTIME_DIR": "/run/user/1000",
+      "FLATPAK_ID": "org.frostyard.Frostread"
+    },
+    "socket": "/tmp/readd.sock"
+  },
+  {
+    "name": "the Flatpak's socket is in the directory its sandboxes share",
+    "env": { "XDG_RUNTIME_DIR": "/run/user/1000", "FLATPAK_ID": "org.frostyard.Frostread" },
+    "socket": "/run/user/1000/app/org.frostyard.Frostread/frostread/readd.sock"
+  },
+  {
+    "name": "another Flatpak id keeps the plain runtime directory",
+    "env": { "XDG_RUNTIME_DIR": "/run/user/1000", "FLATPAK_ID": "org.example.Other" },
+    "socket": "/run/user/1000/frostread/readd.sock"
+  },
+  {
+    "name": "off the Flatpak it is under the runtime directory",
+    "env": { "XDG_RUNTIME_DIR": "/run/user/1000" },
+    "socket": "/run/user/1000/frostread/readd.sock"
+  },
+  {
+    "name": "no runtime directory",
+    "env": {},
+    "error": true
+  },
+  {
+    "name": "a relative runtime directory",
+    "env": { "XDG_RUNTIME_DIR": "run" },
+    "error": true
+  },
+  {
+    "name": "empty values are not set",
+    "env": { "READ_SOCKET": "", "XDG_RUNTIME_DIR": "", "FLATPAK_ID": "" },
+    "error": true
+  },
+  {
+    "name": "an empty READ_SOCKET falls through to the runtime directory",
+    "env": { "READ_SOCKET": "", "XDG_RUNTIME_DIR": "/run/user/1000" },
+    "socket": "/run/user/1000/frostread/readd.sock"
+  }
+]
