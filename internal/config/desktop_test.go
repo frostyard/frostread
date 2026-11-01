@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -109,6 +110,41 @@ func TestDesktopSocket(t *testing.T) {
 		}
 		if err != nil && !strings.Contains(err.Error(), "READ_SOCKET") {
 			t.Errorf("%s: the error does not say to set READ_SOCKET: %v", c.name, err)
+		}
+	}
+}
+
+// The socket's table is shared with the shell: web/src-tauri/src/paths.rs
+// reads this file with include_str!, and its own test runs it, so the two
+// derivations of one path cannot drift.
+func TestDesktopSocketTable(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "desktop-socket.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Name   string            `json:"name"`
+		Env    map[string]string `json:"env"`
+		Socket string            `json:"socket"`
+		Error  bool              `json:"error"`
+	}
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatalf("testdata/desktop-socket.json: %v", err)
+	}
+	if len(cases) < 8 {
+		t.Fatalf("testdata/desktop-socket.json holds %d cases; want at least 8", len(cases))
+	}
+	for _, c := range cases {
+		got, err := DesktopSocket(env(c.Env))
+		switch {
+		case c.Error && err == nil:
+			t.Errorf("%s: DesktopSocket = %q; want an error", c.Name, got)
+		case c.Error:
+			if !strings.Contains(err.Error(), "READ_SOCKET") {
+				t.Errorf("%s: the error does not say to set READ_SOCKET: %v", c.Name, err)
+			}
+		case err != nil || got != c.Socket:
+			t.Errorf("%s: DesktopSocket = %q, %v; want %q", c.Name, got, err, c.Socket)
 		}
 	}
 }

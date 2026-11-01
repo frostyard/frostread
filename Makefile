@@ -1,4 +1,4 @@
-.PHONY: help build fmt vet lint lint-version-check test race cross vulncheck tidy-check verify check ci contract-update web-build web-check web-fmt lodge-package dev-seed dev-lodge svu-version-check bump deb deb-check clean
+.PHONY: help build fmt vet lint lint-version-check test race cross vulncheck tidy-check verify check ci contract-update web-build web-check web-fmt app-check app-test app-build lodge-package dev-seed dev-lodge svu-version-check bump deb deb-check clean
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -69,12 +69,19 @@ GOVULNCHECK_VERSION := v1.9.0
 vulncheck: ## Report reachable vulnerabilities (govulncheck; needs the network)
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
-ci: verify race cross web-check ## verify, the race detector, cross-builds and the web bundle (nsl)
+ci: verify race cross web-check app-check app-build ## verify, the race detector, cross-builds, the web bundle and the app (nsl)
 
-# The web bundle checks and builds in an nsl machine with Node (lodge's
-# dev/nsl/provision.sh), never on the host, for lodge's /app/read/.
-NSL_MACHINE ?= lodge
+# The web bundle checks and builds in an nsl machine with Node, never on
+# the host, for lodge's /app/read/: frostnotes' machine (its
+# dev/nsl/provision.sh), as no lodge machine exists (plan 0002, step 3.0).
+NSL_MACHINE ?= frostnotes
+# The desktop app's shell needs Rust and WebKitGTK's development files too:
+# frostnotes' nsl machine has both (plan 0002, step 3.0).
+APP_NSL_MACHINE ?= frostnotes
 IN_NSL ?= nsl run -m $(NSL_MACHINE) sh -lc
+IN_APP_NSL ?= nsl run -m $(APP_NSL_MACHINE) sh -lc
+# The shell's build output stays in the machine, never in the checkout.
+APP_TARGET_DIR ?= /var/tmp/frostread/target
 FROZEN = $(if $(wildcard web/pnpm-lock.yaml),--frozen-lockfile,)
 
 web-check: ## Lint (Biome), typecheck and test web/ (nsl)
@@ -85,6 +92,20 @@ web-fmt: ## Format web/ and organize its imports with Biome (nsl)
 
 web-build: ## Build the web bundle for lodge's /app/read/ into build/web (nsl)
 	$(IN_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm run build'
+
+# The desktop app (plan 0002, Phase 3): the shell in web/src-tauri over the
+# same web project's desktop entry. Its Rust build needs build/desktop, so
+# the bundle comes first. The release binary lands in build/frostread-app.
+app-check: ## Lint (Biome), typecheck and test web/, then fmt, clippy and test the shell (nsl)
+	$(IN_APP_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm run check && pnpm run build:desktop'
+	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test'
+
+app-test: ## Build the desktop bundle and run the shell's Rust tests (nsl)
+	$(IN_APP_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm run build:desktop'
+	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web/src-tauri && cargo test'
+
+app-build: ## Build the release app binary into build/frostread-app (nsl)
+	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web && pnpm install $(FROZEN) --silent && pnpm tauri build && mkdir -p ../build && cp "$$CARGO_TARGET_DIR/release/frostread" ../build/frostread-app'
 
 # lodge-package stages the app under LODGE_DESTDIR in lodge's install
 # layout, with packaging/lodge/stage.sh. It replaces only this app's own
