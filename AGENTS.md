@@ -41,8 +41,10 @@ Phase 2, readd's desktop mode, is merged (frostread#25, 2026-10-28), and
 Phase 3, the desktop shell, is planned in steps (2026-10-29): step 3.1,
 the desktop entry, is merged (frostread#30, 2026-10-29), and step 3.3,
 the reader's `srcdoc` frame from `items.render`, is merged (frostread#32,
-2026-10-31). The Rust shell (step 3.2), the Flatpak and the clean-install
-gate are not built yet.
+2026-10-31), and step 3.2, the Rust shell, is merged (frostread#35,
+2026-11-01). Step 3.6, the end-to-end harness (`make app-e2e`), is in
+review (2026-11-02). The Flatpak and the clean-install gate are not built
+yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -117,6 +119,12 @@ counterpart of something those repositories do, read their file.
   the engine's types, run `make contract-update`, then `make web-check`.
 - Never run pnpm, node or cargo on the host. `web/` builds in the nsl
   machine `frostnotes` (`make web-build`), as lodge's apps do.
+- `make app-e2e` drives the built desktop app in WebKitGTK, headless in
+  the nsl machine: `web/e2e/harness.ts` starts readdev and `readd
+  -desktop` (the dev tags) on a temporary XDG tree, imports readdev's
+  OPML with `readctl`, and puts a stand-in `xdg-open` on the app's PATH
+  (plan 0002, step 3.6). It needs a display, so `make ci` leaves it out;
+  run it after a change to the shell or the desktop entry.
 - Fix a lint finding rather than loosening `.golangci.yml`.
 - Tests run unfiltered (`go test ./...`). No test reaches the network: it
   uses `httptest`, and never sleeps to synchronize.

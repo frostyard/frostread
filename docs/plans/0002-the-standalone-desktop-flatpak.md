@@ -21,7 +21,7 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-01): **Phase 3 is in progress.**
+Status (2026-11-02): **Phase 3 is in progress.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
@@ -34,9 +34,11 @@ Status (2026-11-01): **Phase 3 is in progress.**
   the reader's `srcdoc` frame from `items.render` (frostread#32,
   2026-10-31). 3.0 is done: Duncan chose frostnotes' `frostnotes`
   machine, and its checks pass (2026-11-01; the evidence is under
-  [3.0](#phase-3s-steps)).
-  Left: 3.2, the Rust shell, the bridge and the Tauri transport; 3.4 to
-  3.7, which wait for 3.2; and 3.8, Phase 3's record.
+  [3.0](#phase-3s-steps)). 3.2, the Rust shell, the bridge and the
+  Tauri transport, is merged (frostread#35, 2026-11-01). 3.6, the
+  end-to-end harness, is in review (2026-11-02; the evidence is under
+  [3.6](#phase-3s-steps)).
+  Left: 3.4, 3.5 and 3.7, and 3.8, Phase 3's record.
 - **Phases 4 to 11** have not started. Nothing of the Rust shell, the
   Flatpak, the lodge connection or the release candidate is built, and
   the clean-install gate (Phase 10) has no run yet.
@@ -307,6 +309,27 @@ What the run found:
   row and leaves no readd, readdev or app process behind.
 - **Owners:** the planner; Duncan's machine.
 - **Depends on:** 3.2 and 3.3.
+
+**3.6's evidence (2026-11-02, in review).** In the nsl machine
+`frostnotes`, `make app-e2e` passed 2 times in a row: 3 tests each, and
+its last line, a `pgrep` for readd, readdev, the app and
+`WebKitWebDriver`, found none. What the work found:
+
+- `readctl import` subscribes the feeds, and their items come with the
+  next poll. The harness runs `readctl poll`, then waits for readd's log
+  to show the 3 summary-only articles extracted: the reader renders an
+  item once, so an article read before its extraction shows no image.
+- readdev's articles had no link. Each now ends with one link to
+  `example.org/journal/N`, which the link test clicks
+  ([api.md](../specs/api.md#development-only)).
+- The frame grants neither script nor same origin, but WebKitWebDriver's
+  element calls work inside it: the test finds the `img` and reads its
+  `src` attribute, and clicks the link, with no page script.
+- Opening an item marks it read, and the unread list drops its row. The
+  link test uses the article the reader already shows.
+- The app runs with `READ_SOCKET` and its own `XDG_DATA_HOME`,
+  `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`. `XDG_RUNTIME_DIR` stays the
+  machine's, for WebKit and D-Bus.
 
 **3.7 — The hostile corpus (medium).**
 - A corpus under `web/e2e/hostile/` that points at a loopback canary:

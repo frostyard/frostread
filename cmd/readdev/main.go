@@ -205,7 +205,9 @@ func index(path, prefix string) int {
 }
 
 // body is an article's HTML: its title as the page's heading, its
-// paragraphs, and its illustration after the second.
+// paragraphs, its illustration after the second, and a last paragraph whose
+// link leaves the site, so the reader's frame has a link to click (plan
+// 0002, step 3.6).
 func body(a article, n int) string {
 	var b strings.Builder
 	b.WriteString("<h1>" + html.EscapeString(a.title) + "</h1>")
@@ -215,6 +217,7 @@ func body(a article, n int) string {
 			fmt.Fprintf(&b, `<figure><img src="/img/%d.png" alt="A made-up illustration"><figcaption>A made-up illustration.</figcaption></figure>`, n+1)
 		}
 	}
+	fmt.Fprintf(&b, `<p>More in <a href="https://example.org/journal/%d">the journal's archive</a>.</p>`, n+1)
 	return b.String()
 }
 

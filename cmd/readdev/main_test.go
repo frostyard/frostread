@@ -44,6 +44,11 @@ func TestDevelopmentFeeds(t *testing.T) {
 	if !strings.Contains(string(body), "<article>") || !strings.Contains(string(body), "/img/1.png") {
 		t.Fatalf("an article page:\n%s", body)
 	}
+	// Each article ends with a link off the site, which the app's
+	// end-to-end test clicks (plan 0002, step 3.6).
+	if !strings.Contains(string(body), `href="https://example.org/journal/1"`) {
+		t.Fatalf("article 1 does not link to the archive:\n%s", body)
+	}
 	// The image is a real, visible picture: a 480 by 270 PNG.
 	pic, err := http.Get(srv.URL + "/img/1.png")
 	if err != nil {
