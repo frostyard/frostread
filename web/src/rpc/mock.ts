@@ -48,8 +48,15 @@ function sourceOut(source: MockSource): Source {
   };
 }
 
+/** MockOptions tune the mock's data. bulk adds that many more items to the
+ * first source, so a test can hold a source with more than one page (50 items).
+ */
+export interface MockOptions {
+  bulk?: number;
+}
+
 /** createMockTransport returns a Transport over the mock's data. */
-export function createMockTransport(): Transport {
+export function createMockTransport(options: MockOptions = {}): Transport {
   const sources: MockSource[] = SOURCE_TITLES.map((title, i) => ({
     id: i + 1,
     url: `https://feed${i + 1}.example/feed.xml`,
@@ -81,6 +88,18 @@ export function createMockTransport(): Transport {
       read: false,
       url: `https://read.example/${id}`,
     });
+  }
+
+  // The bulk items come after the saved links' ids, and they are all unread
+  // and not archived, so a source and the Unread view hold more than one page.
+  // items.list sorts them by date like every other row, so the cursor paging
+  // below finds each one in its turn.
+  const bulk = options.bulk ?? 0;
+  const first = sources[0];
+  if (first !== undefined) {
+    for (let id = 33; id < 33 + bulk; id++) {
+      items.push({ ...mockItem(id, first, true), read: false, archived: false });
+    }
   }
 
   const events = new Set<(event: EventEnvelope) => void>();

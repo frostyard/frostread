@@ -34,6 +34,14 @@ const SETTLE_MS = 2000;
 /** FRAME_TIMEOUT_MS bounds the wait for the reader's frame after an item opens. */
 const FRAME_TIMEOUT_MS = 20_000;
 
+/**
+ * FRAME_ATTEMPTS is how many times checkFrame enters the frame again after
+ * the driver lost its handles: the shell's held history write can navigate
+ * the main frame while the test is inside the frame, and WebKit's session
+ * then forgets every frame handle.
+ */
+const FRAME_ATTEMPTS = 3;
+
 /** TITLE_TIMEOUT_MS bounds the wait for the reader to show the item that was clicked. */
 const TITLE_TIMEOUT_MS = 20_000;
 
@@ -66,6 +74,36 @@ function driverCode(err: unknown): string | undefined {
   return err.code.toLowerCase().replaceAll("_", " ");
 }
 
+/**
+ * framesLost reports whether err says the driver lost its frame handles. A
+ * pushState or replaceState is a same-document navigation of the main frame,
+ * and WebKit's session then forgets every frame handle: each call in the
+ * frame answers "no such window", and parentFrame can answer it too. The app
+ * is not broken, so the test enters the frame again. err and its cause chain
+ * are both walked: a waitFor timeout keeps its last failure as the cause.
+ */
+function framesLost(err: unknown): boolean {
+  let e: unknown = err;
+  // The depth bound ends a cause chain that points back into itself.
+  for (let depth = 0; e !== undefined && e !== null && depth < 10; depth++) {
+    const code = driverCode(e);
+    if (code === "no such window" || code === "no such frame") return true;
+    e = typeof e === "object" ? (e as { cause?: unknown }).cause : undefined;
+  }
+  return false;
+}
+
+/**
+ * rowsGone reports whether err says the row's element has left the page. The
+ * list reloads after each read and after each change, so a row the test has
+ * looked at can be gone before it reads the row's text or clicks it: the test
+ * looks again rather than failing on the row that replaced it.
+ */
+function rowsGone(err: unknown): boolean {
+  const code = driverCode(err);
+  return code === "stale element reference" || code === "no such element";
+}
+
 /** OPEN_ALL_DEADLINE_MS bounds the whole of the second test's loop, well below
  * the 300 s testTimeout of vitest.e2e.config.ts, so a corpus that stops
  * opening fails with the titles that are left.
@@ -74,6 +112,15 @@ const OPEN_ALL_DEADLINE_MS = 240_000;
 
 /** UNREAD_VIEW is the title of the Unread view, as the sidebar shows it. */
 const UNREAD_VIEW = "Unread";
+
+/**
+ * UNREAD_LIST is the Unread view's list name: ListPane's listName takes it
+ * from VIEW_TITLES.unread, and the listbox carries it as its aria-label.
+ */
+const UNREAD_LIST = "Unread";
+
+/** LIST_TIMEOUT_MS bounds the wait for a named list, which a new route loads. */
+const LIST_TIMEOUT_MS = 30_000;
 
 /** JOURNAL_SOURCE is the title of readdev's RSS feed, which holds the tomatoes article. */
 const JOURNAL_SOURCE = "Dev Journal (RSS)";
@@ -94,6 +141,21 @@ function sidebarButton(s: Session, title: string): Promise<Element> {
 
 /** settle waits ms: a page's own attempts start while it loads, and some finish after it. */
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * listNamed waits until the listbox is named for the route the window now
+ * shows: setRoute changes listRoute, and with it listName and the listbox's
+ * aria-label, at once. So this says the route has changed, and it does not
+ * say the rows have arrived: the list before it can still show until its own
+ * load answers.
+ */
+async function listNamed(s: Session, name: string, timeoutMs: number): Promise<void> {
+  await s.waitFor(
+    `the list named ${name}`,
+    () => s.find(`[role="listbox"][aria-label="${name}"]`).catch(() => undefined),
+    timeoutMs,
+  );
+}
 
 let app: App | undefined;
 let trap: Canary | undefined;
@@ -221,38 +283,62 @@ async function expectNoMarker(s: Session, depth: number): Promise<void> {
  * once and remembered. A click the sandbox refuses, or an element the page
  * does not lay out, is not a failure of the page: the click is what a person
  * would do.
+ *
+ * The shell writes a held history change at any time, which navigates the
+ * main frame and makes WebKit forget every frame handle. So a lost handle is
+ * not the page's failure: the frame is entered again, up to FRAME_ATTEMPTS
+ * times, and the checks run again from the top page. Every other error fails
+ * the test at once.
  */
 async function checkFrame(s: Session, clicked: Set<string>, want: Want): Promise<void> {
-  const frame = await s.find('section[aria-label="Reader"] iframe');
-  expect(await s.attribute(frame, "sandbox")).toBe("allow-popups");
-  // WebKitWebDriver answers "" for an attribute the element lacks, so the
-  // parent page, which may run a script, says whether the frame has a src.
-  expect(
-    await s.execute<boolean>(
-      `return document.querySelector('section[aria-label="Reader"] iframe').hasAttribute("src")`,
-    ),
-  ).toBe(false);
-  await s.frame(frame);
-  try {
-    await expectPage(s, want);
-    await expectNoMarker(s, MARKER_DEPTH);
-    for (const link of await s.findAll("a")) {
-      const href = await s.attribute(link, "href");
-      try {
-        await s.click(link);
-      } catch (err) {
-        const code = driverCode(err);
-        if (code !== undefined && CLICK_REFUSALS.has(code)) continue;
-        throw err;
+  for (let attempt = 0; attempt <= FRAME_ATTEMPTS; attempt++) {
+    // The frame is found in the top page, so a lost handle repairs itself
+    // here: the shell's own frame is always there while the app runs.
+    const frame = await s.find('section[aria-label="Reader"] iframe');
+    expect(await s.attribute(frame, "sandbox")).toBe("allow-popups");
+    // WebKitWebDriver answers "" for an attribute the element lacks, so the
+    // parent page, which may run a script, says whether the frame has a src.
+    expect(
+      await s.execute<boolean>(
+        `return document.querySelector('section[aria-label="Reader"] iframe').hasAttribute("src")`,
+      ),
+    ).toBe(false);
+    await s.frame(frame);
+    let bodyThrew = false;
+    try {
+      await expectPage(s, want);
+      await expectNoMarker(s, MARKER_DEPTH);
+      // clicked keeps what an earlier attempt clicked: that click happened,
+      // and the shell may have handed its link to the opener.
+      for (const link of await s.findAll("a")) {
+        const href = await s.attribute(link, "href");
+        try {
+          await s.click(link);
+        } catch (err) {
+          const code = driverCode(err);
+          if (code !== undefined && CLICK_REFUSALS.has(code)) continue;
+          throw err;
+        }
+        // Only a click that happened asks the shell to open a link.
+        if (href !== null) clicked.add(href);
       }
-      // Only a click that happened asks the shell to open a link.
-      if (href !== null) clicked.add(href);
+      // Again after the clicks: a handler that a pointer fires (onmouseover)
+      // marks the page as surely as one that a load fires.
+      await expectNoMarker(s, MARKER_DEPTH);
+    } catch (err) {
+      bodyThrew = true;
+      // Only a lost handle is worth another attempt: every other error is
+      // the page's, or the app's, and fails the test as it is.
+      if (!framesLost(err) || attempt >= FRAME_ATTEMPTS) throw err;
+    } finally {
+      // The way out is the top page, not the parent frame: after a lost
+      // handle parentFrame answers "no such window" as well. A failure here
+      // must not hide the failure the frame part already has.
+      await s.topFrame().catch((err: unknown) => {
+        if (!bodyThrew) throw err;
+      });
     }
-    // Again after the clicks: a handler that a pointer fires (onmouseover)
-    // marks the page as surely as one that a load fires.
-    await expectNoMarker(s, MARKER_DEPTH);
-  } finally {
-    await s.parentFrame();
+    if (!bodyThrew) break;
   }
   // No click may make a window: the shell denies every one, and hands an
   // http, https or mailto link to the system's opener instead.
@@ -317,10 +403,15 @@ describe("the hostile corpus", () => {
     const titles = files.map((file) => hostileTitle(file.name));
     const openedBefore = app.opened().length;
     // The Unread view drops a row once it is read, so the corpus's next
-    // unread items come up into the list's first page, and into view. A
-    // source's view keeps its read rows, and its list reloads its first page
-    // alone after each change, so its later pages are out of reach.
+    // unread items come up into the list's first page, and into view, with no
+    // scroll. A source's view keeps its read rows, and its long list has a
+    // test of its own: web/e2e/lists.e2e.ts.
     await s.click(await sidebarButton(s, UNREAD_VIEW));
+    // The route is the Unread view now. Its rows can still be on their way:
+    // the list before it can show until its own load answers, so the loop
+    // below skips every row that is no corpus item, and rowsGone covers a row
+    // that leaves between the look and the act.
+    await listNamed(s, UNREAD_LIST, LIST_TIMEOUT_MS);
 
     const done = new Set<string>();
     const clicked = new Set<string>();
@@ -334,7 +425,15 @@ describe("the hostile corpus", () => {
       let row: Element | undefined;
       let title: string | undefined;
       for (const candidate of await s.findAll('[role="option"]')) {
-        const text = await s.text(candidate);
+        let text = "";
+        try {
+          text = await s.text(candidate);
+        } catch (err) {
+          // The list reloads after each read and each change, so this row can
+          // leave between the look and the read: the next one is the row.
+          if (rowsGone(err)) continue;
+          throw err;
+        }
         if (!text.includes(HOSTILE_TITLE)) continue;
         const match = titles.find((known) => !done.has(known) && text.includes(known));
         if (match === undefined) continue;
@@ -348,7 +447,14 @@ describe("the hostile corpus", () => {
         continue;
       }
       const wanted = title;
-      await s.click(row);
+      try {
+        await s.click(row);
+      } catch (err) {
+        // The same reload, now between the look and the click: this item is
+        // not done, and the loop looks again for a row it can open.
+        if (!rowsGone(err)) throw err;
+        continue;
+      }
       let heading = "";
       await s
         .waitFor(
@@ -382,9 +488,9 @@ describe("the hostile corpus", () => {
         .catch(() => undefined);
       if (frame === undefined) unrendered.push(wanted);
       else {
-        // The rendered page gets the same quiet time as a raw one. It also
-        // paces the opens: each one is a history entry and a title, and
-        // WebKit refuses a page more than 100 history calls in 10 s.
+        // The rendered page gets the same quiet time as a raw one. This wait
+        // is the page's quiet time only, not a pace for the history: the shell
+        // keeps a history budget, and web/e2e/lists.e2e.ts tests fast opens.
         await settle(QUIET_MS);
         await checkFrame(s, clicked, { text: HOSTILE_TEXT, title: wanted });
       }

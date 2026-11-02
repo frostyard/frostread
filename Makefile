@@ -112,10 +112,12 @@ app-build: ## Build the release app binary into build/frostread-app (nsl)
 # 3.6). The Go binaries are static, so the machine runs the host's build;
 # readd needs the devfetch tag and readdev the devfeeds one. The leftover
 # check runs in the same shell as Vitest, so a failed test run still reports
-# a process the run left, and Vitest's own failure stays the target's.
+# a process the run left, and Vitest's own failure stays the target's. It
+# skips a zombie (state Z), because that process has exited and only waits
+# for PID 1 to reap it.
 app-e2e: app-build ## Drive the built app in WebKitGTK against readd and readdev, headless (nsl); F= picks tests
 	CGO_ENABLED=0 go build -tags 'devfetch devfeeds' $(GOFLAGS) -o build/e2e/ ./cmd/readd ./cmd/readctl ./cmd/readdev
-	$(IN_APP_NSL) 'cd web && pnpm install $(FROZEN) --silent && env -u WAYLAND_DISPLAY GDK_BACKEND=x11 xvfb-run -a -s "-screen 0 1280x800x24" pnpm exec vitest run -c vitest.e2e.config.ts $(F); rc=$$?; if pgrep -af "[b]uild/e2e/|[f]rostread-app|[W]ebKitWebDriver"; then echo "app-e2e: a process of the run is left" >&2; rc=1; fi; exit $$rc'
+	$(IN_APP_NSL) 'cd web && pnpm install $(FROZEN) --silent && env -u WAYLAND_DISPLAY GDK_BACKEND=x11 xvfb-run -a -s "-screen 0 1280x800x24" pnpm exec vitest run -c vitest.e2e.config.ts $(F); rc=$$?; if pgrep -af -r D,I,R,S,T,t "[b]uild/e2e/|[f]rostread-app|[W]ebKitWebDriver"; then echo "app-e2e: a process of the run is left" >&2; rc=1; fi; exit $$rc'
 
 # lodge-package stages the app under LODGE_DESTDIR in lodge's install
 # layout, with packaging/lodge/stage.sh. It replaces only this app's own
