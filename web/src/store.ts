@@ -43,6 +43,10 @@ export interface ReadActions {
   open(id: number): Promise<void>;
   closeItem(): void;
   load(): Promise<void>;
+  /** reload refetches as many rows as the list holds now, keeping the rows
+   * that loadMore added: a change must not drop them, or the row the person
+   * is on leaves the list and j starts again at the first row. */
+  reload(): Promise<void>;
   loadMore(): Promise<void>;
   search(query: string): Promise<void>;
   selectOffset(delta: number): Promise<void>;
@@ -126,6 +130,11 @@ function message(err: unknown): string {
 
 /** createReadStore returns a store with no connection; connect() starts it. */
 export function createReadStore(): StoreApi<ReadStore> {
+  // generation rises with every list request. An answer writes the list only
+  // while its number is still the latest one, so a slow answer never
+  // overwrites a newer one, and a loadMore that finishes after a reload
+  // started appends nothing.
+  let generation = 0;
   return createStore<ReadStore>()((set, get) => ({
     api: null,
     status: null,
@@ -159,7 +168,7 @@ export function createReadStore(): StoreApi<ReadStore> {
         // These pages stand over the whole frame: the list behind them stays
         // as it was, and no item opens. A mark-all's question does not hang
         // over them.
-        set({ route, selectedId: null, item: null, error: null, markAllPrompt: null });
+        set({ route, selectedId: null, item: null, itemLoading: false, error: null, markAllPrompt: null });
         return;
       }
       if (route.kind === "item") {
@@ -171,7 +180,9 @@ export function createReadStore(): StoreApi<ReadStore> {
         await get().open(route.id);
         return;
       }
-      set({ route, listRoute: route, selectedId: null, item: null, query: "" });
+      // No item is open, so a reader still loading one stops: its answer is
+      // stale, and it will not clear the spinner itself.
+      set({ route, listRoute: route, selectedId: null, item: null, itemLoading: false, query: "" });
       await get().load();
     },
 
@@ -181,13 +192,20 @@ export function createReadStore(): StoreApi<ReadStore> {
       set({ selectedId: id, route: { kind: "item", id }, itemLoading: true, error: null });
       try {
         const detail = await api.getItem(id);
-        set({ item: detail, itemLoading: false });
+        // A fast run of opens answers out of order. An answer for an item the
+        // person has left must not take the reader: it says nothing about the
+        // item on screen, and it would also clear itemLoading for it. The
+        // item is still marked read, because the person did open it.
+        const current = get().selectedId === id;
+        if (current) set({ item: detail, itemLoading: false });
         // A note the item names may have moved or gone since it was saved.
-        if (detail.notePath !== undefined && detail.notePath !== "") void get().checkNote(id);
+        if (current && detail.notePath !== undefined && detail.notePath !== "") void get().checkNote(id);
         // Opening an item marks it read (docs/specs/api.md, and the brief).
         if (!detail.read) await get().markRead(id, true);
       } catch (err) {
-        set({ itemLoading: false, error: message(err) });
+        // Only the selected item's failure belongs to the reader. A stale one
+        // is dropped; its own newer answer already set itemLoading.
+        if (get().selectedId === id) set({ itemLoading: false, error: message(err) });
       }
     },
 
@@ -198,11 +216,48 @@ export function createReadStore(): StoreApi<ReadStore> {
     async load() {
       const { api, listRoute, query } = get();
       if (api === null || query !== "") return;
+      const mine = ++generation;
       set({ loading: true });
       try {
         const page = await api.listItems(listParams(listRoute));
+        if (mine !== generation) return;
         set({ items: page.items, next: page.next ?? null, loading: false, error: null });
       } catch (err) {
+        if (mine !== generation) return;
+        set({ loading: false, error: message(err) });
+      }
+    },
+
+    async reload() {
+      const { api, listRoute, query, items } = get();
+      if (api === null || query !== "") return;
+      // want is how many rows the list holds now, and at least one: a change
+      // refreshes the list at its own length, so an open past the first page
+      // keeps its neighbours, and selectOffset finds the row again.
+      const want = Math.max(items.length, 1);
+      const mine = ++generation;
+      set({ loading: true });
+      let rows: ItemSummary[] = [];
+      let next: string | null = null;
+      let cursor: string | undefined;
+      try {
+        for (;;) {
+          // The rows still missing, no fewer than a plain page and no more
+          // than 200 in one answer.
+          const limit = Math.min(200, Math.max(50, want - rows.length));
+          const params = { ...listParams(listRoute), limit, ...(cursor === undefined ? {} : { cursor }) };
+          const page = await api.listItems(params);
+          if (mine !== generation) return;
+          rows = [...rows, ...page.items];
+          next = page.next ?? null;
+          // An empty page ends it too: else a cursor that answers nothing
+          // would keep the loop going.
+          if (rows.length >= want || next === null || page.items.length === 0) break;
+          cursor = next;
+        }
+        set({ items: rows, next, loading: false, error: null });
+      } catch (err) {
+        if (mine !== generation) return;
         set({ loading: false, error: message(err) });
       }
     },
@@ -210,11 +265,14 @@ export function createReadStore(): StoreApi<ReadStore> {
     async loadMore() {
       const { api, listRoute, next, loading } = get();
       if (api === null || next === null || loading) return;
+      const mine = ++generation;
       set({ loading: true });
       try {
         const page = await api.listItems({ ...listParams(listRoute), cursor: next });
+        if (mine !== generation) return;
         set((state) => ({ items: [...state.items, ...page.items], next: page.next ?? null, loading: false }));
       } catch (err) {
+        if (mine !== generation) return;
         set({ loading: false, error: message(err) });
       }
     },
@@ -228,11 +286,14 @@ export function createReadStore(): StoreApi<ReadStore> {
         await get().load();
         return;
       }
+      const mine = ++generation;
       set({ loading: true });
       try {
         const items = await api.search(trimmed);
+        if (mine !== generation) return;
         set({ items, next: null, loading: false, error: null });
       } catch (err) {
+        if (mine !== generation) return;
         set({ loading: false, error: message(err) });
       }
     },
@@ -332,14 +393,14 @@ export function createReadStore(): StoreApi<ReadStore> {
       const { api } = get();
       if (api === null) return;
       await api.refresh(id);
-      await Promise.all([get().loadSources(), get().loadCounts(), get().load()]);
+      await Promise.all([get().loadSources(), get().loadCounts(), get().reload()]);
     },
 
     async renameSource(id, title) {
       const { api } = get();
       if (api === null) return;
       await api.renameSource(id, title);
-      await Promise.all([get().loadSources(), get().load()]);
+      await Promise.all([get().loadSources(), get().reload()]);
     },
 
     async removeSource(id) {
@@ -350,7 +411,7 @@ export function createReadStore(): StoreApi<ReadStore> {
       if (listRoute.kind === "source" && listRoute.id === id) {
         await get().setRoute(UNREAD);
       }
-      await Promise.all([get().loadSources(), get().loadCounts(), get().load()]);
+      await Promise.all([get().loadSources(), get().loadCounts(), get().reload()]);
     },
 
     async addSource(url) {
@@ -367,7 +428,7 @@ export function createReadStore(): StoreApi<ReadStore> {
       if (api === null) return 0;
       try {
         const result = await api.importOPML(xml);
-        await Promise.all([get().loadSources(), get().loadCounts(), get().load()]);
+        await Promise.all([get().loadSources(), get().loadCounts(), get().reload()]);
         return result.added;
       } catch (err) {
         set({ error: message(err) });
@@ -466,7 +527,7 @@ export function createReadStore(): StoreApi<ReadStore> {
       await Promise.all([
         get().loadCounts(),
         get().loadSources(),
-        query.trim() === "" ? get().load() : get().search(query),
+        query.trim() === "" ? get().reload() : get().search(query),
       ]);
     },
 

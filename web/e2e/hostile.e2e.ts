@@ -317,9 +317,9 @@ describe("the hostile corpus", () => {
     const titles = files.map((file) => hostileTitle(file.name));
     const openedBefore = app.opened().length;
     // The Unread view drops a row once it is read, so the corpus's next
-    // unread items come up into the list's first page, and into view. A
-    // source's view keeps its read rows, and its list reloads its first page
-    // alone after each change, so its later pages are out of reach.
+    // unread items come up into the list's first page, and into view, with no
+    // scroll. A source's view keeps its read rows, and its long list has a
+    // test of its own: web/e2e/lists.e2e.ts.
     await s.click(await sidebarButton(s, UNREAD_VIEW));
 
     const done = new Set<string>();
@@ -382,9 +382,9 @@ describe("the hostile corpus", () => {
         .catch(() => undefined);
       if (frame === undefined) unrendered.push(wanted);
       else {
-        // The rendered page gets the same quiet time as a raw one. It also
-        // paces the opens: each one is a history entry and a title, and
-        // WebKit refuses a page more than 100 history calls in 10 s.
+        // The rendered page gets the same quiet time as a raw one. This wait
+        // is the page's quiet time only, not a pace for the history: the shell
+        // keeps a history budget, and web/e2e/lists.e2e.ts tests fast opens.
         await settle(QUIET_MS);
         await checkFrame(s, clicked, { text: HOSTILE_TEXT, title: wanted });
       }
