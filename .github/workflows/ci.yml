@@ -102,6 +102,56 @@ jobs:
       - name: Typecheck
         run: make web-check IN_NSL='sh -c'
 
+  # The desktop app (plan 0002, step 3.5): make app-check's checks (Biome,
+  # tsc and Vitest, then cargo fmt, clippy and test of web/src-tauri) and
+  # make app-build's release build, on the runner itself, with the
+  # WebKitGTK development packages Tauri needs. Node and Rust match the nsl
+  # machine (plan 0002, 3.0's evidence). make app-e2e needs a display and
+  # WebKitWebDriver, so it stays out, as it stays out of make ci.
+  app:
+    name: Desktop app (make app-check app-build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      NODE_VERSION: "24.21.0"
+      RUST_TOOLCHAIN: "1.99.0"
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      # The shell's build output, kept in the workspace for the cache.
+      APP_TARGET_DIR: ${{ github.workspace }}/build/cargo-target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tauri's system libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # pnpm comes from corepack, pinned with its hash by web/package.json.
+      - run: corepack enable
+      - name: Rust ${{ env.RUST_TOOLCHAIN }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            build/cargo-target
+          key: cargo-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('web/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-
+      - name: Lint, typecheck and test the web project and the shell
+        run: make app-check IN_APP_NSL='sh -c' APP_TARGET_DIR="$APP_TARGET_DIR"
+      - name: Release build of the app
+        run: make app-build IN_APP_NSL='sh -c' APP_TARGET_DIR="$APP_TARGET_DIR"
+
   deb:
     name: Snapshot .deb (make deb)
     runs-on: ubuntu-24.04
