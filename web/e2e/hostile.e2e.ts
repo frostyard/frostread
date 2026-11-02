@@ -34,6 +34,14 @@ const SETTLE_MS = 2000;
 /** FRAME_TIMEOUT_MS bounds the wait for the reader's frame after an item opens. */
 const FRAME_TIMEOUT_MS = 20_000;
 
+/**
+ * FRAME_ATTEMPTS is how many times checkFrame enters the frame again after
+ * the driver lost its handles: the shell's held history write can navigate
+ * the main frame while the test is inside the frame, and WebKit's session
+ * then forgets every frame handle.
+ */
+const FRAME_ATTEMPTS = 3;
+
 /** TITLE_TIMEOUT_MS bounds the wait for the reader to show the item that was clicked. */
 const TITLE_TIMEOUT_MS = 20_000;
 
@@ -64,6 +72,25 @@ const CLICK_REFUSALS = new Set([
 function driverCode(err: unknown): string | undefined {
   if (!(err instanceof WebDriverError)) return undefined;
   return err.code.toLowerCase().replaceAll("_", " ");
+}
+
+/**
+ * framesLost reports whether err says the driver lost its frame handles. A
+ * pushState or replaceState is a same-document navigation of the main frame,
+ * and WebKit's session then forgets every frame handle: each call in the
+ * frame answers "no such window", and parentFrame can answer it too. The app
+ * is not broken, so the test enters the frame again. err and its cause chain
+ * are both walked: a waitFor timeout keeps its last failure as the cause.
+ */
+function framesLost(err: unknown): boolean {
+  let e: unknown = err;
+  // The depth bound ends a cause chain that points back into itself.
+  for (let depth = 0; e !== undefined && e !== null && depth < 10; depth++) {
+    const code = driverCode(e);
+    if (code === "no such window" || code === "no such frame") return true;
+    e = typeof e === "object" ? (e as { cause?: unknown }).cause : undefined;
+  }
+  return false;
 }
 
 /**
@@ -256,38 +283,62 @@ async function expectNoMarker(s: Session, depth: number): Promise<void> {
  * once and remembered. A click the sandbox refuses, or an element the page
  * does not lay out, is not a failure of the page: the click is what a person
  * would do.
+ *
+ * The shell writes a held history change at any time, which navigates the
+ * main frame and makes WebKit forget every frame handle. So a lost handle is
+ * not the page's failure: the frame is entered again, up to FRAME_ATTEMPTS
+ * times, and the checks run again from the top page. Every other error fails
+ * the test at once.
  */
 async function checkFrame(s: Session, clicked: Set<string>, want: Want): Promise<void> {
-  const frame = await s.find('section[aria-label="Reader"] iframe');
-  expect(await s.attribute(frame, "sandbox")).toBe("allow-popups");
-  // WebKitWebDriver answers "" for an attribute the element lacks, so the
-  // parent page, which may run a script, says whether the frame has a src.
-  expect(
-    await s.execute<boolean>(
-      `return document.querySelector('section[aria-label="Reader"] iframe').hasAttribute("src")`,
-    ),
-  ).toBe(false);
-  await s.frame(frame);
-  try {
-    await expectPage(s, want);
-    await expectNoMarker(s, MARKER_DEPTH);
-    for (const link of await s.findAll("a")) {
-      const href = await s.attribute(link, "href");
-      try {
-        await s.click(link);
-      } catch (err) {
-        const code = driverCode(err);
-        if (code !== undefined && CLICK_REFUSALS.has(code)) continue;
-        throw err;
+  for (let attempt = 0; attempt <= FRAME_ATTEMPTS; attempt++) {
+    // The frame is found in the top page, so a lost handle repairs itself
+    // here: the shell's own frame is always there while the app runs.
+    const frame = await s.find('section[aria-label="Reader"] iframe');
+    expect(await s.attribute(frame, "sandbox")).toBe("allow-popups");
+    // WebKitWebDriver answers "" for an attribute the element lacks, so the
+    // parent page, which may run a script, says whether the frame has a src.
+    expect(
+      await s.execute<boolean>(
+        `return document.querySelector('section[aria-label="Reader"] iframe').hasAttribute("src")`,
+      ),
+    ).toBe(false);
+    await s.frame(frame);
+    let bodyThrew = false;
+    try {
+      await expectPage(s, want);
+      await expectNoMarker(s, MARKER_DEPTH);
+      // clicked keeps what an earlier attempt clicked: that click happened,
+      // and the shell may have handed its link to the opener.
+      for (const link of await s.findAll("a")) {
+        const href = await s.attribute(link, "href");
+        try {
+          await s.click(link);
+        } catch (err) {
+          const code = driverCode(err);
+          if (code !== undefined && CLICK_REFUSALS.has(code)) continue;
+          throw err;
+        }
+        // Only a click that happened asks the shell to open a link.
+        if (href !== null) clicked.add(href);
       }
-      // Only a click that happened asks the shell to open a link.
-      if (href !== null) clicked.add(href);
+      // Again after the clicks: a handler that a pointer fires (onmouseover)
+      // marks the page as surely as one that a load fires.
+      await expectNoMarker(s, MARKER_DEPTH);
+    } catch (err) {
+      bodyThrew = true;
+      // Only a lost handle is worth another attempt: every other error is
+      // the page's, or the app's, and fails the test as it is.
+      if (!framesLost(err) || attempt >= FRAME_ATTEMPTS) throw err;
+    } finally {
+      // The way out is the top page, not the parent frame: after a lost
+      // handle parentFrame answers "no such window" as well. A failure here
+      // must not hide the failure the frame part already has.
+      await s.topFrame().catch((err: unknown) => {
+        if (!bodyThrew) throw err;
+      });
     }
-    // Again after the clicks: a handler that a pointer fires (onmouseover)
-    // marks the page as surely as one that a load fires.
-    await expectNoMarker(s, MARKER_DEPTH);
-  } finally {
-    await s.parentFrame();
+    if (!bodyThrew) break;
   }
   // No click may make a window: the shell denies every one, and hands an
   // http, https or mailto link to the system's opener instead.

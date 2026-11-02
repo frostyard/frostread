@@ -163,6 +163,17 @@ export class Session {
     await this.do("POST", "/frame/parent", {});
   }
 
+  /**
+   * topFrame makes the top-level page current again, from any depth of frame.
+   * The shell's held history write can navigate the main frame at any time,
+   * and WebKit's session then forgets every frame handle: the frame the test
+   * is in answers "no such window", and so can parentFrame. The top page is
+   * always there, so this call is the way out of a frame the driver lost.
+   */
+  async topFrame(): Promise<void> {
+    await this.do("POST", "/frame", { id: null });
+  }
+
   /** waitFor polls fn until it returns a truthy value or timeoutMs passes. */
   async waitFor<T>(what: string, fn: () => T | Promise<T>, timeoutMs = 10_000): Promise<NonNullable<T>> {
     const deadline = Date.now() + timeoutMs;
@@ -174,7 +185,12 @@ export class Session {
       } catch (err) {
         last = err;
       }
-      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}${last ? `: ${String(last)}` : ""}`);
+      if (Date.now() > deadline) {
+        const message = `timed out waiting for ${what}${last ? `: ${String(last)}` : ""}`;
+        // The last error stays the cause: the message names what the wait
+        // wanted, and the cause says which calls kept failing and why.
+        throw last ? new Error(message, { cause: last }) : new Error(message);
+      }
       await new Promise((r) => setTimeout(r, 100));
     }
   }
