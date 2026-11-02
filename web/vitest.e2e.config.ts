@@ -7,7 +7,9 @@ export default defineConfig({
     environment: "node",
     include: ["e2e/**/*.e2e.ts"],
     testTimeout: 300_000,
-    hookTimeout: 300_000,
+    // A launch's own worst case is 375 s (web/e2e/harness.ts, launch);
+    // the hook keeps room above it.
+    hookTimeout: 600_000,
     fileParallelism: false,
   },
 });

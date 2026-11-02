@@ -31,6 +31,9 @@ export const SOURCES = [
 /** TOMATOES is the title of readdev's first article: a summary to extract. */
 export const TOMATOES = "Planting tomatoes after the last frost";
 
+/** SEED_TIMEOUT_MS bounds each of the seed's 3 calls, well below readctl's own 2 minutes. */
+const SEED_TIMEOUT_MS = 30_000;
+
 /** tempDir makes a private directory for one test run. */
 export function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "frostread-e2e-"));
@@ -150,11 +153,15 @@ export interface App {
  * app in a WebKitWebDriver session with the stand-ins on its PATH. A failed
  * launch stops everything it started before it throws.
  *
- * Every wait of a launch is bounded, and the worst case of all of them is
- * 255 s: readdev's answer 30, readd's socket 30, the extraction 30, the
- * driver's answer 45, and the session's start 120. That is below the 300 s
- * hookTimeout of vitest.e2e.config.ts, so a launch that stalls fails the
- * hook in time, and the hook's own failure still stops the run.
+ * Every wait of a launch is bounded, and the worst case of all of them, in
+ * order, is 375 s: readdev's answer 30, readd's socket 30, the seed's 3
+ * calls 3 × 30, the extraction 30, the driver's answer 45, and the
+ * session's start 120 (345 in all), plus the cleanup of a failed launch
+ * that has no session yet: 3 processes at 10 s each, 30 more. That is below
+ * the 600 s hookTimeout of vitest.e2e.config.ts, which leaves room for the
+ * polls' small overruns, so a launch that stalls fails the hook in time and
+ * the hook's own failure still stops the run. A change to a wait here must
+ * keep this sum below hookTimeout.
  */
 export async function launch(): Promise<App> {
   const dir = tempDir();
@@ -214,11 +221,14 @@ export async function launch(): Promise<App> {
     await until("readd's desktop socket", () => existsSync(socket), 30_000);
 
     // The seed: readctl import subscribes readdev's five feeds, and readctl
-    // poll polls them all now, so the items do not wait for the poller.
+    // poll polls them all now, so the items do not wait for the poller. Each
+    // call is bounded well below readctl's own 2 minutes, so a stalled one
+    // throws here, and launch's catch stops the run.
     const opml = join(dir, "dev.opml");
-    writeFileSync(opml, execFileSync(join(E2E, "readdev"), ["-addr", addr, "-opml"], { env: base }));
-    execFileSync(join(E2E, "readctl"), ["import", opml], { env: appEnv });
-    execFileSync(join(E2E, "readctl"), ["poll"], { env: appEnv });
+    const seed = { killSignal: "SIGKILL", timeout: SEED_TIMEOUT_MS } as const;
+    writeFileSync(opml, execFileSync(join(E2E, "readdev"), ["-addr", addr, "-opml"], { ...seed, env: base }));
+    execFileSync(join(E2E, "readctl"), ["import", opml], { ...seed, env: appEnv });
+    execFileSync(join(E2E, "readctl"), ["poll"], { ...seed, env: appEnv });
     // Three items arrive as a summary alone, and readd extracts each from
     // its page; the reader shows nothing for one until then.
     await until(
