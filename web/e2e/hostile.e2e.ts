@@ -66,6 +66,17 @@ function driverCode(err: unknown): string | undefined {
   return err.code.toLowerCase().replaceAll("_", " ");
 }
 
+/**
+ * rowsGone reports whether err says the row's element has left the page. The
+ * list reloads after each read and after each change, so a row the test has
+ * looked at can be gone before it reads the row's text or clicks it: the test
+ * looks again rather than failing on the row that replaced it.
+ */
+function rowsGone(err: unknown): boolean {
+  const code = driverCode(err);
+  return code === "stale element reference" || code === "no such element";
+}
+
 /** OPEN_ALL_DEADLINE_MS bounds the whole of the second test's loop, well below
  * the 300 s testTimeout of vitest.e2e.config.ts, so a corpus that stops
  * opening fails with the titles that are left.
@@ -74,6 +85,15 @@ const OPEN_ALL_DEADLINE_MS = 240_000;
 
 /** UNREAD_VIEW is the title of the Unread view, as the sidebar shows it. */
 const UNREAD_VIEW = "Unread";
+
+/**
+ * UNREAD_LIST is the Unread view's list name: ListPane's listName takes it
+ * from VIEW_TITLES.unread, and the listbox carries it as its aria-label.
+ */
+const UNREAD_LIST = "Unread";
+
+/** LIST_TIMEOUT_MS bounds the wait for a named list, which a new route loads. */
+const LIST_TIMEOUT_MS = 30_000;
 
 /** JOURNAL_SOURCE is the title of readdev's RSS feed, which holds the tomatoes article. */
 const JOURNAL_SOURCE = "Dev Journal (RSS)";
@@ -94,6 +114,21 @@ function sidebarButton(s: Session, title: string): Promise<Element> {
 
 /** settle waits ms: a page's own attempts start while it loads, and some finish after it. */
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * listNamed waits until the listbox is named for the route the window now
+ * shows: setRoute changes listRoute, and with it listName and the listbox's
+ * aria-label, at once. So this says the route has changed, and it does not
+ * say the rows have arrived: the list before it can still show until its own
+ * load answers.
+ */
+async function listNamed(s: Session, name: string, timeoutMs: number): Promise<void> {
+  await s.waitFor(
+    `the list named ${name}`,
+    () => s.find(`[role="listbox"][aria-label="${name}"]`).catch(() => undefined),
+    timeoutMs,
+  );
+}
 
 let app: App | undefined;
 let trap: Canary | undefined;
@@ -321,6 +356,11 @@ describe("the hostile corpus", () => {
     // scroll. A source's view keeps its read rows, and its long list has a
     // test of its own: web/e2e/lists.e2e.ts.
     await s.click(await sidebarButton(s, UNREAD_VIEW));
+    // The route is the Unread view now. Its rows can still be on their way:
+    // the list before it can show until its own load answers, so the loop
+    // below skips every row that is no corpus item, and rowsGone covers a row
+    // that leaves between the look and the act.
+    await listNamed(s, UNREAD_LIST, LIST_TIMEOUT_MS);
 
     const done = new Set<string>();
     const clicked = new Set<string>();
@@ -334,7 +374,15 @@ describe("the hostile corpus", () => {
       let row: Element | undefined;
       let title: string | undefined;
       for (const candidate of await s.findAll('[role="option"]')) {
-        const text = await s.text(candidate);
+        let text = "";
+        try {
+          text = await s.text(candidate);
+        } catch (err) {
+          // The list reloads after each read and each change, so this row can
+          // leave between the look and the read: the next one is the row.
+          if (rowsGone(err)) continue;
+          throw err;
+        }
         if (!text.includes(HOSTILE_TITLE)) continue;
         const match = titles.find((known) => !done.has(known) && text.includes(known));
         if (match === undefined) continue;
@@ -348,7 +396,14 @@ describe("the hostile corpus", () => {
         continue;
       }
       const wanted = title;
-      await s.click(row);
+      try {
+        await s.click(row);
+      } catch (err) {
+        // The same reload, now between the look and the click: this item is
+        // not done, and the loop looks again for a row it can open.
+        if (!rowsGone(err)) throw err;
+        continue;
+      }
       let heading = "";
       await s
         .waitFor(

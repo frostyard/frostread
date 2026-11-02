@@ -82,14 +82,8 @@ const HASH_QUIET_MS = 1000;
 /** LAST_PAGE_TIMEOUT_MS bounds the scroll to the list's last page, which is 2 pages of 70 rows. */
 const LAST_PAGE_TIMEOUT_MS = 30_000;
 
-/**
- * CHANGE_SETTLE_MS is the bounded settle after an open: the open marks the
- * item read, readd sends items.changed, and the list reloads. The reload
- * leaves no mark in the DOM that the test can await, so the test waits a
- * fixed time here; the checks after it are what fail when the reload dropped
- * the list's later pages.
- */
-const CHANGE_SETTLE_MS = 1500;
+/** RELOAD_TIMEOUT_MS bounds the wait for the list's reload to start and to end after a write. */
+const RELOAD_TIMEOUT_MS = 20_000;
 
 /** sidebarButton finds a view or a source in the sidebar by its title. */
 function sidebarButton(s: Session, title: string): Promise<Element> {
@@ -156,14 +150,69 @@ function showsRow(s: Session, title: string): Promise<boolean> {
 }
 
 /**
- * listNamed waits for the list named name to be the one the window shows: the
- * listbox's aria-label comes from ListPane's listName, so a named, non-empty
- * list is the route's own list and not the empty state.
+ * listNamed waits until the listbox is named for the route the window now
+ * shows: setRoute changes listRoute, and with it listName and the listbox's
+ * aria-label, at once. So this says the route has changed, and it does not
+ * say the rows have arrived: the list before it can still show until its own
+ * load answers.
  */
 async function listNamed(s: Session, name: string, timeoutMs: number): Promise<void> {
   await s.waitFor(
     `the list named ${name}`,
     () => s.find(`[role="listbox"][aria-label="${name}"]`).catch(() => undefined),
+    timeoutMs,
+  );
+}
+
+/**
+ * reloadIdle waits until the list pane shows no Loading… paragraph: the reload
+ * of an earlier open has ended, so the observer below sees the reload that
+ * this test's own write starts.
+ */
+async function reloadIdle(s: Session, timeoutMs: number): Promise<void> {
+  await s.waitFor(
+    "the list's reload to end",
+    () =>
+      s.execute<boolean>(
+        `const pane = document.querySelector('section[aria-label="Items"]');
+         if (pane === null) return false;
+         return ![...pane.querySelectorAll("p")].some((p) => p.innerText.trim() === "Loading…");`,
+      ),
+    timeoutMs,
+  );
+}
+
+/**
+ * watchReload records the shape of the next reload of the list. The pane shows
+ * a Loading… paragraph while a non-empty list loads, and reload() sets that
+ * flag before it fetches and clears it when its answer arrives
+ * (web/src/components/ListPane.tsx, web/src/store.ts), so the paragraph's
+ * arrival and departure are the reload's own start and end. The record waits
+ * on window for reloadDone.
+ */
+async function watchReload(s: Session): Promise<void> {
+  await s.execute(
+    `const pane = document.querySelector('section[aria-label="Items"]');
+     if (pane === null) throw new Error("the window shows no list pane");
+     const loading = () => [...pane.querySelectorAll("p")].some((p) => p.innerText.trim() === "Loading…");
+     const record = { done: false, seen: false };
+     window.__listReload = record;
+     const observer = new MutationObserver(() => {
+       if (loading()) record.seen = true;
+       else if (record.seen) {
+         record.done = true;
+         observer.disconnect();
+       }
+     });
+     observer.observe(pane, { subtree: true, childList: true, characterData: true });`,
+  );
+}
+
+/** reloadDone waits for the reload that watchReload watched to show its Loading… paragraph and drop it. */
+async function reloadDone(s: Session, timeoutMs: number): Promise<void> {
+  await s.waitFor(
+    "the list's reload to finish",
+    () => s.execute<boolean>(`return window.__listReload !== undefined && window.__listReload.done === true;`),
     timeoutMs,
   );
 }
@@ -315,9 +364,10 @@ describe("the app's list and its history", () => {
     // A fresh list state: the unread view, then the source's view again, so
     // the list starts at its first page and the second page comes from the
     // scroll alone. Each click is followed by the wait for that route's own
-    // list, which listName names for its listbox, so the second load starts
-    // from a list that arrived. Nothing here needs the other test: this one
-    // runs alone.
+    // list name, which says the route has changed and not that its rows have
+    // arrived: the list before it can still show until its load answers, and
+    // the row wait after the second click reads a row that the source's list
+    // keeps. Nothing here needs the other test: this one runs alone.
     await s.click(await sidebarButton(s, UNREAD_VIEW));
     await listNamed(s, UNREAD_LIST, ROW_TIMEOUT_MS);
     await s.click(await sidebarButton(s, HOSTILE_SOURCE));
@@ -333,13 +383,21 @@ describe("the app's list and its history", () => {
       TITLE_TIMEOUT_MS,
     );
 
-    // One press of m always writes: toggleRead sends setRead, and readd sends
-    // items.changed for it, so the list reloads here even when the open found
-    // TARGET read already and wrote nothing. Before the fix the reload asked
-    // for the first page alone, rows 51 to 70 left the list, and the selection
-    // could not be found.
+    // No fixed settle here: the test waits for the reload's own start and end.
+    // The list pane shows a Loading… paragraph while a non-empty list loads,
+    // and reload() sets that flag before it fetches and clears it when its
+    // answer arrives, so an observer on the pane records both marks, and the
+    // checks below read the reloaded list, not the one before it. One press of
+    // m always writes: toggleRead sends setRead, and readd sends items.changed
+    // for it, so the list reloads even when the open found TARGET read already
+    // and wrote nothing.
+    await reloadIdle(s, ROW_TIMEOUT_MS);
+    await watchReload(s);
     await press(s, "m");
-    await settle(CHANGE_SETTLE_MS);
+    await reloadDone(s, RELOAD_TIMEOUT_MS);
+
+    // Before the fix the reload asked for the first page alone, rows 51 to 70
+    // left the list, and the selection could not be found.
     const row = await rowWith(s, TARGET, ROW_TIMEOUT_MS);
     expect(await s.attribute(row, "aria-selected")).toBe("true");
 
