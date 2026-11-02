@@ -36,9 +36,10 @@ Status (2026-11-02): **Phase 3 is in progress.**
   machine, and its checks pass (2026-11-01; the evidence is under
   [3.0](#phase-3s-steps)). 3.2, the Rust shell, the bridge and the
   Tauri transport, is merged (frostread#35, 2026-11-01). 3.6, the
-  end-to-end harness, is in review (2026-11-02; the evidence is under
-  [3.6](#phase-3s-steps)).
-  Left: 3.4, 3.5 and 3.7, and 3.8, Phase 3's record.
+  end-to-end harness, is merged (frostread#36, 2026-11-02; the evidence
+  is under [3.6](#phase-3s-steps)). 3.7, the hostile corpus, is in
+  review (2026-11-02; the evidence is under [3.7](#phase-3s-steps)).
+  Left: 3.4 and 3.5, and 3.8, Phase 3's record.
 - **Phases 4 to 11** have not started. Nothing of the Rust shell, the
   Flatpak, the lodge connection or the release candidate is built, and
   the clean-install gate (Phase 10) has no run yet.
@@ -310,7 +311,7 @@ What the run found:
 - **Owners:** the planner; Duncan's machine.
 - **Depends on:** 3.2 and 3.3.
 
-**3.6's evidence (2026-11-02, in review).** In the nsl machine
+**3.6's evidence (2026-11-02, merged in frostread#36).** In the nsl machine
 `frostnotes`, `make app-e2e` passed 2 times in a row: 3 tests each, and
 its last line, a `pgrep` for readd, readdev, the app and
 `WebKitWebDriver`, found none. What the work found:
@@ -349,6 +350,51 @@ its last line, a `pgrep` for readd, readdev, the app and
   `allow-scripts` (a check of the check, not committed).
 - **Owners:** the planner; Duncan's machine.
 - **Depends on:** 3.6.
+
+**3.7's evidence (2026-11-02, in review).** In the nsl machine
+`frostnotes`, `make app-e2e` passed 2 times in a row: 5 tests each (3.6's
+3 and the corpus's 2), and the leftover check found no process. The
+corpus is 70 pages in [web/e2e/hostile](../../web/e2e/hostile/README.md):
+frostmail's 50, adapted, and 20 more for the kinds this step names.
+`readdev -hostile DIR` serves them as the feed `Dev Hostile`
+([api.md](../specs/api.md#development-only)). Each run printed:
+
+- raw in the frame: 70 pages, 12 links clicked, 2 opener URLs (the corpus's
+  `http` and `mailto` links with `target=_blank`), 0 canary hits;
+- through readd: 70 items, each in the frame, 4 links clicked, 4 opener
+  URLs (all from clicked `http`, `https` or `mailto` links), 0 canary
+  hits.
+
+The check of the check, on the same machine, not committed:
+
+| Change | Result |
+| --- | --- |
+| The frame's sandbox gains `allow-scripts` | fails on both paths: the suite holds the sandbox to exactly `allow-popups` |
+| The same, and the suite's sandbox check made to accept it | passes: the app's CSP, which the `srcdoc` frame inherits, still blocks every inline script and handler |
+| The same, and the app's CSP gains `script-src 'self' 'unsafe-inline'` (Tauri's script hashes off) | fails at the first raw page: a script ran and left its `x-ran` marker |
+| That CSP with the sandbox back to `allow-popups` | passes: the sandbox alone stops every script |
+| The CSP's `img-src` admits `http://127.0.0.1:*` | fails: the canary counts 33 requests from the raw pages |
+
+What the work found:
+
+- Every corpus script and handler first appends an `x-ran` element, and
+  the suite looks for one in the frame; the canary alone cannot see a
+  script that the CSP keeps off the network.
+- The reader's frame has 2 guards against script, the sandbox and the
+  app's CSP, and either one alone holds. With `allow-scripts` and
+  `allow-same-origin` together, the corpus's script gadget (the app's own
+  entry, which `'self'` admits) mounts the app inside the frame: the
+  sandbox must never gain both.
+- readdev's hostile pages start with a `title` element: without it,
+  readability gives some pages another title, and the reader's heading
+  no longer names the item.
+- The suite opens the items from the Unread view, which drops each row
+  once it is read. A source's view keeps its read rows, and its list
+  reloads only its first page after each change, so items past the first
+  50 are out of reach there; that is the app's behavior, not this step's.
+- WebKit refuses a page more than 100 history calls in 10 s, and the
+  desktop shell's `reportRoute` then throws to the error boundary. The
+  suite paces its opens with the quiet time; the app does not limit them.
 
 **3.8 — Phase 3's record (small; docs).**
 - This plan records the evidence of Phase 3's Done when: the commit, the

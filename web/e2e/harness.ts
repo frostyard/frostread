@@ -1,10 +1,12 @@
 // The end-to-end harness for the built app (docs/plans/0002-the-standalone-
-// desktop-flatpak.md, step 3.6): readdev's generated feeds, a readd in its
-// desktop mode on a temporary XDG tree, and the release app driven through
-// WebKitWebDriver under xvfb-run. make app-e2e builds the binaries and runs
-// it in the nsl machine.
+// desktop-flatpak.md, steps 3.6 and 3.7): readdev's generated feeds, a readd
+// in its desktop mode on a temporary XDG tree, and the release app driven
+// through WebKitWebDriver under xvfb-run. The hostile corpus is one more
+// feed, pointed at a canary server that records every request. make app-e2e
+// builds the binaries and runs it in the nsl machine.
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as createHTTPServer } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -31,8 +33,80 @@ export const SOURCES = [
 /** TOMATOES is the title of readdev's first article: a summary to extract. */
 export const TOMATOES = "Planting tomatoes after the last frost";
 
+/** HOSTILE is the hostile corpus: markup that must reach no network (web/e2e/hostile/README.md). */
+export const HOSTILE = join(ROOT, "web", "e2e", "hostile");
+
+/** HOSTILE_TITLE is the start of every hostile item's title, as readdev and the sidebar give it. */
+export const HOSTILE_TITLE = "Hostile ";
+
 /** SEED_TIMEOUT_MS bounds each of the seed's 3 calls, well below readctl's own 2 minutes. */
 const SEED_TIMEOUT_MS = 30_000;
+
+/** EXTRACT_TIMEOUT_MS bounds the wait for the three development extractions. */
+const EXTRACT_TIMEOUT_MS = 30_000;
+
+/** HOSTILE_EXTRACT_TIMEOUT_MS bounds the same wait with the corpus: three, and one for each of its files. */
+const HOSTILE_EXTRACT_TIMEOUT_MS = 150_000;
+
+/** Canary records every HTTP request made to it, as METHOD URL. */
+export interface Canary {
+  /** origin is the canary's address, which no corpus page may reach. */
+  origin: string;
+  /** hits is what the canary recorded, oldest first, such as "GET /07-javascript-href". */
+  hits: string[];
+  /** close stops the server. */
+  close: () => Promise<void>;
+}
+
+/** canary starts a recording HTTP server on a free loopback port, as frostmail's suite does. */
+export function canary(): Promise<Canary> {
+  const hits: string[] = [];
+  const server = createHTTPServer((req, res) => {
+    hits.push(`${req.method} ${req.url ?? ""}`);
+    res.writeHead(204);
+    res.end();
+  });
+  return new Promise((done) => {
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      const port = typeof addr === "object" && addr ? addr.port : 0;
+      done({ origin: `http://127.0.0.1:${port}`, hits, close: () => new Promise((r) => server.close(() => r())) });
+    });
+  });
+}
+
+/** hostileTitle is readdev's item title for a corpus file: "Hostile 07: javascript href". */
+export function hostileTitle(name: string): string {
+  const [number, ...words] = name.replace(/\.html$/, "").split("-");
+  return `${HOSTILE_TITLE}${number ?? ""}: ${words.join(" ")}`;
+}
+
+/** appEntry reads the app's built entry script from build/desktop/desktop.html. */
+function appEntry(): string {
+  const page = join(BUILD, "desktop", "desktop.html");
+  const found = /<script type="module" crossorigin src="([^"]+)"/.exec(readFileSync(page, "utf8"));
+  if (!found?.[1]) throw new Error(`no entry script in ${page}`);
+  return found[1];
+}
+
+/**
+ * hostileFiles is the corpus, sorted, with its placeholders filled in: the
+ * canary's URLs point at origin, and {{APP_ENTRY}} is the app's own entry
+ * script, so a page that runs its script tries to mount the real app.
+ */
+export function hostileFiles(origin: string): { name: string; html: string }[] {
+  const entry = appEntry();
+  return readdirSync(HOSTILE)
+    .filter((name) => name.endsWith(".html"))
+    .sort()
+    .map((name) => ({
+      name,
+      html: readFileSync(join(HOSTILE, name), "utf8")
+        .replaceAll("http://canary.test", origin)
+        .replaceAll("//canary.test", origin.replace("http:", ""))
+        .replaceAll("{{APP_ENTRY}}", entry),
+    }));
+}
 
 /** tempDir makes a private directory for one test run. */
 export function tempDir(): string {
@@ -148,22 +222,36 @@ export interface App {
 }
 
 /**
+ * LaunchOptions add to a launch. Without them the run is the development
+ * feeds alone, as step 3.6 made it.
+ */
+export interface LaunchOptions {
+  /**
+   * hostile starts readdev with the corpus as a sixth feed, Dev Hostile: its
+   * pages are written into the run's directory with their canary URLs pointed
+   * at origin.
+   */
+  hostile?: { origin: string };
+}
+
+/**
  * launch starts readdev on a free port, a readd in its desktop mode on a
  * fresh XDG tree, seeds it with readdev's OPML and one poll, and starts the
  * app in a WebKitWebDriver session with the stand-ins on its PATH. A failed
  * launch stops everything it started before it throws.
  *
  * Every wait of a launch is bounded, and the worst case of all of them, in
- * order, is 375 s: readdev's answer 30, readd's socket 30, the seed's 3
- * calls 3 × 30, the extraction 30, the driver's answer 45, and the
- * session's start 120 (345 in all), plus the cleanup of a failed launch
- * that has no session yet: 3 processes at 10 s each, 30 more. That is below
- * the 600 s hookTimeout of vitest.e2e.config.ts, which leaves room for the
- * polls' small overruns, so a launch that stalls fails the hook in time and
- * the hook's own failure still stops the run. A change to a wait here must
- * keep this sum below hookTimeout.
+ * order, is 375 s without the hostile corpus and 495 s with it: readdev's
+ * answer 30, readd's socket 30, the seed's 3 calls 3 × 30, the extraction 30
+ * (150 with the corpus), the driver's answer 45, and the session's start 120
+ * (345 or 465 in all), plus the cleanup of a failed launch that has no
+ * session yet: 3 processes at 10 s each, 30 more. That is below the 600 s
+ * hookTimeout of vitest.e2e.config.ts, which leaves room for the polls'
+ * small overruns, so a launch that stalls fails the hook in time and the
+ * hook's own failure still stops the run. A change to a wait here must keep
+ * this sum below hookTimeout.
  */
-export async function launch(): Promise<App> {
+export async function launch(opts: LaunchOptions = {}): Promise<App> {
   const dir = tempDir();
   const socket = join(dir, "run", "readd.sock");
   for (const sub of ["data", "config", "cache", "run"]) mkdirSync(join(dir, sub), { mode: 0o700, recursive: true });
@@ -203,7 +291,27 @@ export async function launch(): Promise<App> {
   try {
     const port = await freePort();
     const addr = `127.0.0.1:${port}`;
-    const readdev = start(join(E2E, "readdev"), ["-addr", addr], base, "readdev");
+    // The canary is a second server on loopback, and it must not be the one
+    // readd's development escape admits: READ_DEV_ALLOW names readdev alone.
+    if (opts.hostile && new URL(opts.hostile.origin).host === addr) {
+      throw new Error(`the canary (${opts.hostile.origin}) is readdev's own address`);
+    }
+    // With the corpus, its pages go into the run's own directory, pointed at
+    // the canary, and readdev serves them as Dev Hostile. readdev reads the
+    // directory at start and never changes it.
+    const readdevArgs = ["-addr", addr];
+    const opmlArgs = ["-addr", addr, "-opml"];
+    let extractions = 3;
+    if (opts.hostile) {
+      const files = hostileFiles(opts.hostile.origin);
+      const hostileDir = join(dir, "hostile");
+      mkdirSync(hostileDir, { recursive: true });
+      for (const file of files) writeFileSync(join(hostileDir, file.name), file.html);
+      readdevArgs.push("-hostile", hostileDir);
+      opmlArgs.push("-hostile", hostileDir);
+      extractions += files.length;
+    }
+    const readdev = start(join(E2E, "readdev"), readdevArgs, base, "readdev");
     procs.push({ proc: readdev.proc, what: "readdev" });
     await until(`readdev on ${addr}`, () => reachable(`http://${addr}/`), 30_000);
 
@@ -226,19 +334,22 @@ export async function launch(): Promise<App> {
     // throws here, and launch's catch stops the run.
     const opml = join(dir, "dev.opml");
     const seed = { killSignal: "SIGKILL", timeout: SEED_TIMEOUT_MS } as const;
-    writeFileSync(opml, execFileSync(join(E2E, "readdev"), ["-addr", addr, "-opml"], { ...seed, env: base }));
+    writeFileSync(opml, execFileSync(join(E2E, "readdev"), opmlArgs, { ...seed, env: base }));
     execFileSync(join(E2E, "readctl"), ["import", opml], { ...seed, env: appEnv });
     execFileSync(join(E2E, "readctl"), ["poll"], { ...seed, env: appEnv });
-    // Three items arrive as a summary alone, and readd extracts each from
-    // its page; the reader shows nothing for one until then.
+    // Three development items arrive as a summary alone, and readd extracts
+    // each from its page; a hostile item arrives as markup to read, so readd
+    // extracts it from its page too, unless the page gives it no article and
+    // it says so. The reader shows nothing for an item until then.
     await until(
-      "readd to extract the three summaries",
-      () =>
-        readd
-          .output()
-          .split("\n")
-          .filter((line) => line.includes("msg=extracted")).length >= 3,
-      30_000,
+      `readd to extract ${extractions} articles`,
+      () => {
+        const lines = readd.output().split("\n");
+        const extracted = lines.filter((line) => line.includes("msg=extracted")).length;
+        const failed = lines.filter((line) => line.includes("did not extract")).length;
+        return extracted + failed >= extractions;
+      },
+      opts.hostile ? HOSTILE_EXTRACT_TIMEOUT_MS : EXTRACT_TIMEOUT_MS,
     );
 
     // WebKitWebDriver starts the app itself, and Tauri allows automation

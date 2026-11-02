@@ -42,7 +42,8 @@ Phase 3, the desktop shell, is planned in steps (2026-10-29): step 3.1,
 the desktop entry, is merged (frostread#30, 2026-10-29), and step 3.3,
 the reader's `srcdoc` frame from `items.render`, is merged (frostread#32,
 2026-10-31), and step 3.2, the Rust shell, is merged (frostread#35,
-2026-11-01). Step 3.6, the end-to-end harness (`make app-e2e`), is in
+2026-11-01), and step 3.6, the end-to-end harness (`make app-e2e`), is
+merged (frostread#36, 2026-11-02). Step 3.7, the hostile corpus, is in
 review (2026-11-02). The Flatpak and the clean-install gate are not built
 yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
@@ -123,8 +124,11 @@ counterpart of something those repositories do, read their file.
   the nsl machine: `web/e2e/harness.ts` starts readdev and `readd
   -desktop` (the dev tags) on a temporary XDG tree, imports readdev's
   OPML with `readctl`, and puts a stand-in `xdg-open` on the app's PATH
-  (plan 0002, step 3.6). It needs a display, so `make ci` leaves it out;
-  run it after a change to the shell or the desktop entry.
+  (plan 0002, step 3.6). It also shows the hostile corpus
+  (`web/e2e/hostile/`, step 3.7) raw in the reader's frame and through
+  readd, and fails on any request to its loopback canary. It needs a
+  display, so `make ci` leaves it out; run it after a change to the shell,
+  the desktop entry, the reader's frame or the sanitizer.
 - Fix a lint finding rather than loosening `.golangci.yml`.
 - Tests run unfiltered (`go test ./...`). No test reaches the network: it
   uses `httptest`, and never sleeps to synchronize.

@@ -1,0 +1,4 @@
+<form id="f58a" action="http://canary.test/58-form-self-submit-focus"></form><input form="f58a" autofocus onfocus="document.body.append(document.createElement('x-ran'));document.getElementById('f58a').submit()">
+<form action="http://canary.test/58-form-self-submit-image"><input type="image" src="http://canary.test/58-form-self-submit-image.png" alt="an image button"></form>
+<form action="http://canary.test/58-form-self-submit-action"><button formaction="http://canary.test/58-form-self-submit-formaction">Go</button></form>
+<form action="http://canary.test/58-form-self-submit-blank" method="post" target="_blank" onsubmit="document.body.append(document.createElement('x-ran'))"><input name="q" value="x"><button>Go</button></form>
