@@ -17,21 +17,23 @@ import type { Element, Session } from "./webdriver";
  */
 const ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf";
 
-/**
- * PRESS_J is one press of j on the window. The app binds its keys on window
- * (web/src/components/App.tsx), and commandFor reads event.target, so the
- * event starts at the body, bubbles to the window, and its target is no text
- * field: the app opens the next item, as a held key does.
- */
-const PRESS_J = `document.body.dispatchEvent(
-  new KeyboardEvent("keydown", { key: "j", bubbles: true, cancelable: true }),
-);`;
-
 /** UNREAD_VIEW is the title of the Unread view, as the sidebar shows it. */
 const UNREAD_VIEW = "Unread";
 
 /** HOSTILE_SOURCE is readdev's hostile corpus feed, as the sidebar shows it. */
 const HOSTILE_SOURCE = "Dev Hostile";
+
+/**
+ * UNREAD_LIST is the Unread view's list name: ListPane's listName takes it
+ * from VIEW_TITLES.unread, and the listbox carries it as its aria-label.
+ */
+const UNREAD_LIST = "Unread";
+
+/**
+ * SOURCE_LIST is a source's list name: listName takes it from that source's
+ * own title, which is the same text the sidebar shows for it.
+ */
+const SOURCE_LIST = "Dev Hostile";
 
 /** NEWEST is the corpus's newest item, which is a source view's first row (the corpus is newest first). */
 const NEWEST = "Hostile 70:";
@@ -45,7 +47,7 @@ const TARGET = "Hostile 10:";
 /** NEXT is the item after TARGET in the source's list, which one press of j must open. */
 const NEXT = "Hostile 09:";
 
-/** PRESS_COUNT is how many presses the first test sends: about 50 opens are 100 history calls. */
+/** PRESS_COUNT is how many presses the fast-open test sends: about 50 opens are 100 history calls. */
 const PRESS_COUNT = 120;
 
 /** SIDEBAR_TIMEOUT_MS bounds the wait for a view or a source in the sidebar. */
@@ -106,6 +108,21 @@ function sidebarButton(s: Session, title: string): Promise<Element> {
 /** settle waits ms: the bounded wait for a state that fires no event the test can await. */
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * press sends one keydown of key to the window. The app binds its keys on
+ * window (web/src/components/App.tsx), and commandFor reads event.target, so
+ * the event starts at the body, bubbles to the window, and its target is no
+ * text field: the app acts on the key as it does on a held one.
+ */
+function press(s: Session, key: string): Promise<unknown> {
+  return s.execute(
+    `document.body.dispatchEvent(
+  new KeyboardEvent("keydown", { key: arguments[0], bubbles: true, cancelable: true }),
+);`,
+    key,
+  );
+}
+
 /** readerHeading is the reader's subject, trimmed, or "" while the reader shows no item. */
 async function readerHeading(s: Session): Promise<string> {
   const text = await s.execute<string>(
@@ -138,6 +155,19 @@ function showsRow(s: Session, title: string): Promise<boolean> {
   );
 }
 
+/**
+ * listNamed waits for the list named name to be the one the window shows: the
+ * listbox's aria-label comes from ListPane's listName, so a named, non-empty
+ * list is the route's own list and not the empty state.
+ */
+async function listNamed(s: Session, name: string, timeoutMs: number): Promise<void> {
+  await s.waitFor(
+    `the list named ${name}`,
+    () => s.find(`[role="listbox"][aria-label="${name}"]`).catch(() => undefined),
+    timeoutMs,
+  );
+}
+
 /** rowWith waits for the list to hold a row that shows title, and returns it. */
 function rowWith(s: Session, title: string, timeoutMs: number): Promise<Element> {
   return s.waitFor(
@@ -167,6 +197,17 @@ function scrollBy(s: Session, delta: number): Promise<unknown> {
      if (scroller === null) throw new Error("the listbox has no scroller");
      scroller.scrollTop = Math.max(0, scroller.scrollTop + arguments[0]);`,
     delta,
+  );
+}
+
+/** scrollToStart puts the list's scroller back at its top, where its first row is. */
+async function scrollToStart(s: Session): Promise<void> {
+  await s.execute(
+    `const box = document.querySelector('[role="listbox"]');
+     if (box === null) throw new Error("the list shows no listbox");
+     const scroller = box.parentElement;
+     if (scroller === null) throw new Error("the listbox has no scroller");
+     scroller.scrollTop = 0;`,
   );
 }
 
@@ -264,14 +305,66 @@ afterAll(async () => {
 });
 
 describe("the app's list and its history", () => {
+  // The long list goes first. It opens the corpus's rows and toggles one of
+  // them read, and the fast-open test then wants the corpus's rows in the
+  // list as well: this order keeps this test on a fresh app in a full run,
+  // as it is when it runs alone.
+  it("keeps a long list's later pages across a change", async () => {
+    if (!app) throw new Error("not started");
+    const s = app.session;
+    // A fresh list state: the unread view, then the source's view again, so
+    // the list starts at its first page and the second page comes from the
+    // scroll alone. Each click is followed by the wait for that route's own
+    // list, which listName names for its listbox, so the second load starts
+    // from a list that arrived. Nothing here needs the other test: this one
+    // runs alone.
+    await s.click(await sidebarButton(s, UNREAD_VIEW));
+    await listNamed(s, UNREAD_LIST, ROW_TIMEOUT_MS);
+    await s.click(await sidebarButton(s, HOSTILE_SOURCE));
+    await listNamed(s, SOURCE_LIST, ROW_TIMEOUT_MS);
+    await rowWith(s, NEWEST, ROW_TIMEOUT_MS);
+    await lastPage(s, LAST_PAGE_TIMEOUT_MS);
+
+    const target = await rowInView(s, TARGET, ROW_TIMEOUT_MS);
+    await s.click(target);
+    await s.waitFor(
+      `the reader to show ${TARGET}`,
+      async () => (await readerHeading(s)).includes(TARGET),
+      TITLE_TIMEOUT_MS,
+    );
+
+    // One press of m always writes: toggleRead sends setRead, and readd sends
+    // items.changed for it, so the list reloads here even when the open found
+    // TARGET read already and wrote nothing. Before the fix the reload asked
+    // for the first page alone, rows 51 to 70 left the list, and the selection
+    // could not be found.
+    await press(s, "m");
+    await settle(CHANGE_SETTLE_MS);
+    const row = await rowWith(s, TARGET, ROW_TIMEOUT_MS);
+    expect(await s.attribute(row, "aria-selected")).toBe("true");
+
+    // One press of j opens the row after TARGET. A list of its first 50 rows
+    // alone cannot find the selection, so j opens Hostile 70 instead, and the
+    // wait below fails: that is the defect.
+    await press(s, "j");
+    await s.waitFor(
+      `the reader to show ${NEXT}`,
+      async () => (await readerHeading(s)).includes(NEXT),
+      TITLE_TIMEOUT_MS,
+    );
+  });
+
   it("survives fast opens", async () => {
     if (!app) throw new Error("not started");
     const s = app.session;
     // A source's view keeps its read rows, so the corpus's 70 items stay in
     // the list here, and the first page's first row is the newest item. The
-    // first row is the top of the list, so the test names it instead of
-    // taking whatever element the virtual list renders first.
+    // scroller keeps the place the test before left it at, and a route to the
+    // list the window already shows reloads the rows without moving it, so
+    // the test goes back to the top, where the first row is, and names it
+    // rather than taking whatever element the virtual list renders first.
     await s.click(await sidebarButton(s, HOSTILE_SOURCE));
+    await scrollToStart(s);
     const first = await rowWith(s, NEWEST, ROW_TIMEOUT_MS);
     await s.click(first);
     await s.waitFor(
@@ -284,7 +377,7 @@ describe("the app's list and its history", () => {
     // to act on each, as a held key gives it. Each open reports the item's
     // route and then its title: 2 history calls, so about 50 opens reach
     // WebKit's limit of 100 calls in 10 s.
-    for (let i = 0; i < PRESS_COUNT; i++) await s.execute(PRESS_J);
+    for (let i = 0; i < PRESS_COUNT; i++) await press(s, "j");
 
     // Before the fix this wait fails: WebKit's pushState throws once the
     // window has had 100 calls, the throw comes from an effect in App, and
@@ -309,50 +402,5 @@ describe("the app's list and its history", () => {
     // shell's last report carried the reader's item: the address is an item's
     // route, and nothing reported after it.
     expect(await windowTitle(s)).toBe(await readerHeading(s));
-  });
-
-  it("keeps a long list's later pages across a change", async () => {
-    if (!app) throw new Error("not started");
-    const s = app.session;
-    // A fresh list state: the unread view, then the source's view again, so
-    // the list starts at its first page and the second page comes from the
-    // scroll alone. The unread view drops each row it has read, and the first
-    // test read NEWEST, so a list without it is the unread view's: that load
-    // finished before the source's begins rather than racing it. The source's
-    // list keeps the read row, which is what the wait after it finds.
-    await s.click(await sidebarButton(s, UNREAD_VIEW));
-    await s.waitFor(
-      `the unread list, which has dropped ${NEWEST}`,
-      async () => !(await showsRow(s, NEWEST)),
-      ROW_TIMEOUT_MS,
-    );
-    await s.click(await sidebarButton(s, HOSTILE_SOURCE));
-    await rowWith(s, NEWEST, ROW_TIMEOUT_MS);
-    await lastPage(s, LAST_PAGE_TIMEOUT_MS);
-
-    const target = await rowInView(s, TARGET, ROW_TIMEOUT_MS);
-    await s.click(target);
-    await s.waitFor(
-      `the reader to show ${TARGET}`,
-      async () => (await readerHeading(s)).includes(TARGET),
-      TITLE_TIMEOUT_MS,
-    );
-
-    // The open marked TARGET read, so readd sent items.changed and the list
-    // reloaded. Before the fix the reload asked for the first page alone,
-    // rows 51 to 70 left the list, and the selection could not be found.
-    await settle(CHANGE_SETTLE_MS);
-    const row = await rowWith(s, TARGET, ROW_TIMEOUT_MS);
-    expect(await s.attribute(row, "aria-selected")).toBe("true");
-
-    // One press opens the row after TARGET. A list of its first 50 rows alone
-    // cannot find the selection, so j opens Hostile 70 instead, and the wait
-    // below fails: that is the defect.
-    await s.execute(PRESS_J);
-    await s.waitFor(
-      `the reader to show ${NEXT}`,
-      async () => (await readerHeading(s)).includes(NEXT),
-      TITLE_TIMEOUT_MS,
-    );
   });
 });
