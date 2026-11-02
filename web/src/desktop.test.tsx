@@ -259,6 +259,28 @@ describe("the desktop shell's history budget", () => {
     expect(far.calls.map((call) => call.kind)).toEqual(["replace", "push", "push"]);
   });
 
+  it("pushes again after Back ends the coalescing period", () => {
+    const fake = fakeShellWindow();
+    const shell = createDesktopShell(fake.win, () => Date.now());
+    shell.reportRoute("/", "Unread", true);
+    shell.reportRoute("/item/1", "Item 1", false);
+    // More than a second later, so this one is a push too.
+    vi.advanceTimersByTime(2_000);
+    shell.reportRoute("/item/2", "Item 2", false);
+    expect(fake.calls.map((call) => call.kind)).toEqual(["replace", "push", "push"]);
+
+    // Back goes to the first item, and the app reports the route it brought.
+    fake.location.hash = "#/item/1";
+    shell.reportRoute("/item/1", "Item 1", false);
+    // Inside that push's second, another open must make a new entry: a
+    // replace would overwrite the entry Back chose and keep the old Forward
+    // entry in place.
+    vi.advanceTimersByTime(100);
+    shell.reportRoute("/item/3", "Item 3", false);
+    expect(fake.calls.map((call) => call.kind)).toEqual(["replace", "push", "push", "push"]);
+    expect(fake.location.hash).toBe("#/item/3");
+  });
+
   it("writes the newest route when a late timer leaves room for it", () => {
     const fake = fakeShellWindow();
     const shell = createDesktopShell(fake.win, () => Date.now());

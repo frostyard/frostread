@@ -37,9 +37,12 @@ export function desktopRoute(hash: string): Route {
 
 /**
  * createDesktopShell is the Shell of the desktop's window. `now` is the clock
- * the history budget reads, so a test can drive it with fake timers.
+ * the history budget and the coalescing read, so a test can drive it with
+ * fake timers. The default is the window's performance clock, not the wall
+ * clock: a clock jump (an NTP correction, a restored laptop) must not retire
+ * the calls in the budget window early and let the app spend them twice.
  */
-export function createDesktopShell(win: Window = window, now: () => number = () => Date.now()): Shell {
+export function createDesktopShell(win: Window = window, now: () => number = () => win.performance.now()): Shell {
   // The first report is the start route, which is already the window's
   // address: it replaces, so a start adds no history entry.
   let first = true;
@@ -141,6 +144,10 @@ export function createDesktopShell(win: Window = window, now: () => number = () 
       // Back or Forward went.
       if (!replacing && win.location.hash === hash) {
         dropHeld();
+        // Back ends the coalescing period: the next route must push, so the
+        // forward entry it replaces goes away. A replace here would overwrite
+        // the entry Back chose and leave the old Forward entry in place.
+        lastPush = Number.NEGATIVE_INFINITY;
         return;
       }
       const t = now();
