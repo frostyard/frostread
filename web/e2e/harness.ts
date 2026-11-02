@@ -9,7 +9,7 @@ import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { Session } from "./webdriver";
+import { Session, WebDriverError } from "./webdriver";
 
 /** ROOT is the repository; BUILD holds the app, and E2E the Go binaries. */
 export const ROOT = resolve(import.meta.dirname, "../..");
@@ -149,6 +149,12 @@ export interface App {
  * fresh XDG tree, seeds it with readdev's OPML and one poll, and starts the
  * app in a WebKitWebDriver session with the stand-ins on its PATH. A failed
  * launch stops everything it started before it throws.
+ *
+ * Every wait of a launch is bounded, and the worst case of all of them is
+ * 255 s: readdev's answer 30, readd's socket 30, the extraction 30, the
+ * driver's answer 45, and the session's start 120. That is below the 300 s
+ * hookTimeout of vitest.e2e.config.ts, so a launch that stalls fails the
+ * hook in time, and the hook's own failure still stops the run.
  */
 export async function launch(): Promise<App> {
   const dir = tempDir();
@@ -163,15 +169,27 @@ export async function launch(): Promise<App> {
   const stop = async () => {
     if (stopped) return;
     stopped = true;
-    await session?.quit().catch(() => {});
-    // The driver first, so it cannot start another app after readd is gone.
     const problems: string[] = [];
-    for (const { what, proc } of [...procs].reverse()) {
-      await end(what, proc).catch((err: unknown) => {
-        problems.push(err instanceof Error ? err.message : String(err));
+    try {
+      // The quit has the WebDriver client's 30 s bound, so a stalled driver
+      // cannot keep stop from ending the processes below.
+      await session?.quit().catch((err: unknown) => {
+        // A session the driver has already dropped is the state stop wants.
+        if (err instanceof WebDriverError && (err.code === "no such session" || err.code === "invalid session id")) {
+          return;
+        }
+        problems.push(`the session did not quit: ${String(err)}`);
       });
+    } finally {
+      // In a finally, so the processes end even when the quit failed.
+      // The driver goes first, so it cannot start another app after readd.
+      for (const { what, proc } of [...procs].reverse()) {
+        await end(what, proc).catch((err: unknown) => {
+          problems.push(err instanceof Error ? err.message : String(err));
+        });
+      }
+      rmSync(dir, { force: true, maxRetries: 10, recursive: true });
     }
-    rmSync(dir, { force: true, maxRetries: 10, recursive: true });
     if (problems.length > 0) throw new Error(problems.join("; "));
   };
 

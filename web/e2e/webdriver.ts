@@ -6,6 +6,16 @@
 
 const ELEMENT = "element-6066-11e4-a52e-4f735466cecf";
 
+/**
+ * CALL_TIMEOUT_MS bounds one WebDriver request. A driver that stalls answers
+ * nothing, and a test must fail on it rather than hang: the harness's own
+ * waits and the hook's timeout stay the outer bound.
+ */
+const CALL_TIMEOUT_MS = 30_000;
+
+/** START_TIMEOUT_MS bounds the request that makes a session: the driver starts the app first. */
+export const START_TIMEOUT_MS = 120_000;
+
 /** Element is a handle to an element in the session's page. */
 export interface Element {
   readonly id: string;
@@ -26,18 +36,34 @@ export class WebDriverError extends Error {
   }
 }
 
-async function call<T>(base: string, method: string, path: string, body?: unknown): Promise<T> {
-  const init: RequestInit = { method };
+async function call<T>(
+  base: string,
+  method: string,
+  path: string,
+  body?: unknown,
+  timeoutMs = CALL_TIMEOUT_MS,
+): Promise<T> {
+  const signal = AbortSignal.timeout(timeoutMs);
+  const init: RequestInit = { method, signal };
   if (body !== undefined) {
     init.headers = { "Content-Type": "application/json" };
     init.body = JSON.stringify(body);
   }
-  const res = await fetch(base + path, init);
-  const reply = (await res.json()) as Reply<T>;
-  if (!res.ok || reply.value?.error) {
-    throw new WebDriverError(reply.value?.error ?? String(res.status), reply.value?.message ?? res.statusText);
+  try {
+    const res = await fetch(base + path, init);
+    const reply = (await res.json()) as Reply<T>;
+    if (!res.ok || reply.value?.error) {
+      throw new WebDriverError(reply.value?.error ?? String(res.status), reply.value?.message ?? res.statusText);
+    }
+    return reply.value;
+  } catch (err) {
+    // The only thing that aborts the signal is its own timeout: name it as
+    // a timeout of this request, so a stalled driver is clear in the log.
+    if (signal.aborted && !(err instanceof WebDriverError)) {
+      throw new WebDriverError("timeout", `${method} ${path} gave no answer within ${timeoutMs} ms`);
+    }
+    throw err;
   }
-  return reply.value;
 }
 
 /** Session is one WebDriver session: one running app. */
@@ -53,9 +79,13 @@ export class Session {
 
   /** start creates a session; capabilities go into alwaysMatch. */
   static async start(driverURL: string, capabilities: Record<string, unknown>): Promise<Session> {
-    const v = await call<{ sessionId: string }>(driverURL, "POST", "/session", {
-      capabilities: { alwaysMatch: capabilities },
-    });
+    const v = await call<{ sessionId: string }>(
+      driverURL,
+      "POST",
+      "/session",
+      { capabilities: { alwaysMatch: capabilities } },
+      START_TIMEOUT_MS,
+    );
     return new Session(driverURL, v.sessionId);
   }
 
