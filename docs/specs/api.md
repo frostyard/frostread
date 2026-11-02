@@ -637,7 +637,17 @@ and `/subscriptions.opml`;
 owner sees sources with an error marker and the message in a source's
 sheet.
 `testdata/dev/subscriptions.opml` is the same document, for a check that
-does not want to run readdev first. `make dev-seed` prints it. The live check is:
+does not want to run readdev first. `make dev-seed` prints it.
+
+With `-hostile DIR` readdev also serves the `*.html` pages in `DIR`, read
+once at start and never changed, as a sixth feed `Dev Hostile`: one item per
+page, titled `Hostile NN: <name>` (the file's name without `.html`, its
+dashes as spaces), with its link and guid at `/hostile/<name>`, and the page
+itself at that path, followed by a paragraph of made-up text for the
+extraction. The OPML then names `Dev Hostile` too. The desktop app's hostile
+check points the corpus at a loopback canary and shows it both ways
+([web/e2e/hostile](../../web/e2e/hostile/README.md), plan 0002 step 3.7).
+The live check is:
 
 ```sh
 go run -tags devfeeds ./cmd/readdev &

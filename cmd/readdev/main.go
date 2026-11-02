@@ -5,9 +5,12 @@
 // (docs/specs/api.md, Development-only). It is built with -tags devfeeds,
 // and is in no release.
 //
-//	readdev [-addr 127.0.0.1:8088] [-opml]
+//	readdev [-addr 127.0.0.1:8088] [-opml] [-hostile DIR]
 //
-// With -opml it prints the OPML that names the three feeds and stops.
+// With -opml it prints the OPML that names the feeds and stops. With
+// -hostile DIR it also serves the hostile corpus in DIR as a sixth feed,
+// Dev Hostile, and its pages, for the desktop app's hostile check
+// (plan 0002, step 3.7).
 package main
 
 import (
@@ -31,10 +34,19 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8088", "the address to serve on")
 	opmlOnly := flag.Bool("opml", false, "print the OPML for the feeds and exit")
+	hostileDir := flag.String("hostile", "", "serve the hostile corpus in DIR as the Dev Hostile feed")
 	flag.Parse()
 	base := "http://" + *addr
+	var hostile *hostileCorpus
+	if *hostileDir != "" {
+		c, err := loadHostile(*hostileDir)
+		if err != nil {
+			log.Fatalf("the hostile corpus: %v", err)
+		}
+		hostile = c
+	}
 	if *opmlOnly {
-		fmt.Print(opmlDocument(base))
+		fmt.Print(opmlDocument(base, hostile))
 		return
 	}
 	ln, err := net.Listen("tcp", *addr)
@@ -42,7 +54,10 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Fprintf(os.Stderr, "readdev: three feeds at %s; set READ_DEV_ALLOW=%s for readd\n", base, *addr)
-	srv := &http.Server{Handler: handler(base), ReadHeaderTimeout: 10 * time.Second}
+	if hostile != nil {
+		fmt.Fprintf(os.Stderr, "readdev: %d hostile pages at %s/hostile/\n", len(hostile.pages), base)
+	}
+	srv := &http.Server{Handler: handler(base, hostile), ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.Serve(ln))
 }
 
@@ -112,7 +127,7 @@ var articles = []article{
 	},
 }
 
-func handler(base string) http.Handler {
+func handler(base string, hostile *hostileCorpus) http.Handler {
 	mux := http.NewServeMux()
 	// broken answers its feed once, so a subscription succeeds, and fails
 	// its polls after: the owner sees a source with an error marker.
@@ -130,15 +145,19 @@ func handler(base string) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		extra := ""
+		if hostile != nil {
+			extra = fmt.Sprintf("<p><a href=\"/hostile.xml\">The hostile feed</a>, %d pages</p>\n", len(hostile.pages))
+		}
 		fmt.Fprintf(w, `<!doctype html><title>Development feeds</title>
 <p>Three feeds for frostread's live check:</p><ul>
 <li><a href="/rss.xml">RSS</a></li><li><a href="/atom.xml">Atom</a></li>
 <li><a href="/feed.json">JSON Feed</a></li></ul>
-<p><a href="/subscriptions.opml">The OPML</a></p>`)
+%s<p><a href="/subscriptions.opml">The OPML</a></p>`, extra)
 	})
 	mux.HandleFunc("/subscriptions.opml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/x-opml; charset=utf-8")
-		fmt.Fprint(w, opmlDocument(base))
+		fmt.Fprint(w, opmlDocument(base, hostile))
 	})
 	mux.HandleFunc("/rss.xml", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, rss(base)) })
 	mux.HandleFunc("/atom.xml", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, atom(base)) })
@@ -160,6 +179,24 @@ func handler(base string) http.Handler {
 	})
 	mux.HandleFunc("/articles/", articlePage)
 	mux.HandleFunc("/img/", illustration)
+	if hostile != nil {
+		mux.HandleFunc("/hostile.xml", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
+			fmt.Fprint(w, hostile.feed(base))
+		})
+		// Only a corpus page's own name is a page: a name with a separator
+		// or a parent segment never reaches the directory.
+		mux.HandleFunc("/hostile/", func(w http.ResponseWriter, r *http.Request) {
+			name := strings.TrimPrefix(r.URL.Path, "/hostile/")
+			if name == "" || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+				http.NotFound(w, r)
+				return
+			}
+			if !hostile.servePage(w, name) {
+				http.NotFound(w, r)
+			}
+		})
+	}
 	return mux
 }
 
@@ -308,8 +345,13 @@ func busyFeed(base string) string {
 `
 }
 
-// opmlDocument is the five feeds as an OPML document, for readctl import.
-func opmlDocument(base string) string {
+// opmlDocument is the feeds as an OPML document, for readctl import: the
+// five development feeds, and Dev Hostile when a hostile corpus is served.
+func opmlDocument(base string, hostile *hostileCorpus) string {
+	hostileOutline := ""
+	if hostile != nil {
+		hostileOutline = `<outline type="rss" text="Dev Hostile" xmlUrl="` + base + `/hostile.xml" htmlUrl="` + base + `/hostile.xml"/>` + "\n"
+	}
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Development feeds</title></head><body>
 <outline text="Development" title="Development">
@@ -317,8 +359,7 @@ func opmlDocument(base string) string {
 <outline type="rss" text="Dev Atoms (Atom)" xmlUrl="` + base + `/atom.xml" htmlUrl="` + base + `/"/>
 <outline type="rss" text="Dev Feeds (JSON)" xmlUrl="` + base + `/feed.json" htmlUrl="` + base + `/"/>
 <outline type="rss" text="Dev Broken (500)" xmlUrl="` + base + `/broken.xml" htmlUrl="` + base + `/"/>
-<outline type="rss" text="Dev Busy (429)" xmlUrl="` + base + `/busy.xml" htmlUrl="` + base + `/"/>
-</outline></body></opml>
+<outline type="rss" text="Dev Busy (429)" xmlUrl="` + base + `/busy.xml" htmlUrl="` + base + `/"/>` + "\n" + hostileOutline + `</outline></body></opml>
 `
 }
 

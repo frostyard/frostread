@@ -138,6 +138,16 @@ export class Session {
     return this.do<string | null>("GET", `/element/${el.id}/attribute/${name}`);
   }
 
+  /**
+   * elementText returns an element's rendered text, as the driver reads it.
+   * Like attribute it needs no script, so it works inside the sandboxed
+   * frame, where the parent page may not run one. It is the frame's own
+   * text: WebKit's answer keeps a line break between blocks.
+   */
+  async elementText(el: Element): Promise<string> {
+    return this.do<string>("GET", `/element/${el.id}/text`);
+  }
+
   /** windows returns the handles of the session's windows. */
   windows(): Promise<string[]> {
     return this.do<string[]>("GET", "/window/handles");
