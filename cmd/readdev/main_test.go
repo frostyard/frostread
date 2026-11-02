@@ -363,3 +363,22 @@ func TestHostileDirMissing(t *testing.T) {
 		t.Fatal("a missing corpus directory loaded with no error")
 	}
 }
+
+// A corpus file that is a link out of the directory is an error, not a page:
+// readdev serves the pages in DIR, and nothing else.
+func TestHostileLinkOutside(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "outside.html")
+	if err := os.WriteFile(outside, []byte("<p>outside</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "01-inside.html"), []byte("<p>inside</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "02-outside.html")); err != nil {
+		t.Skipf("this filesystem has no symbolic links: %v", err)
+	}
+	if c, err := loadHostile(dir); err == nil {
+		t.Fatalf("a corpus file that links out of the directory loaded with no error: %v", c)
+	}
+}

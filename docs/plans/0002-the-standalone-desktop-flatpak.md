@@ -365,6 +365,12 @@ frostmail's 50, adapted, and 20 more for the kinds this step names.
   URLs (all from clicked `http`, `https` or `mailto` links), 0 canary
   hits.
 
+For each page, the suite also waits for proof that the frame holds it
+(the page's own marker raw, readdev's paragraph through readd), looks
+for `x-ran` in nested frames 3 levels deep, and counts every canary
+request of the run, the seed's included. Those checks came from the
+cross-review; the runs above and the table's 3rd row are from after them.
+
 The check of the check, on the same machine, not committed:
 
 | Change | Result |

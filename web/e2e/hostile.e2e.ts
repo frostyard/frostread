@@ -8,8 +8,18 @@
 // and no click may make a window. Run with make app-e2e.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { type App, type Canary, canary, HOSTILE_TITLE, hostileFiles, hostileTitle, launch, TOMATOES } from "./harness";
-import type { Element, Session } from "./webdriver";
+import {
+  type App,
+  type Canary,
+  canary,
+  HOSTILE_TEXT,
+  HOSTILE_TITLE,
+  hostileFiles,
+  hostileTitle,
+  launch,
+  TOMATOES,
+} from "./harness";
+import { type Element, type Session, WebDriverError } from "./webdriver";
 
 /**
  * QUIET_MS is how long a corpus page gets to try something. An absence
@@ -26,6 +36,35 @@ const FRAME_TIMEOUT_MS = 20_000;
 
 /** TITLE_TIMEOUT_MS bounds the wait for the reader to show the item that was clicked. */
 const TITLE_TIMEOUT_MS = 20_000;
+
+/**
+ * MARKER_TIMEOUT_MS bounds the wait for the evidence that the frame holds the
+ * page: a corpus page's own marker, or readdev's paragraph.
+ */
+const MARKER_TIMEOUT_MS = 5_000;
+
+/** MARKER_DEPTH is how far down a page's nested frames the test looks for a marker. */
+const MARKER_DEPTH = 3;
+
+/**
+ * CLICK_REFUSALS are the driver's errors that a click on a page's link may
+ * answer with, and that the page is not to blame for: a link the frame does
+ * not lay out, one another element covers, one its own page has already
+ * replaced, or one the driver no longer holds. Every other error fails the
+ * test.
+ */
+const CLICK_REFUSALS = new Set([
+  "element not interactable",
+  "element click intercepted",
+  "stale element reference",
+  "no such element",
+]);
+
+/** driverCode is an error's code, as the driver spells it. */
+function driverCode(err: unknown): string | undefined {
+  if (!(err instanceof WebDriverError)) return undefined;
+  return err.code.toLowerCase().replaceAll("_", " ");
+}
 
 /** OPEN_ALL_DEADLINE_MS bounds the whole of the second test's loop, well below
  * the 300 s testTimeout of vitest.e2e.config.ts, so a corpus that stops
@@ -103,13 +142,75 @@ async function showTomatoes(s: Session): Promise<Element> {
 }
 
 /**
- * checkFrame is what a corpus page must pass in the reader: the frame's
- * sandbox and no source, no marker that a script or an event handler ran,
- * and its links, each clicked once and remembered. A click the sandbox
- * refuses, or an element the page does not lay out, is not a failure of the
- * page: the click is what a person would do.
+ * Want is the evidence that the reader's frame holds the page the test asked
+ * for: page is a corpus page's own marker, in the raw path, and text is
+ * readdev's paragraph, in the path through readd.
  */
-async function checkFrame(s: Session, clicked: Set<string>): Promise<void> {
+type Want = { page: string } | { text: string };
+
+/**
+ * expectPage waits for the evidence that the frame's document is the page
+ * the test put there, and fails with the page's name when it does not come.
+ */
+async function expectPage(s: Session, want: Want): Promise<void> {
+  if ("page" in want) {
+    const marker = await s.waitFor(
+      `the marker of page ${want.page}`,
+      async () => {
+        const [found] = await s.findAll(`[data-hostile-page="${want.page}"]`);
+        return found;
+      },
+      MARKER_TIMEOUT_MS,
+    );
+    expect(await s.attribute(marker, "data-hostile-page")).toBe(want.page);
+    return;
+  }
+  await s.waitFor(
+    "readdev's paragraph in the frame",
+    async () => {
+      for (const p of await s.findAll("p")) {
+        if ((await s.elementText(p)).includes(want.text)) return true;
+      }
+      return false;
+    },
+    MARKER_TIMEOUT_MS,
+  );
+}
+
+/**
+ * expectNoMarker fails when an x-ran marker shows in the frame or in a frame
+ * inside it, depth levels deep: a page may nest a document that runs a
+ * script, and that document marks itself the same way. A nested frame the
+ * driver cannot enter answers "no such frame", and holds no document, so it
+ * is skipped; every other error is the page's.
+ */
+async function expectNoMarker(s: Session, depth: number): Promise<void> {
+  expect(await s.findAll("x-ran")).toEqual([]);
+  if (depth === 0) return;
+  for (const inner of await s.findAll("iframe")) {
+    try {
+      await s.frame(inner);
+    } catch (err) {
+      if (driverCode(err) === "no such frame") continue;
+      throw err;
+    }
+    try {
+      await expectNoMarker(s, depth - 1);
+    } finally {
+      await s.parentFrame();
+    }
+  }
+}
+
+/**
+ * checkFrame is what a corpus page must pass in the reader: the frame's
+ * sandbox and no source, the page's own evidence that the frame holds it, no
+ * marker that a script or an event handler ran, and its links, each clicked
+ * once and remembered. A click the sandbox refuses, or an element the page
+ * does not lay out, is not a failure of the page: the click is what a person
+ * would do.
+ */
+async function checkFrame(s: Session, clicked: Set<string>, want: Want): Promise<void> {
   const frame = await s.find('section[aria-label="Reader"] iframe');
   expect(await s.attribute(frame, "sandbox")).toBe("allow-popups");
   // WebKitWebDriver answers "" for an attribute the element lacks, so the
@@ -121,15 +222,23 @@ async function checkFrame(s: Session, clicked: Set<string>): Promise<void> {
   ).toBe(false);
   await s.frame(frame);
   try {
-    expect(await s.findAll("x-ran")).toEqual([]);
+    await expectPage(s, want);
+    await expectNoMarker(s, MARKER_DEPTH);
     for (const link of await s.findAll("a")) {
       const href = await s.attribute(link, "href");
+      try {
+        await s.click(link);
+      } catch (err) {
+        const code = driverCode(err);
+        if (code !== undefined && CLICK_REFUSALS.has(code)) continue;
+        throw err;
+      }
+      // Only a click that happened asks the shell to open a link.
       if (href !== null) clicked.add(href);
-      await s.click(link).catch(() => {});
     }
     // Again after the clicks: a handler that a pointer fires (onmouseover)
     // marks the page as surely as one that a load fires.
-    expect(await s.findAll("x-ran")).toEqual([]);
+    await expectNoMarker(s, MARKER_DEPTH);
   } finally {
     await s.parentFrame();
   }
@@ -156,13 +265,16 @@ describe("the hostile corpus", () => {
     const files = hostileFiles(trap.origin);
     expect(files.length).toBeGreaterThanOrEqual(55);
     const openedBefore = app.opened().length;
-    const hitsBefore = trap.hits.length;
     const clicked = new Set<string>();
     // The corpus is newer than the development articles, so the Unread
     // list shows it first: the article's own source lists it in view.
     await s.click(await sidebarButton(s, JOURNAL_SOURCE));
     await showTomatoes(s);
     for (const file of files) {
+      // The page and its own marker, so a frame that shows anything else
+      // fails the test: the marker is the evidence that the page arrived.
+      const page = file.name.replace(/\.html$/, "");
+      const html = `${file.html}\n<p data-hostile-page="${page}">hostile page ${page}</p>`;
       // The frame the reader already shows, with the corpus page in place of
       // the article: the sandbox and the CSP are all that stand between the
       // page and the network.
@@ -170,17 +282,19 @@ describe("the hostile corpus", () => {
         `const frame = document.querySelector('section[aria-label="Reader"] iframe');
          if (frame === null) throw new Error("the reader shows no frame");
          frame.srcdoc = arguments[0];`,
-        file.html,
+        html,
       );
       await settle(QUIET_MS);
-      await checkFrame(s, clicked);
+      await checkFrame(s, clicked, { page });
     }
     await settle(SETTLE_MS);
     const opened = app.opened().slice(openedBefore);
-    expect(trap.hits.slice(hitsBefore)).toEqual([]);
+    // Every request the canary saw counts, the seed's and the extraction's
+    // as well: a corpus page that reached it is a failure.
+    expect(trap.hits).toEqual([]);
     expect(openerProblems(opened, clicked)).toEqual([]);
     console.log(
-      `hostile raw: ${files.length} pages, ${clicked.size} links clicked, ${opened.length} opener URLs, ${trap.hits.length - hitsBefore} canary hits`,
+      `hostile raw: ${files.length} pages, ${clicked.size} links clicked, ${opened.length} opener URLs, ${trap.hits.length} canary hits`,
     );
   });
 
@@ -190,7 +304,6 @@ describe("the hostile corpus", () => {
     const files = hostileFiles(trap.origin);
     const titles = files.map((file) => hostileTitle(file.name));
     const openedBefore = app.opened().length;
-    const hitsBefore = trap.hits.length;
     // The Unread view drops a row once it is read, so the corpus's next
     // unread items come up into the list's first page, and into view. A
     // source's view keeps its read rows, and its list reloads its first page
@@ -261,7 +374,7 @@ describe("the hostile corpus", () => {
         // paces the opens: each one is a history entry and a title, and
         // WebKit refuses a page more than 100 history calls in 10 s.
         await settle(QUIET_MS);
-        await checkFrame(s, clicked);
+        await checkFrame(s, clicked, { text: HOSTILE_TEXT });
       }
       done.add(wanted);
     }
@@ -271,10 +384,12 @@ describe("the hostile corpus", () => {
     // Every corpus page carries readdev's made-up paragraph, so each one
     // extracts and shows in the frame: a page with no frame checked nothing.
     expect(unrendered).toEqual([]);
-    expect(trap.hits.slice(hitsBefore)).toEqual([]);
+    // Every request the canary saw counts, the seed's and the extraction's
+    // as well.
+    expect(trap.hits).toEqual([]);
     expect(openerProblems(opened, clicked)).toEqual([]);
     console.log(
-      `hostile through readd: ${done.size} items, ${unrendered.length} without a frame, ${clicked.size} links clicked, ${opened.length} opener URLs, ${trap.hits.length - hitsBefore} canary hits`,
+      `hostile through readd: ${done.size} items, ${unrendered.length} without a frame, ${clicked.size} links clicked, ${opened.length} opener URLs, ${trap.hits.length} canary hits`,
     );
   });
 });

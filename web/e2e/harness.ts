@@ -39,6 +39,15 @@ export const HOSTILE = join(ROOT, "web", "e2e", "hostile");
 /** HOSTILE_TITLE is the start of every hostile item's title, as readdev and the sidebar give it. */
 export const HOSTILE_TITLE = "Hostile ";
 
+/**
+ * HOSTILE_TEXT is the start of the paragraph readdev serves after every
+ * corpus page, and it must match cmd/readdev/hostile.go's hostileText: a page
+ * read through readd carries these words in its frame, which is how the
+ * suite knows the frame holds the page rather than something else. Change the
+ * two together.
+ */
+export const HOSTILE_TEXT = "The workshop keeps its own hours";
+
 /** SEED_TIMEOUT_MS bounds each of the seed's 3 calls, well below readctl's own 2 minutes. */
 const SEED_TIMEOUT_MS = 30_000;
 

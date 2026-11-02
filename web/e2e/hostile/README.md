@@ -35,11 +35,24 @@ document.body.append(document.createElement("x-ran"));
 ```
 
 and only then does its hostile work. No file holds an `x-ran` element in
-its markup, so the suite looks for `x-ran` elements in the frame: one means
-a script or a handler ran. The one exception is `03-script-in-head.html`,
-whose script runs before the body exists and so appends to
-`document.documentElement`. A script that loads a file (`src="…"`) cannot
-carry the marker; its canary URL is the load test.
+its markup, so the suite looks for `x-ran` elements in the frame, and in the
+frames nested in it three levels down: one marker means a script or a
+handler ran. A `javascript:` URL, a `vbscript:` URL and a CSS expression
+carry the marker too, and so does the `animate` value in
+`62-svg-use-feimage-animate.html`. The nested check follows `iframe`
+elements: a driver enters a frame, and an `object` or an `embed` is none.
+
+Two rules have an exception, and these are the files:
+
+- `03-script-in-head.html`: its script runs before the body exists, so it
+  appends the marker to `document.documentElement`.
+- `02-script-src.html` and `51-script-gadget.html` load their script with
+  `src="…"`, so they hold no code to mark. Their canary URL, or the app's
+  own entry, is the load test.
+
+`48-ping-area.html` puts `ping` on an `area`, not on an `a`: the suite
+clicks every `a` in the frame, and a click on an `a` with `ping` may send
+the ping before anything else can stop it.
 
 `48-ping-area.html` puts `ping` on an `area`, not on an `a`: the suite
 clicks every `a` in the frame, and a click on an `a` with `ping` may send

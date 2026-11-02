@@ -7,7 +7,6 @@ import (
 	"html"
 	"net/http"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -46,19 +45,48 @@ type hostileCorpus struct {
 	pages []hostilePage
 }
 
-// loadHostile reads every .html file in dir, sorted by name. It never
+// loadHostile reads every .html file in dir, sorted by name. It reads them
+// through an os.Root, so a name that leaves the directory, such as a
+// symbolic link to a file outside it, is an error and not a page. It never
 // changes the directory.
 func loadHostile(dir string) (*hostileCorpus, error) {
-	entries, err := os.ReadDir(dir)
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, err
+	}
+	c, err := readHostile(root)
+	// The root holds the directory open: close it either way, and report a
+	// close failure only when the read itself was fine.
+	if closeErr := root.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// readHostile reads the corpus through root: every .html file in it, sorted
+// by name. root.ReadFile refuses a name outside the root.
+func readHostile(root *os.Root) (*hostileCorpus, error) {
+	d, err := root.Open(".")
+	if err != nil {
+		return nil, err
+	}
+	entries, err := d.ReadDir(-1)
+	closeErr := d.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, closeErr
 	}
 	c := &hostileCorpus{}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".html") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		data, err := root.ReadFile(e.Name())
 		if err != nil {
 			return nil, err
 		}
