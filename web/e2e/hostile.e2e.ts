@@ -144,9 +144,10 @@ async function showTomatoes(s: Session): Promise<Element> {
 /**
  * Want is the evidence that the reader's frame holds the page the test asked
  * for: page is a corpus page's own marker, in the raw path, and text is
- * readdev's paragraph, in the path through readd.
+ * readdev's paragraph and the item's title in the
+ * page's own heading, in the path through readd.
  */
-type Want = { page: string } | { text: string };
+type Want = { page: string } | { text: string; title: string };
 
 /**
  * expectPage waits for the evidence that the frame's document is the page
@@ -165,6 +166,17 @@ async function expectPage(s: Session, want: Want): Promise<void> {
     expect(await s.attribute(marker, "data-hostile-page")).toBe(want.page);
     return;
   }
+  // The rendered page's own heading names its item, so a frame that shows
+  // another item's page fails here, not only in the parent's heading.
+  const heading = await s.waitFor(
+    `the heading of ${want.title} in the frame`,
+    async () => {
+      const [h1] = await s.findAll("header h1");
+      return h1;
+    },
+    MARKER_TIMEOUT_MS,
+  );
+  expect(await s.elementText(heading)).toBe(want.title);
   await s.waitFor(
     "readdev's paragraph in the frame",
     async () => {
@@ -374,7 +386,7 @@ describe("the hostile corpus", () => {
         // paces the opens: each one is a history entry and a title, and
         // WebKit refuses a page more than 100 history calls in 10 s.
         await settle(QUIET_MS);
-        await checkFrame(s, clicked, { text: HOSTILE_TEXT });
+        await checkFrame(s, clicked, { text: HOSTILE_TEXT, title: wanted });
       }
       done.add(wanted);
     }
