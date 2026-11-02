@@ -292,6 +292,19 @@ What the run found:
   required check (a repository setting).
 - **Depends on:** 3.2.
 
+**3.5's evidence (2026-11-02, in review).** The new job, `Desktop app
+(make app-check app-build)` in `.github/workflows/ci.yml`, passed on its
+pull request in 7 min 54 s on `ubuntu-24.04` without a cache
+([run 41477139260](https://github.com/frostyard/frostread/actions/runs/41477139260)):
+Biome, tsc and Vitest, `cargo fmt --check`, `cargo clippy -D warnings`,
+`cargo test`, and the release build. It installs Tauri's WebKitGTK
+development packages, Node 24.21.0 and Rust 1.99.0 with clippy and
+rustfmt, as the nsl machine has them, and keeps its Cargo build under
+`build/cargo-target` with a cache keyed on `web/src-tauri/Cargo.lock`.
+Its actions are SHA-pinned, it has only `contents: read`, and
+`internal/workflowcheck`'s tests pass with it in `make check`. No other
+job changed its name. Whether it is a required check is Brian's choice.
+
 **3.6 — The end-to-end harness and the first run (medium).**
 - `web/e2e/harness.ts` and `make app-e2e`, as frostmail's `ui-e2e`:
   build `readd` with the `devfetch` tag and `readdev` with the
