@@ -1,4 +1,4 @@
-.PHONY: help build fmt vet lint lint-version-check test race cross vulncheck tidy-check verify check ci contract-update web-build web-check web-fmt app-check app-test app-build lodge-package dev-seed dev-lodge svu-version-check bump deb deb-check clean
+.PHONY: help build fmt vet lint lint-version-check test race cross vulncheck tidy-check verify check ci contract-update web-build web-check web-fmt app-check app-test app-build app-e2e lodge-package dev-seed dev-lodge svu-version-check bump deb deb-check clean
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -106,6 +106,15 @@ app-test: ## Build the desktop bundle and run the shell's Rust tests (nsl)
 
 app-build: ## Build the release app binary into build/frostread-app (nsl)
 	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web && pnpm install $(FROZEN) --silent && pnpm tauri build && mkdir -p ../build && cp "$$CARGO_TARGET_DIR/release/frostread" ../build/frostread-app'
+
+# app-e2e drives the built app in WebKitGTK against readd's desktop mode on
+# readdev's generated feeds, headless in the nsl machine (plan 0002, step
+# 3.6). The Go binaries are static, so the machine runs the host's build;
+# readd needs the devfetch tag and readdev the devfeeds one.
+app-e2e: app-build ## Drive the built app in WebKitGTK against readd and readdev, headless (nsl); F= picks tests
+	CGO_ENABLED=0 go build -tags 'devfetch devfeeds' $(GOFLAGS) -o build/e2e/ ./cmd/readd ./cmd/readctl ./cmd/readdev
+	$(IN_APP_NSL) 'cd web && pnpm install $(FROZEN) --silent && env -u WAYLAND_DISPLAY GDK_BACKEND=x11 xvfb-run -a -s "-screen 0 1280x800x24" pnpm exec vitest run -c vitest.e2e.config.ts $(F)'
+	$(IN_APP_NSL) '! pgrep -af "[b]uild/e2e/|[f]rostread-app|[W]ebKitWebDriver"'
 
 # lodge-package stages the app under LODGE_DESTDIR in lodge's install
 # layout, with packaging/lodge/stage.sh. It replaces only this app's own
