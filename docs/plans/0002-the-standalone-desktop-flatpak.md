@@ -414,6 +414,11 @@ What the work found:
 - WebKit refuses a page more than 100 history calls in 10 s, and the
   desktop shell's `reportRoute` then throws to the error boundary. The
   suite paces its opens with the quiet time; the app does not limit them.
+- Both are fixed in frostread#39 (2026-11-02): the desktop shell keeps a
+  budget of 50 history calls in 10 s and never lets a history call throw,
+  and a change reloads as many rows as the list holds.
+  `web/e2e/lists.e2e.ts` tests fast opens and a long list; the hostile
+  suite's pause is now the page's quiet time alone.
 
 **3.8 — Phase 3's record (small; docs).**
 - This plan records the evidence of Phase 3's Done when: the commit, the
