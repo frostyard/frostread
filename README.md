@@ -179,11 +179,27 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
 
 ## Update
 
-frostread has no release. An update moves the host to a newer commit of
-`main`. While frostread is stopped, the Read tab does not work, the
-poller does not run, and lodge shows the app as down.
+An update installs a release's `.deb`,
+`frostyard-readd_X.Y.Z_amd64.deb` (see [Release](#release)). lodge's host
+has no apt source and no sysext for it (2026-11-03), so it goes in by hand
+with `dpkg -i`, as v0.3.0 (2026-10-30) and v0.4.0 (2026-11-03) did. The
+package has no maintainer scripts: it starts, stops and reloads nothing,
+so the steps below do that. While frostread is stopped, the Read tab does
+not work, the poller does not run, and lodge shows the app as down.
 
-1. **Note the old version, and stop frostread.** Stop the socket too:
+1. **Get the package and check it**, on a computer with `gh`. Continue
+   only when the hash is the release asset's digest and the attestation's
+   workflow is `release.yml` at `refs/tags/vX.Y.Z`. Then copy the package
+   to the host's `/root`, and keep it there: it is the next roll back.
+
+   ```sh
+   gh release download vX.Y.Z -R frostyard/frostread -p 'frostyard-readd_*_amd64.deb'
+   sha256sum frostyard-readd_X.Y.Z_amd64.deb
+   gh release view vX.Y.Z -R frostyard/frostread --json assets --jq '.assets[].digest'
+   gh attestation verify frostyard-readd_X.Y.Z_amd64.deb -R frostyard/frostread
+   ```
+
+2. **Note the old version, and stop frostread.** Stop the socket too:
    it starts the service again on the next connection.
 
    ```sh
@@ -191,7 +207,7 @@ poller does not run, and lodge shows the app as down.
    sudo systemctl stop frostread.socket frostread.service
    ```
 
-2. **Take a rollback archive.** Keep it root-only: the notes token is a
+3. **Take a rollback archive.** Keep it root-only: the notes token is a
    secret. Name it with the old version and a UTC time. The binaries are
    in `/usr/bin` (builds from frostread#20 on) or in `/usr/local/bin`
    (earlier builds), so the script lists only the paths that exist. Every
@@ -199,7 +215,7 @@ poller does not run, and lodge shows the app as down.
 
    ```sh
    sudo sh -c 'umask 077
-     a=/root/frostread-OLDVERSION-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
+     a=/root/frostread-rollback-OLDVERSION-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
      bins=$(ls -d /usr/bin/readd /usr/bin/readctl \
        /usr/local/bin/readd /usr/local/bin/readctl 2>/dev/null)
      tar -czpf "$a" /var/lib/frostread /etc/frostread \
@@ -216,40 +232,52 @@ poller does not run, and lodge shows the app as down.
    sudo tar -tzf ARCHIVE var/lib/frostread >/dev/null
    ```
 
-3. **Pull and build.** Pull the new commit, then repeat step 1's build
-   commands (`make web-build` in nsl, then `make lodge-package`):
+4. **Install, reload and start.** readd migrates its database at start
+   (`internal/store`, by `user_version`); the release notes name a
+   migration, for example v0.4.0's source folders.
 
    ```sh
-   git pull --ff-only origin main
-   ```
-
-4. **Copy, reload and start.** Repeat step 1's `rm` and `cp` lines, and
-   its one-time removal of `/usr/local/bin/readd` and `readctl` if the
-   host still has them. Then:
-
-   ```sh
+   sudo dpkg -i /root/frostyard-readd_X.Y.Z_amd64.deb
    sudo systemctl daemon-reload
    sudo systemctl start frostread.socket frostread.service
    sudo lodgectl reload
    ```
 
-5. **Check.** `readctl status` prints the new version, and `read` is up
-   in lodge's list, with the new version:
+   **Once, on a host whose files were copied by hand** (before v0.3.0):
+   remove `/usr/share/lodge/apps/read` and any `/usr/local/bin/readd` and
+   `readctl` before `dpkg -i`, so that no file the package does not own
+   is left behind ([Install on lodge's host](#install-on-lodges-host),
+   step 1).
+
+5. **Check.** `readctl status` prints the new version, `read` is up in
+   lodge's list with the new version, and the journal since the start has
+   no warning:
 
    ```sh
    sudo -u frostread readctl status
    sudo lodgectl apps
+   sudo journalctl -u frostread.service -p warning --since -10min
    ```
+
+A commit with no release builds and copies as
+[Install on lodge's host](#install-on-lodges-host), step 1 does, in place
+of step 4's `dpkg -i`. On a host that has the package, that copy leaves
+`dpkg`'s record wrong: install a release again soon after.
 
 ## Roll back
 
-Roll back to the commit you ran before.
+Roll back to the release you ran before.
 
-1. **Stop frostread**, as in step 1 of "Update".
-2. **Put the earlier build back.** Check out the earlier commit, build
-   it, and repeat step 1's `rm` and `cp` lines. A build from before
-   frostread#20 brings back `/usr/local/bin/readd`, and its unit names
-   that path; the next update then needs the one-time removal again. Or extract the installed files from the rollback archive,
+1. **Stop frostread**, as in step 2 of "Update".
+2. **Put the earlier release back** with its `.deb`, which step 1 of
+   "Update" kept in `/root`. `dpkg` accepts the older version:
+
+   ```sh
+   sudo dpkg -i /root/frostyard-readd_OLD_amd64.deb
+   ```
+
+   For a version that was not a package, extract the installed files from
+   the rollback archive instead, after `sudo dpkg -r frostyard-readd` and
    after you remove `/usr/share/lodge/apps/read`. This leaves the state
    and the configuration as they are:
 
