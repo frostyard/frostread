@@ -26,6 +26,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -373,11 +374,15 @@ func newApp(log *slog.Logger, s *server) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
+	var badge *badgeCounter
+	if s.unread != nil {
+		badge = &badgeCounter{unread: s.unread, log: log}
+	}
 	return &app{rpc: s.rpc, router: router, lodge: &lodgeapp.Server{
 		Health: func(ctx context.Context) lodgeapp.Health {
 			h := lodgeapp.Health{OK: true, Version: version, Protocol: api.Protocol}
-			if s.unread != nil {
-				h.Badge = unreadBadge(ctx, s.unread, log)
+			if badge != nil {
+				h.Badge = badge.badge(ctx)
 			}
 			return h
 		},
@@ -390,16 +395,48 @@ func newApp(log *slog.Logger, s *server) (*app, error) {
 	}}, nil
 }
 
-// unreadBadge reads the badge lodge draws in its rail. The count is bounded
-// by the time lodge's poll allows, and a failed count leaves the badge out:
-// it never makes the app degraded (lodge ADR-0020).
-func unreadBadge(ctx context.Context, unread func(context.Context) (int, error), log *slog.Logger) int {
+// badgeCounter reads the count lodge draws in its rail (lodge ADR-0020). It
+// runs one count at a time, and a count never holds /health past the 1 s
+// lodge's poll allows: the query may take longer than its context bounds it
+// (the driver's PRAGMAs and the busy timeout run first).
+type badgeCounter struct {
+	unread func(ctx context.Context) (int, error)
+	log    *slog.Logger
+	busy   atomic.Bool
+}
+
+// badgeResult is a count, or the error that stopped it.
+type badgeResult struct {
+	n   int
+	err error
+}
+
+// badge returns the Unread view's count, or 0 when the count failed, took
+// longer than 1 s, or still runs from an earlier call. A 0 badge never makes
+// the app degraded.
+func (b *badgeCounter) badge(ctx context.Context) int {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	// A count that outlives this call is interrupted where the driver can.
 	defer cancel()
-	n, err := unread(ctx)
-	if err != nil {
-		log.Warn("unread count failed", "err", err)
+	if !b.busy.CompareAndSwap(false, true) {
 		return 0
 	}
-	return n
+	// The buffer lets a count that ends after the timeout go.
+	done := make(chan badgeResult, 1)
+	go func() {
+		defer b.busy.Store(false)
+		n, err := b.unread(ctx)
+		done <- badgeResult{n: n, err: err}
+	}()
+	select {
+	case res := <-done:
+		if res.err != nil {
+			b.log.Warn("unread count failed", "err", res.err)
+			return 0
+		}
+		return res.n
+	case <-ctx.Done():
+		b.log.Warn("unread count timed out")
+		return 0
+	}
 }

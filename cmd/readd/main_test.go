@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -260,6 +262,70 @@ func TestHealthBadgeFailure(t *testing.T) {
 	}
 	if !h.OK || h.Badge != 0 {
 		t.Fatalf("health with a failed count = %+v, want OK with no badge", h)
+	}
+}
+
+// A count that runs longer than 1 s leaves the badge out, and the app stays
+// OK. One count runs at a time, and a later Health gets the count again.
+func TestHealthBadgeTimeout(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	release := make(chan struct{})
+	var returned sync.Once
+	var returnedCh = make(chan struct{})
+	var calls atomic.Int64
+	a, err := newApp(log, &server{
+		rpc: rpcserver.New(rpcserver.Options{Name: "readd test", Logger: log}),
+		unread: func(context.Context) (int, error) {
+			calls.Add(1)
+			<-release
+			returned.Do(func() { close(returnedCh) })
+			return 7, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := kittest.Start(t, ID, a.lodge)
+	h, err := l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health with a slow count = %+v, want OK with no badge", h)
+	}
+	// The first count still runs: this call starts none, and answers at once.
+	h, err = l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health while a count runs = %+v, want OK with no badge", h)
+	}
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("counts so far = %d, want 1", n)
+	}
+	close(release)
+	<-returnedCh
+	// The count that ended cleared the guard, so a later call counts again.
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	for {
+		h, err = l.Health(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !h.OK {
+			t.Fatalf("health = %+v, want OK", h)
+		}
+		if h.Badge == 7 {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("no badge came back after the count was released: %+v", h)
+		}
+	}
+	if n := calls.Load(); n != 2 {
+		t.Fatalf("counts = %d, want 2", n)
 	}
 }
 

@@ -43,7 +43,8 @@ It holds a `flock` on its state directory, so one readd owns one directory.
 The socket's `GET /health` carries `badge`: the Unread view's count, which
 lodge draws in its rail
 ([lodge ADR-0020](https://github.com/frostyard/lodge/blob/main/docs/adr/0020-apps-report-an-unread-count-for-the-rail-in-their-health.md)).
-A failed count leaves the badge out, and the app stays up.
+One count runs at a time. A failed count, or one that takes longer than 1 s,
+leaves the badge out, and the app stays up.
 
 **The desktop's readd.** `readd -desktop` is the Flatpak's own
 ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
