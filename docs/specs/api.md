@@ -426,6 +426,10 @@ org.frostyard.Frostread status` therefore finds the app's own readd.
 | `status` | prints the version, the build when the Flatpak has one, and whether save-as-note is ready |
 | `shutdown` | calls `daemon.shutdown`: readd answers, then stops and releases its lock |
 
+An id (`folder`, `note`, `note-status`, `poll`) is a whole decimal number
+above 0, and nothing else: `3junk`, ` 3`, `3.5`, `0x3`, `0` or `-2` is an
+error before readctl calls the command's method.
+
 Exit status is 0 on success and 1 on an error, which it prints to stderr.
 
 ### Configuration

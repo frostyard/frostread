@@ -151,9 +151,9 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if len(args) == 0 {
 			return errors.New("usage: readctl folder <source-id> [name]")
 		}
-		id, err := strconv.ParseInt(args[0], 10, 64)
-		if err != nil || id <= 0 {
-			return errors.New("folder needs a source id")
+		id, err := wholeID("folder", "a source", args[0])
+		if err != nil {
+			return err
 		}
 		name := strings.TrimSpace(strings.Join(args[1:], " "))
 		if err := read.SetFolder(ctx, id, name); err != nil {
@@ -197,9 +197,9 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return errors.New("usage: readctl poll [source-id]")
 		}
 		if len(args) == 1 {
-			var id int64
-			if _, err := fmt.Sscan(args[0], &id); err != nil || id <= 0 {
-				return errors.New("poll needs a source id")
+			id, err := wholeID("poll", "a source", args[0])
+			if err != nil {
+				return err
 			}
 			if err := read.Refresh(ctx, &id); err != nil {
 				return err
@@ -260,9 +260,9 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if len(args) != 1 {
 			return errors.New("usage: readctl note <item-id>")
 		}
-		var id int64
-		if _, err := fmt.Sscan(args[0], &id); err != nil || id <= 0 {
-			return errors.New("note needs an item id")
+		id, err := wholeID("note", "an item", args[0])
+		if err != nil {
+			return err
 		}
 		path, route, err := read.SaveAsNote(ctx, id)
 		if err != nil {
@@ -274,9 +274,9 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if len(args) != 1 {
 			return errors.New("usage: readctl note-status <item-id>")
 		}
-		var id int64
-		if _, err := fmt.Sscan(args[0], &id); err != nil || id <= 0 {
-			return errors.New("note-status needs an item id")
+		id, err := wholeID("note-status", "an item", args[0])
+		if err != nil {
+			return err
 		}
 		st, err := read.NoteStatus(ctx, id)
 		if err != nil {
@@ -319,6 +319,17 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		fmt.Fprintln(errOut, usage)
 		return fmt.Errorf("unknown command %q", command)
 	}
+}
+
+// wholeID reads a command's id: a whole decimal number above 0, with
+// nothing before or after it. command and kind name it in the error, as
+// in "poll needs a source id".
+func wholeID(command, kind, arg string) (int64, error) {
+	id, err := strconv.ParseInt(arg, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("%s needs %s id, a whole number above 0, not %q", command, kind, arg)
+	}
+	return id, nil
 }
 
 // resolveSocket is the socket readctl dials: --socket, READ_SOCKET, then the

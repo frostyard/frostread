@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"path/filepath"
@@ -159,6 +160,37 @@ func (f *folderer) SetFolder(_ context.Context, id int64, folder string) error {
 	return nil
 }
 
+// itemer answers refresh, save-as-note and note-status calls.
+type itemer struct {
+	api.ReadService
+	calls chan itemCall
+}
+
+// itemCall is one item or source method call.
+type itemCall struct {
+	method string
+	id     int64
+}
+
+func (i *itemer) Refresh(_ context.Context, id *int64) error {
+	call := itemCall{method: "Refresh"}
+	if id != nil {
+		call.id = *id
+	}
+	i.calls <- call
+	return nil
+}
+
+func (i *itemer) SaveAsNote(_ context.Context, id int64) (path, route string, err error) {
+	i.calls <- itemCall{method: "SaveAsNote", id: id}
+	return "Reading/Example.md", "/app/notes/#/1/Reading/Example.md", nil
+}
+
+func (i *itemer) NoteStatus(_ context.Context, id int64) (api.NoteStatusResult, error) {
+	i.calls <- itemCall{method: "NoteStatus", id: id}
+	return api.NoteStatusResult{State: api.NotePresent, Path: "Reading/Example.md"}, nil
+}
+
 // sources prints a source's folder, and nothing where it has none.
 func TestSourcesPrintFolders(t *testing.T) {
 	f := &folderer{sources: []api.Source{
@@ -199,6 +231,132 @@ func TestFolder(t *testing.T) {
 	}
 	if !strings.Contains(out, "source 3 is in no folder") {
 		t.Fatalf("folder printed %q", out)
+	}
+}
+
+// poll, note, note-status and folder refuse an id that is not a whole number above 0, before they call readd.
+func TestCommandsNeedAWholeID(t *testing.T) {
+	commands := []struct {
+		name string
+		text string
+	}{
+		{"poll", "poll needs a source id"},
+		{"note", "note needs an item id"},
+		{"note-status", "note-status needs an item id"},
+		{"folder", "folder needs a source id"},
+	}
+	badIDs := []string{"nope", "3junk", "0", "-2", "3.5", " 3", "0x3", "99999999999999999999"}
+	f := &folderer{set: make(chan folderCall, 32)}
+	i := &itemer{calls: make(chan itemCall, 32)}
+
+	for _, command := range commands {
+		for _, badID := range badIDs {
+			t.Run(command.name+"/"+badID, func(t *testing.T) {
+				args := []string{command.name, badID}
+				if command.name == "folder" {
+					args = append(args, "Garden")
+				}
+				var read api.ReadService = i
+				if command.name == "folder" {
+					read = f
+				}
+				_, err := readctl(t, read, args...)
+				if err == nil {
+					t.Fatalf("%s %s was accepted", command.name, badID)
+				}
+				if !strings.Contains(err.Error(), command.text) {
+					t.Errorf("error = %q, want text %q", err, command.text)
+				}
+				if !strings.Contains(err.Error(), fmt.Sprintf("%q", badID)) {
+					t.Errorf("error = %q, want bad id %q", err, badID)
+				}
+			})
+		}
+	}
+	if len(i.calls) != 0 {
+		t.Fatal("a refused command reached the item daemon")
+	}
+	if len(f.set) != 0 {
+		t.Fatal("a refused folder command reached the daemon")
+	}
+}
+
+// poll polls one source by its id, or every source with no id.
+func TestPoll(t *testing.T) {
+	i := &itemer{calls: make(chan itemCall, 3)}
+	out, err := readctl(t, i, "poll", "3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := <-i.calls; got != (itemCall{method: "Refresh", id: 3}) {
+		t.Fatalf("poll call = %+v, want Refresh id 3", got)
+	}
+	if out != "polled 3\n" {
+		t.Fatalf("poll output = %q", out)
+	}
+
+	out, err = readctl(t, i, "poll")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := <-i.calls; got != (itemCall{method: "Refresh"}) {
+		t.Fatalf("poll all call = %+v, want Refresh with nil id", got)
+	}
+	if out != "polled every source\n" {
+		t.Fatalf("poll all output = %q", out)
+	}
+
+	if _, err := readctl(t, i, "poll", "3", "4"); err == nil || !strings.Contains(err.Error(), "usage: readctl poll") {
+		t.Fatalf("poll 3 4 = %v", err)
+	}
+	if len(i.calls) != 0 {
+		t.Fatal("a refused poll reached the daemon")
+	}
+}
+
+// note saves the item as a note and prints its path and its route.
+func TestNote(t *testing.T) {
+	i := &itemer{calls: make(chan itemCall, 3)}
+	out, err := readctl(t, i, "note", "7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := <-i.calls; got != (itemCall{method: "SaveAsNote", id: 7}) {
+		t.Fatalf("note call = %+v, want SaveAsNote id 7", got)
+	}
+	if out != "saved Reading/Example.md\n/app/notes/#/1/Reading/Example.md\n" {
+		t.Fatalf("note output = %q", out)
+	}
+
+	for _, args := range [][]string{{"note"}, {"note", "7", "8"}} {
+		if _, err := readctl(t, i, args...); err == nil || !strings.Contains(err.Error(), "usage: readctl note") {
+			t.Fatalf("%v = %v", args, err)
+		}
+	}
+	if len(i.calls) != 0 {
+		t.Fatal("a refused note reached the daemon")
+	}
+}
+
+// note-status prints the note's state and its path.
+func TestNoteStatus(t *testing.T) {
+	i := &itemer{calls: make(chan itemCall, 2)}
+	out, err := readctl(t, i, "note-status", "7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := <-i.calls; got != (itemCall{method: "NoteStatus", id: 7}) {
+		t.Fatalf("note-status call = %+v, want NoteStatus id 7", got)
+	}
+	if out != "present Reading/Example.md\n" {
+		t.Fatalf("note-status output = %q", out)
+	}
+
+	if _, err := readctl(t, i, "note-status"); err == nil || !strings.Contains(err.Error(), "usage: readctl note-status") {
+		t.Fatalf("note-status with no id = %v", err)
+	}
+	if len(i.calls) != 0 {
+		t.Fatal("a refused note-status reached the daemon")
 	}
 }
 
