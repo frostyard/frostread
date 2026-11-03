@@ -144,6 +144,40 @@ func TestMarksAndCounts(t *testing.T) {
 	}
 }
 
+// UnreadCount counts the Unread view alone: a read item and an archived
+// item do not count.
+func TestUnreadCount(t *testing.T) {
+	d, now := open(t)
+	ctx := t.Context()
+	if n, err := d.UnreadCount(ctx); err != nil || n != 0 {
+		t.Fatalf("unread on an empty store = %d, %v; want 0", n, err)
+	}
+	src, err := d.AddSource(ctx, Source{URL: "https://example.com/feed.xml", Title: "Example"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := d.AddItems(ctx, src.ID, []NewItem{
+		{GUID: "a", Title: "One", Published: now.Add(-time.Hour)},
+		{GUID: "b", Title: "Two", Published: now.Add(-2 * time.Hour)},
+		{GUID: "c", Title: "Three", Published: now.Add(-3 * time.Hour)},
+	})
+	if err != nil || len(ids) != 3 {
+		t.Fatalf("add items = %v, %v; want 3", ids, err)
+	}
+	if n, err := d.UnreadCount(ctx); err != nil || n != 3 {
+		t.Fatalf("unread = %d, %v; want 3", n, err)
+	}
+	if err := d.SetRead(ctx, ids[:1], true); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetArchived(ctx, ids[1], true); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := d.UnreadCount(ctx); err != nil || n != 1 {
+		t.Fatalf("unread after a read and an archived item = %d, %v; want 1", n, err)
+	}
+}
+
 func TestSearchRanksAndSnippets(t *testing.T) {
 	d, now := open(t)
 	ctx := t.Context()

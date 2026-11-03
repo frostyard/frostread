@@ -510,6 +510,18 @@ type SourceCount struct {
 	Unread   int   `json:"unread"`
 }
 
+// UnreadCount returns the number of items in the Unread view: the count
+// readd reports as the badge on lodge's rail
+// (https://github.com/frostyard/lodge/blob/main/docs/adr/0020-apps-report-an-unread-count-for-the-rail-in-their-health.md).
+func (d *DB) UnreadCount(ctx context.Context) (int, error) {
+	where, args := viewClause(ViewUnread)
+	var n int
+	if err := d.db.QueryRowContext(ctx, `SELECT count(*) FROM items WHERE `+where, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count unread: %w", err)
+	}
+	return n, nil
+}
+
 // Counts returns every view's item count and each source's unread count.
 func (d *DB) Counts(ctx context.Context) (map[string]int, []SourceCount, error) {
 	views := map[string]int{}

@@ -21,7 +21,7 @@ the canonical paths, and keep content tool-agnostic.
 ## Status
 
 Pre-release, 2026-10-22, and public since 2026-10-23. Built on lodge's
-kit **v0.3.1**, and its web bundle on `@frostyard/lodge-client`
+kit **v0.4.0**, and its web bundle on `@frostyard/lodge-client`
 **client/v0.3.2** and on `@frostyard/lodge-ui` **ui/v0.6.0**. Built: the
 daemon and its store, the
 guarded fetcher, feeds and OPML, extraction and the blob store, polling,
@@ -144,7 +144,7 @@ counterpart of something those repositories do, read their file.
   and pushes the tag.
 - The version comes from `svu next` over Conventional Commits. On v0, a
   breaking change gives a minor.
-- Go module: `github.com/frostyard/lodge/kit` v0.3.1 (`go.mod`). It uses
+- Go module: `github.com/frostyard/lodge/kit` v0.4.0 (`go.mod`). It uses
   `kit/jsonrpc`, `lodgeapp`, `mcpsession` and `netguard`; its tests use
   `kittest`, `manifest` and `rpctest`.
 - Web pins in `web/package.json`: `@frostyard/lodge-client` as

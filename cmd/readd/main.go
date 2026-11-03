@@ -26,7 +26,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/frostyard/lodge/kit/jsonrpc"
 	"github.com/frostyard/lodge/kit/lodgeapp"
@@ -290,7 +292,7 @@ func run(ctx context.Context, args []string, o options) error {
 	mcp := mcpsession.New(mcpserver.Handler(mcpserver.Options{Engine: eng, Version: version, Log: log}),
 		mcpsession.Options{CheckScope: mcpserver.CheckScope, Logger: log})
 	defer func() { _ = mcp.Close() }()
-	app, err := newApp(log, &server{rpc: srv, read: ra, content: page, mcp: mcp})
+	app, err := newApp(log, &server{rpc: srv, read: ra, content: page, mcp: mcp, unread: db.UnreadCount})
 	if err != nil {
 		if private != nil {
 			_ = private.Close()
@@ -346,6 +348,9 @@ type server struct {
 	read    *readapi.Service
 	content *content.Handler
 	mcp     *mcpsession.Sessions
+	// unread is the badge on lodge's rail: the Unread view's count
+	// (lodge ADR-0020). Nil sends no badge.
+	unread func(ctx context.Context) (int, error)
 }
 
 // app is the daemon's API, and lodge's socket server for it.
@@ -369,9 +374,17 @@ func newApp(log *slog.Logger, s *server) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
+	var badge *badgeCounter
+	if s.unread != nil {
+		badge = &badgeCounter{unread: s.unread, log: log}
+	}
 	return &app{rpc: s.rpc, router: router, lodge: &lodgeapp.Server{
-		Health: func(context.Context) lodgeapp.Health {
-			return lodgeapp.Health{OK: true, Version: version, Protocol: api.Protocol}
+		Health: func(ctx context.Context) lodgeapp.Health {
+			h := lodgeapp.Health{OK: true, Version: version, Protocol: api.Protocol}
+			if badge != nil {
+				h.Badge = badge.badge(ctx)
+			}
+			return h
 		},
 		API: func(ctx context.Context, nc net.Conn, _ lodgeapp.Caller) {
 			s.rpc.ServeConn(ctx, nc, router, api.CallerSession)
@@ -380,4 +393,50 @@ func newApp(log *slog.Logger, s *server) (*app, error) {
 		MCP:     s.mcp,
 		Logger:  log,
 	}}, nil
+}
+
+// badgeCounter reads the count lodge draws in its rail (lodge ADR-0020). It
+// runs one count at a time, and a count never holds /health past the 1 s
+// lodge's poll allows: the query may take longer than its context bounds it
+// (the driver's PRAGMAs and the busy timeout run first).
+type badgeCounter struct {
+	unread func(ctx context.Context) (int, error)
+	log    *slog.Logger
+	busy   atomic.Bool
+}
+
+// badgeResult is a count, or the error that stopped it.
+type badgeResult struct {
+	n   int
+	err error
+}
+
+// badge returns the Unread view's count, or 0 when the count failed, took
+// longer than 1 s, or still runs from an earlier call. A 0 badge never makes
+// the app degraded.
+func (b *badgeCounter) badge(ctx context.Context) int {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	// A count that outlives this call is interrupted where the driver can.
+	defer cancel()
+	if !b.busy.CompareAndSwap(false, true) {
+		return 0
+	}
+	// The buffer lets a count that ends after the timeout go.
+	done := make(chan badgeResult, 1)
+	go func() {
+		defer b.busy.Store(false)
+		n, err := b.unread(ctx)
+		done <- badgeResult{n: n, err: err}
+	}()
+	select {
+	case res := <-done:
+		if res.err != nil {
+			b.log.Warn("unread count failed", "err", res.err)
+			return 0
+		}
+		return res.n
+	case <-ctx.Done():
+		b.log.Warn("unread count timed out")
+		return 0
+	}
 }

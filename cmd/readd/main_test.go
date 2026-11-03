@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -78,7 +80,7 @@ func start(t *testing.T) (*app, *engine.Engine, *kittest.Lodge) {
 	mcp := mcpsession.New(mcpserver.Handler(mcpserver.Options{Engine: eng, Version: "test", Log: log}),
 		mcpsession.Options{CheckScope: mcpserver.CheckScope, Logger: log})
 	t.Cleanup(func() { _ = mcp.Close() })
-	a, err := newApp(log, &server{rpc: srv, read: readapi.New(eng, log), content: page, mcp: mcp})
+	a, err := newApp(log, &server{rpc: srv, read: readapi.New(eng, log), content: page, mcp: mcp, unread: db.UnreadCount})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +204,128 @@ func TestNotesTokenIsLocalOnly(t *testing.T) {
 	}
 	if _, err := c.Read().SweepBlobs(t.Context(), true); !errors.Is(err, api.ErrMethodNotFound) {
 		t.Fatalf("blobs.sweep as a session = %v, want methodNotFound", err)
+	}
+}
+
+// /health carries the badge lodge draws in its rail: the Unread view's
+// count (lodge ADR-0020).
+func TestHealthBadge(t *testing.T) {
+	_, eng, l := start(t)
+	h, err := l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health = %+v, want OK with no badge", h)
+	}
+	// AddSource polls the feed before it returns, so its item is stored.
+	if _, err := eng.AddSource(t.Context(), "https://example.com/feed.xml"); err != nil {
+		t.Fatal(err)
+	}
+	h, err = l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 1 {
+		t.Fatalf("health after a source = %+v, want a badge of 1", h)
+	}
+	items, _, err := eng.ListItems(t.Context(), store.ListOptions{View: store.ViewUnread, Limit: 10})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("unread items = %d, %v; want 1", len(items), err)
+	}
+	if err := eng.SetRead(t.Context(), engine.Scope{Write: true}, []int64{items[0].ID}, true); err != nil {
+		t.Fatal(err)
+	}
+	h, err = l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health after reading the item = %+v, want no badge", h)
+	}
+}
+
+// A failed count sends no badge, and the app stays OK.
+func TestHealthBadgeFailure(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	a, err := newApp(log, &server{
+		rpc:    rpcserver.New(rpcserver.Options{Name: "readd test", Logger: log}),
+		unread: func(context.Context) (int, error) { return 0, errors.New("the database is closed") },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := kittest.Start(t, ID, a.lodge)
+	h, err := l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health with a failed count = %+v, want OK with no badge", h)
+	}
+}
+
+// A count that runs longer than 1 s leaves the badge out, and the app stays
+// OK. One count runs at a time, and a later Health gets the count again.
+func TestHealthBadgeTimeout(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	release := make(chan struct{})
+	var returned sync.Once
+	var returnedCh = make(chan struct{})
+	var calls atomic.Int64
+	a, err := newApp(log, &server{
+		rpc: rpcserver.New(rpcserver.Options{Name: "readd test", Logger: log}),
+		unread: func(context.Context) (int, error) {
+			calls.Add(1)
+			<-release
+			returned.Do(func() { close(returnedCh) })
+			return 7, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := kittest.Start(t, ID, a.lodge)
+	h, err := l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health with a slow count = %+v, want OK with no badge", h)
+	}
+	// The first count still runs: this call starts none, and answers at once.
+	h, err = l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health while a count runs = %+v, want OK with no badge", h)
+	}
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("counts so far = %d, want 1", n)
+	}
+	close(release)
+	<-returnedCh
+	// The count that ended cleared the guard, so a later call counts again.
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	for {
+		h, err = l.Health(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !h.OK {
+			t.Fatalf("health = %+v, want OK", h)
+		}
+		if h.Badge == 7 {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("no badge came back after the count was released: %+v", h)
+		}
+	}
+	if n := calls.Load(); n != 2 {
+		t.Fatalf("counts = %d, want 2", n)
 	}
 }
 
