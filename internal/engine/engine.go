@@ -171,9 +171,9 @@ func (e *Engine) Source(ctx context.Context, id int64) (store.Source, error) {
 }
 
 // AddSource subscribes to a feed, or to the feed a page names, and polls
-// it once.
+// it once. A new source is in no folder.
 func (e *Engine) AddSource(ctx context.Context, rawurl string) (store.Source, error) {
-	src, err := e.subscribe(ctx, rawurl, "")
+	src, err := e.subscribe(ctx, rawurl, "", "")
 	if err != nil {
 		return store.Source{}, err
 	}
@@ -188,9 +188,9 @@ func (e *Engine) AddSource(ctx context.Context, rawurl string) (store.Source, er
 }
 
 // subscribe finds the feed rawurl names, or the one the page rawurl names
-// points at, and records it. title is the owner's, when an import gives
-// one.
-func (e *Engine) subscribe(ctx context.Context, rawurl, title string) (store.Source, error) {
+// points at, and records it. title and folder are the owner's, when an
+// import gives them.
+func (e *Engine) subscribe(ctx context.Context, rawurl, title, folder string) (store.Source, error) {
 	if err := fetch.Check(rawurl); err != nil {
 		return store.Source{}, err
 	}
@@ -215,7 +215,7 @@ func (e *Engine) subscribe(ctx context.Context, rawurl, title string) (store.Sou
 		title = host(feedURL)
 	}
 	next := e.now().Add(-time.Second) // due at once
-	src, err := e.o.Store.AddSource(ctx, store.Source{URL: feedURL, Title: title,
+	src, err := e.o.Store.AddSource(ctx, store.Source{URL: feedURL, Title: title, Folder: folder,
 		SiteURL: f.SiteURL, ETag: res.ETag, LastModified: res.LastModified}, next)
 	if err != nil {
 		return store.Source{}, err
@@ -269,15 +269,27 @@ func (e *Engine) RenameSource(ctx context.Context, id int64, title string) error
 	return nil
 }
 
-// ImportOPML adds every feed an OPML document names, and polls each once
-// in the background. A feed that cannot be added is skipped.
+// SetFolder puts a source in a folder, or takes it out with an empty name.
+// A folder is one level: the name is on the source (docs/specs/api.md,
+// Folders).
+func (e *Engine) SetFolder(ctx context.Context, id int64, folder string) error {
+	if err := e.o.Store.SetSourceFolder(ctx, id, folderName(folder)); err != nil {
+		return err
+	}
+	e.change("unread")
+	return nil
+}
+
+// ImportOPML adds every feed an OPML document names, in its folder, and
+// polls each once in the background. A feed that cannot be added is
+// skipped; a URL that is already a source keeps the folder it has.
 func (e *Engine) ImportOPML(ctx context.Context, document string) (added, skipped int, err error) {
 	feeds, err := opml.Import(strings.NewReader(document))
 	if err != nil {
 		return 0, 0, err
 	}
 	for _, f := range feeds {
-		if _, err := e.subscribe(ctx, f.XMLURL, f.Title); err != nil {
+		if _, err := e.subscribe(ctx, f.XMLURL, f.Title, folderName(f.Folder)); err != nil {
 			e.log.Warn("an opml feed was skipped", "host", host(f.XMLURL), "err", err)
 			skipped++
 			continue
@@ -296,7 +308,7 @@ func (e *Engine) ExportOPML(ctx context.Context) (string, error) {
 	}
 	feeds := make([]opml.Feed, 0, len(sources))
 	for _, s := range sources {
-		feeds = append(feeds, opml.Feed{Title: s.Title, XMLURL: s.URL, HTMLURL: s.SiteURL})
+		feeds = append(feeds, opml.Feed{Title: s.Title, XMLURL: s.URL, HTMLURL: s.SiteURL, Folder: s.Folder})
 	}
 	b, err := opml.Export(feeds)
 	if err != nil {
@@ -467,12 +479,13 @@ func (e *Engine) SetRead(ctx context.Context, sc Scope, ids []int64, read bool) 
 	return nil
 }
 
-// MarkAllRead marks read every unread item in a view or a source.
-func (e *Engine) MarkAllRead(ctx context.Context, sc Scope, view string, sourceID *int64, before time.Time) error {
+// MarkAllRead marks read every unread item in a view, a source or a
+// folder.
+func (e *Engine) MarkAllRead(ctx context.Context, sc Scope, view string, sourceID *int64, folder string, before time.Time) error {
 	if !sc.Write {
 		return ErrReadOnly
 	}
-	if err := e.o.Store.MarkAllRead(ctx, view, sourceID, before); err != nil {
+	if err := e.o.Store.MarkAllRead(ctx, view, sourceID, folder, before); err != nil {
 		return err
 	}
 	e.change("unread", "all")
@@ -508,12 +521,23 @@ func (e *Engine) SetArchived(ctx context.Context, sc Scope, id int64, archived b
 // (docs/specs/api.md, later.save).
 const TitleLimit = 300
 
-// cleanTitle makes a page's title a stored title: control characters go (a
-// line break counts as white space, so it becomes a space and does not run
-// two words together), every run of white space becomes one space, and it
-// is cut to TitleLimit runes. The words are kept as text; nothing in them
+// FolderLimit is the most runes of a folder's name (docs/specs/api.md,
+// Folders).
+const FolderLimit = 100
+
+// cleanTitle makes a page's title a stored title.
+func cleanTitle(title string) string { return cleanText(title, TitleLimit) }
+
+// folderName makes a folder's name a stored one: it is cleaned as a title
+// is, and cut to FolderLimit runes.
+func folderName(name string) string { return cleanText(name, FolderLimit) }
+
+// cleanText makes other people's words a stored name: control characters
+// go (a line break counts as white space, so it becomes a space and does
+// not run two words together), every run of white space becomes one space,
+// and it is cut to limit runes. The words are kept as text; nothing in them
 // is markup.
-func cleanTitle(title string) string {
+func cleanText(text string, limit int) string {
 	kept := strings.Map(func(r rune) rune {
 		if !unicode.IsControl(r) {
 			return r
@@ -522,14 +546,14 @@ func cleanTitle(title string) string {
 			return ' '
 		}
 		return -1
-	}, title)
+	}, text)
 	words := strings.Fields(kept)
 	if len(words) == 0 {
 		return ""
 	}
 	cleaned := []rune(strings.Join(words, " "))
-	if len(cleaned) > TitleLimit {
-		cleaned = cleaned[:TitleLimit]
+	if len(cleaned) > limit {
+		cleaned = cleaned[:limit]
 	}
 	return strings.TrimSpace(string(cleaned))
 }

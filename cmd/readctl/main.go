@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -45,7 +46,9 @@ const usage = `usage: readctl [--socket PATH] [-desktop] COMMAND [ARGS]
 COMMAND:
   save <url>          save a link to read later
   add <feed-url>      subscribe to a feed, or to the feed a page names
-  sources             list the sources and their unread counts
+  sources             list the sources with their folders and unread counts
+  folder <source-id> [name...]
+                      put the source in a folder; no name takes it out
   note <item-id>      save an article as a note in the notes vault
   note-status <id>    say where an item's note is: present, moved, missing or unreachable
   import <file.opml>  import an OPML file, or - for stdin
@@ -63,7 +66,7 @@ The socket is --socket, or READ_SOCKET, or the desktop's socket with
 // known reports whether command is one readctl has.
 func known(command string) bool {
 	switch command {
-	case "save", "add", "sources", "note", "note-status", "import", "export", "poll", "search",
+	case "save", "add", "sources", "folder", "note", "note-status", "import", "export", "poll", "search",
 		"notes-token", "sweep", "status", "shutdown":
 		return true
 	}
@@ -134,11 +137,33 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return nil
 		}
 		for _, s := range sources {
-			fmt.Fprintf(out, "%d\t%d unread\t%s\t%s\n", s.ID, s.Unread, s.Title, s.URL)
+			fmt.Fprintf(out, "%d\t%d unread\t%s", s.ID, s.Unread, s.Title)
+			if s.Folder != "" {
+				fmt.Fprintf(out, "\t[%s]", s.Folder)
+			}
+			fmt.Fprintf(out, "\t%s\n", s.URL)
 			if s.LastError != "" {
 				fmt.Fprintf(out, "\tlast error: %s\n", s.LastError)
 			}
 		}
+		return nil
+	case "folder":
+		if len(args) == 0 {
+			return errors.New("usage: readctl folder <source-id> [name]")
+		}
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil || id <= 0 {
+			return errors.New("folder needs a source id")
+		}
+		name := strings.TrimSpace(strings.Join(args[1:], " "))
+		if err := read.SetFolder(ctx, id, name); err != nil {
+			return err
+		}
+		if name == "" {
+			fmt.Fprintf(out, "source %d is in no folder\n", id)
+			return nil
+		}
+		fmt.Fprintf(out, "source %d is in %s\n", id, name)
 		return nil
 	case "import":
 		if len(args) != 1 {

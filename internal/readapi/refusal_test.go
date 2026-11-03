@@ -80,3 +80,23 @@ func TestARefusalIsOneSentence(t *testing.T) {
 		t.Fatalf("message = %q", message)
 	}
 }
+
+// A folder is a set of sources, so a call that names a source and a folder
+// contradicts itself, and answers invalidParams.
+func TestSourceIDAndFolderAreRefusedTogether(t *testing.T) {
+	s := service(t)
+	id := int64(1)
+	want := "give sourceId or folder, not both"
+	if _, err := s.ListItems(t.Context(), api.ItemsListParams{
+		View: store.ViewAll, SourceID: id, Folder: "Garden",
+	}); err == nil {
+		t.Fatal("items.list with a source and a folder was accepted")
+	} else if code, message := apiError(t, err); code != api.CodeInvalidParams || message != want {
+		t.Fatalf("items.list: code = %v, message = %q; want invalidParams and %q", code, message, want)
+	}
+	if err := s.MarkAllRead(t.Context(), store.ViewAll, &id, "Garden", time.Time{}); err == nil {
+		t.Fatal("items.markAllRead with a source and a folder was accepted")
+	} else if code, message := apiError(t, err); code != api.CodeInvalidParams || message != want {
+		t.Fatalf("items.markAllRead: code = %v, message = %q; want invalidParams and %q", code, message, want)
+	}
+}

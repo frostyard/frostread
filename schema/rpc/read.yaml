@@ -25,6 +25,7 @@ types:
       - {name: url, type: string, doc: "The feed's URL."}
       - {name: siteUrl, type: string, optional: true, doc: "The site's home, when the feed names it."}
       - {name: title, type: string, doc: "The title the owner or the feed gave it."}
+      - {name: folder, type: string, optional: true, doc: "The folder the owner put it in; absent when it is in none."}
       - {name: unread, type: int, doc: "Its unread items."}
       - {name: errorCount, type: int, optional: true, doc: "Consecutive failed polls; absent when it has not failed."}
       - {name: lastError, type: string, optional: true, doc: "The last poll's error; absent when it did not fail."}
@@ -164,6 +165,16 @@ methods:
       - {name: id, type: int}
       - {name: title, type: string}
     errors: [notFound]
+  - name: sources.setFolder
+    writes: true
+    doc: >-
+      Put a source in a folder, or take it out with an empty folder. The
+      name is cleaned: control characters go, each run of white space
+      becomes 1 space, it is trimmed and cut to 100 runes.
+    params:
+      - {name: id, type: int}
+      - {name: folder, type: string}
+    errors: [notFound]
   - name: sources.refresh
     writes: true
     doc: Poll now, one source or every source.
@@ -181,10 +192,11 @@ methods:
     doc: Every source as an OPML 2.0 document.
     result: OPMLDocument
   - name: items.list
-    doc: One page of a view or a source, newest first.
+    doc: One page of a view, a source or a folder, newest first.
     params:
       - {name: view, type: string, doc: "unread, starred, later, archive or all."}
       - {name: sourceId, type: int, optional: true, doc: "Only this source's items."}
+      - {name: folder, type: string, optional: true, doc: "Only the items of the sources in this folder."}
       - {name: cursor, type: string, optional: true, doc: "The previous page's next cursor; absent starts at the newest."}
       - {name: limit, type: int, optional: true, doc: "At most this many; 1 to 200, 50 when absent."}
     result: ItemsPage
@@ -210,10 +222,11 @@ methods:
       - {name: read, type: bool}
   - name: items.markAllRead
     writes: true
-    doc: Mark read every unread item in a view or a source, published before before.
+    doc: Mark read every unread item in a view, a source or a folder, published before before.
     params:
       - {name: view, type: string, optional: true, doc: "A view; all when absent."}
       - {name: sourceId, type: int, optional: true, doc: "Only this source's items."}
+      - {name: folder, type: string, optional: true, doc: "Only the items of the sources in this folder."}
       - {name: before, type: time, optional: true, doc: "Only items published before this time; absent takes every one."}
     errors: [invalidParams]
   - name: items.setStarred

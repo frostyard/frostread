@@ -15,6 +15,7 @@
       "url": "https://example.com/feed.xml",
       "siteUrl": "https://example.com/",
       "title": "Example Journal",
+      "folder": "Garden",
       "unread": 3,
       "polledAt": "2026-10-20T12:00:00Z",
       "nextPollAt": "2026-10-20T12:20:00Z"

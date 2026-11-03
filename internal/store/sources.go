@@ -11,10 +11,12 @@ import (
 // Source is one subscription: a feed, its conditional-GET validators, when
 // it polls next, and its last error.
 type Source struct {
-	ID           int64
-	URL          string
-	SiteURL      string
-	Title        string
+	ID      int64
+	URL     string
+	SiteURL string
+	Title   string
+	// Folder is the owner's folder for it, one level; "" for none.
+	Folder       string
 	ETag         string
 	LastModified string
 	PolledAt     time.Time
@@ -26,13 +28,13 @@ type Source struct {
 	Unread int
 }
 
-const sourceColumns = `id, url, site_url, title, etag, last_modified, polled_at, next_poll_at,
+const sourceColumns = `id, url, site_url, title, folder, etag, last_modified, polled_at, next_poll_at,
 	error_count, last_error, created_at`
 
 // scanSource reads the sourceColumns.
 func scanSource(row interface{ Scan(...any) error }, s *Source, extra ...any) error {
 	var polled, next, created sql.NullString
-	dest := []any{&s.ID, &s.URL, &s.SiteURL, &s.Title, &s.ETag, &s.LastModified, &polled, &next,
+	dest := []any{&s.ID, &s.URL, &s.SiteURL, &s.Title, &s.Folder, &s.ETag, &s.LastModified, &polled, &next,
 		&s.ErrorCount, &s.LastError, &created}
 	if err := row.Scan(append(dest, extra...)...); err != nil {
 		return err
@@ -95,9 +97,9 @@ func (d *DB) SourceByURL(ctx context.Context, url string) (Source, error) {
 func (d *DB) AddSource(ctx context.Context, s Source, next time.Time) (Source, error) {
 	err := d.Tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `INSERT INTO sources
-			(url, site_url, title, etag, last_modified, next_poll_at, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			s.URL, s.SiteURL, s.Title, s.ETag, s.LastModified, timeString(next), timeString(d.Now()))
+			(url, site_url, title, folder, etag, last_modified, next_poll_at, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			s.URL, s.SiteURL, s.Title, s.Folder, s.ETag, s.LastModified, timeString(next), timeString(d.Now()))
 		if err != nil {
 			return fmt.Errorf("insert source: %w", err)
 		}
@@ -122,6 +124,11 @@ func (d *DB) AddSource(ctx context.Context, s Source, next time.Time) (Source, e
 // RenameSource sets a source's title.
 func (d *DB) RenameSource(ctx context.Context, id int64, title string) error {
 	return d.execOne(ctx, `UPDATE sources SET title = ? WHERE id = ?`, "rename source", title, id)
+}
+
+// SetSourceFolder puts a source in a folder, or takes it out with "".
+func (d *DB) SetSourceFolder(ctx context.Context, id int64, folder string) error {
+	return d.execOne(ctx, `UPDATE sources SET folder = ? WHERE id = ?`, "set a source's folder", folder, id)
 }
 
 // RemoveSource deletes a source, and its items and their search rows with
