@@ -35,11 +35,15 @@ this document changes with each of its phases.
 
 ## Design
 
-**The daemon.** `readd`, on lodge's kit **v0.3.1**, loads its
+**The daemon.** `readd`, on lodge's kit **v0.4.0**, loads its
 configuration, opens the store and the
 blob directory, starts the poller and the extraction workers, and serves
 two Unix sockets: lodge's app socket, and its private socket for `readctl`.
 It holds a `flock` on its state directory, so one readd owns one directory.
+The socket's `GET /health` carries `badge`: the Unread view's count, which
+lodge draws in its rail
+([lodge ADR-0020](https://github.com/frostyard/lodge/blob/main/docs/adr/0020-apps-report-an-unread-count-for-the-rail-in-their-health.md)).
+A failed count leaves the badge out, and the app stays up.
 
 **The desktop's readd.** `readd -desktop` is the Flatpak's own
 ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),

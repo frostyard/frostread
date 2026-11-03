@@ -78,7 +78,7 @@ func start(t *testing.T) (*app, *engine.Engine, *kittest.Lodge) {
 	mcp := mcpsession.New(mcpserver.Handler(mcpserver.Options{Engine: eng, Version: "test", Log: log}),
 		mcpsession.Options{CheckScope: mcpserver.CheckScope, Logger: log})
 	t.Cleanup(func() { _ = mcp.Close() })
-	a, err := newApp(log, &server{rpc: srv, read: readapi.New(eng, log), content: page, mcp: mcp})
+	a, err := newApp(log, &server{rpc: srv, read: readapi.New(eng, log), content: page, mcp: mcp, unread: db.UnreadCount})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +202,64 @@ func TestNotesTokenIsLocalOnly(t *testing.T) {
 	}
 	if _, err := c.Read().SweepBlobs(t.Context(), true); !errors.Is(err, api.ErrMethodNotFound) {
 		t.Fatalf("blobs.sweep as a session = %v, want methodNotFound", err)
+	}
+}
+
+// /health carries the badge lodge draws in its rail: the Unread view's
+// count (lodge ADR-0020).
+func TestHealthBadge(t *testing.T) {
+	_, eng, l := start(t)
+	h, err := l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health = %+v, want OK with no badge", h)
+	}
+	// AddSource polls the feed before it returns, so its item is stored.
+	if _, err := eng.AddSource(t.Context(), "https://example.com/feed.xml"); err != nil {
+		t.Fatal(err)
+	}
+	h, err = l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 1 {
+		t.Fatalf("health after a source = %+v, want a badge of 1", h)
+	}
+	items, _, err := eng.ListItems(t.Context(), store.ListOptions{View: store.ViewUnread, Limit: 10})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("unread items = %d, %v; want 1", len(items), err)
+	}
+	if err := eng.SetRead(t.Context(), engine.Scope{Write: true}, []int64{items[0].ID}, true); err != nil {
+		t.Fatal(err)
+	}
+	h, err = l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health after reading the item = %+v, want no badge", h)
+	}
+}
+
+// A failed count sends no badge, and the app stays OK.
+func TestHealthBadgeFailure(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	a, err := newApp(log, &server{
+		rpc:    rpcserver.New(rpcserver.Options{Name: "readd test", Logger: log}),
+		unread: func(context.Context) (int, error) { return 0, errors.New("the database is closed") },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := kittest.Start(t, ID, a.lodge)
+	h, err := l.Health(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OK || h.Badge != 0 {
+		t.Fatalf("health with a failed count = %+v, want OK with no badge", h)
 	}
 }
 

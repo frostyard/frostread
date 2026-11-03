@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/frostyard/lodge/kit/jsonrpc"
 	"github.com/frostyard/lodge/kit/lodgeapp"
@@ -290,7 +291,7 @@ func run(ctx context.Context, args []string, o options) error {
 	mcp := mcpsession.New(mcpserver.Handler(mcpserver.Options{Engine: eng, Version: version, Log: log}),
 		mcpsession.Options{CheckScope: mcpserver.CheckScope, Logger: log})
 	defer func() { _ = mcp.Close() }()
-	app, err := newApp(log, &server{rpc: srv, read: ra, content: page, mcp: mcp})
+	app, err := newApp(log, &server{rpc: srv, read: ra, content: page, mcp: mcp, unread: db.UnreadCount})
 	if err != nil {
 		if private != nil {
 			_ = private.Close()
@@ -346,6 +347,9 @@ type server struct {
 	read    *readapi.Service
 	content *content.Handler
 	mcp     *mcpsession.Sessions
+	// unread is the badge on lodge's rail: the Unread view's count
+	// (lodge ADR-0020). Nil sends no badge.
+	unread func(ctx context.Context) (int, error)
 }
 
 // app is the daemon's API, and lodge's socket server for it.
@@ -370,8 +374,12 @@ func newApp(log *slog.Logger, s *server) (*app, error) {
 		return nil, err
 	}
 	return &app{rpc: s.rpc, router: router, lodge: &lodgeapp.Server{
-		Health: func(context.Context) lodgeapp.Health {
-			return lodgeapp.Health{OK: true, Version: version, Protocol: api.Protocol}
+		Health: func(ctx context.Context) lodgeapp.Health {
+			h := lodgeapp.Health{OK: true, Version: version, Protocol: api.Protocol}
+			if s.unread != nil {
+				h.Badge = unreadBadge(ctx, s.unread, log)
+			}
+			return h
 		},
 		API: func(ctx context.Context, nc net.Conn, _ lodgeapp.Caller) {
 			s.rpc.ServeConn(ctx, nc, router, api.CallerSession)
@@ -380,4 +388,18 @@ func newApp(log *slog.Logger, s *server) (*app, error) {
 		MCP:     s.mcp,
 		Logger:  log,
 	}}, nil
+}
+
+// unreadBadge reads the badge lodge draws in its rail. The count is bounded
+// by the time lodge's poll allows, and a failed count leaves the badge out:
+// it never makes the app degraded (lodge ADR-0020).
+func unreadBadge(ctx context.Context, unread func(context.Context) (int, error), log *slog.Logger) int {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	n, err := unread(ctx)
+	if err != nil {
+		log.Warn("unread count failed", "err", err)
+		return 0
+	}
+	return n
 }
