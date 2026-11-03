@@ -71,18 +71,24 @@ func (s *sweeper) SweepBlobs(_ context.Context, dryRun bool) (api.SweepResult, e
 	return res, nil
 }
 
-// sweep runs readctl sweep against a daemon that answers as s does.
-func sweep(t *testing.T, s *sweeper, args ...string) (string, error) {
+// readctl runs one command against a daemon that answers as read does.
+func readctl(t *testing.T, read api.ReadService, args ...string) (string, error) {
 	t.Helper()
 	srv := rpcserver.New(rpcserver.Options{Name: "readd test", Logger: slog.New(slog.DiscardHandler)})
-	router, err := api.NewRouter(api.Services{RPC: srv, Read: s, Events: srv})
+	router, err := api.NewRouter(api.Services{RPC: srv, Read: read, Events: srv})
 	if err != nil {
 		t.Fatal(err)
 	}
-	run1 := rpctest.Serve(t, func(ctx context.Context, ln net.Listener) error { return srv.Serve(ctx, ln, router) })
+	served := rpctest.Serve(t, func(ctx context.Context, ln net.Listener) error { return srv.Serve(ctx, ln, router) })
 	var out, errOut bytes.Buffer
-	err = run(t.Context(), append([]string{"--socket", run1.Socket, "sweep"}, args...), strings.NewReader(""), &out, &errOut)
+	err = run(t.Context(), append([]string{"--socket", served.Socket}, args...), strings.NewReader(""), &out, &errOut)
 	return out.String(), err
+}
+
+// sweep runs readctl sweep against a daemon that answers as s does.
+func sweep(t *testing.T, s *sweeper, args ...string) (string, error) {
+	t.Helper()
+	return readctl(t, s, append([]string{"sweep"}, args...)...)
 }
 
 func TestSweep(t *testing.T) {
@@ -130,6 +136,86 @@ func TestSweepRefusesAnArgument(t *testing.T) {
 func TestSweepIsKnown(t *testing.T) {
 	if !known("sweep") || !strings.Contains(usage, "sweep [-dry-run]") {
 		t.Fatal("sweep is not in the command list")
+	}
+}
+
+// folderer answers sources.list and sources.setFolder.
+type folderer struct {
+	api.ReadService
+	sources []api.Source
+	set     chan folderCall
+}
+
+// folderCall is one sources.setFolder call.
+type folderCall struct {
+	id     int64
+	folder string
+}
+
+func (f *folderer) Sources(context.Context) ([]api.Source, error) { return f.sources, nil }
+
+func (f *folderer) SetFolder(_ context.Context, id int64, folder string) error {
+	f.set <- folderCall{id: id, folder: folder}
+	return nil
+}
+
+// sources prints a source's folder, and nothing where it has none.
+func TestSourcesPrintFolders(t *testing.T) {
+	f := &folderer{sources: []api.Source{
+		{ID: 1, URL: "https://example.com/feed.xml", Title: "Example Journal", Unread: 2, Folder: "Garden"},
+		{ID: 2, URL: "https://example.org/feed.xml", Title: "Example Notes"},
+	}}
+	out, err := readctl(t, f, "sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "1\t2 unread\tExample Journal\t[Garden]\thttps://example.com/feed.xml\n" +
+		"2\t0 unread\tExample Notes\thttps://example.org/feed.xml\n"
+	if out != want {
+		t.Fatalf("sources =\n%q\nwant\n%q", out, want)
+	}
+}
+
+// folder joins its words with one space, and no name takes the source out
+// of its folder.
+func TestFolder(t *testing.T) {
+	f := &folderer{set: make(chan folderCall, 2)}
+	out, err := readctl(t, f, "folder", "3", "Garden", "Notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := <-f.set; got != (folderCall{id: 3, folder: "Garden Notes"}) {
+		t.Fatalf("sources.setFolder = %+v, want source 3 in Garden Notes", got)
+	}
+	if !strings.Contains(out, "source 3 is in Garden Notes") {
+		t.Fatalf("folder printed %q", out)
+	}
+	out, err = readctl(t, f, "folder", "3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := <-f.set; got != (folderCall{id: 3}) {
+		t.Fatalf("sources.setFolder = %+v, want source 3 in no folder", got)
+	}
+	if !strings.Contains(out, "source 3 is in no folder") {
+		t.Fatalf("folder printed %q", out)
+	}
+}
+
+// folder needs a source id, and it is a command readctl names.
+func TestFolderNeedsASourceID(t *testing.T) {
+	f := &folderer{set: make(chan folderCall, 1)}
+	if _, err := readctl(t, f, "folder"); err == nil || !strings.Contains(err.Error(), "usage: readctl folder") {
+		t.Fatalf("folder with no id = %v", err)
+	}
+	if _, err := readctl(t, f, "folder", "nope"); err == nil || !strings.Contains(err.Error(), "needs a source id") {
+		t.Fatalf("folder nope = %v", err)
+	}
+	if len(f.set) != 0 {
+		t.Fatal("a refused command reached the daemon")
+	}
+	if !known("folder") || !strings.Contains(usage, "folder <source-id>") {
+		t.Fatal("folder is not in the command list")
 	}
 }
 

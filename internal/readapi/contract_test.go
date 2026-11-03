@@ -151,6 +151,11 @@ func seed(t *testing.T) *seeded {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The first source is in a folder, so sources.list shows one, and
+	// items.list can filter by it.
+	if err := eng.SetFolder(ctx, first.ID, "Garden"); err != nil {
+		t.Fatal(err)
+	}
 	broken, err := db.AddSource(ctx, store.Source{URL: "https://broken.example/feed.xml", Title: "A Broken Feed"},
 		now.Add(time.Hour))
 	if err != nil {
@@ -191,7 +196,6 @@ func seed(t *testing.T) *seeded {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = first
 
 	router, err := api.NewRouter(api.Services{RPC: stubRPC{}, Read: readapi.New(eng, nil), Events: stubEvents{}})
 	if err != nil {
@@ -242,6 +246,7 @@ func TestContract(t *testing.T) {
 		{"sources.list", "sources.list", `{}`},
 		{"items.list.unread", "items.list", `{"view":"unread","limit":2}`},
 		{"items.list.all", "items.list", `{"view":"all","limit":50}`},
+		{"items.list.folder", "items.list", `{"view":"all","folder":"Garden","limit":50}`},
 		{"items.get.done", "items.get", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`},
 		{"items.get.failed", "items.get", `{"id":` + itoa(s.items["A page that fails"]) + `}`},
 		{"items.get.saved", "items.get", `{"id":` + itoa(s.saved) + `}`},
@@ -255,6 +260,7 @@ func TestContract(t *testing.T) {
 		{"opml.import", "opml.import", `{"xml":"<?xml version=\"1.0\"?><opml version=\"2.0\"><body><outline type=\"rss\" text=\"Second Feed\" xmlUrl=\"https://second.example/feed.xml\"/></body></opml>"}`},
 		{"sources.add", "sources.add", `{"url":"https://third.example/feed.xml"}`},
 		{"sources.rename", "sources.rename", `{"id":1,"title":"Example Journal, renamed"}`},
+		{"sources.setFolder", "sources.setFolder", `{"id":1,"folder":"Garden"}`},
 		{"sources.refresh", "sources.refresh", `{"id":1}`},
 		{"items.setRead", "items.setRead", `{"ids":[` + itoa(s.items["Planting tomatoes after the last frost"]) + `],"read":true}`},
 		{"items.setStarred", "items.setStarred", `{"id":` + itoa(s.items["An item with no words"]) + `,"starred":true}`},

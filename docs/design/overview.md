@@ -55,8 +55,8 @@ note.
 **The store.** SQLite on local disk, WAL, foreign keys on, migrations by
 `user_version`:
 
-- `sources`: one subscription, its conditional-GET validators, its next
-  poll time and its last error;
+- `sources`: one subscription, its conditional-GET validators, its folder,
+  its next poll time and its last error;
 - `items`: one article or saved link. `source_id` is NULL for a saved link,
   which has `saved = 1`. `read_at`, `starred`, `archived` and `note_path`
   are the reader's own state;

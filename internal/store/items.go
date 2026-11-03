@@ -186,6 +186,8 @@ type ListOptions struct {
 	View string
 	// SourceID limits the page to one source when set.
 	SourceID *int64
+	// Folder limits the page to the sources in that folder when not empty.
+	Folder string
 	// Cursor is the previous page's next cursor; "" starts at the newest.
 	Cursor string
 	// Limit is the page's size.
@@ -202,6 +204,10 @@ func (d *DB) ListItems(ctx context.Context, o ListOptions) ([]Item, string, erro
 	if o.SourceID != nil {
 		where += " AND source_id = ?"
 		args = append(args, *o.SourceID)
+	}
+	if o.Folder != "" {
+		where += " AND source_id IN (SELECT id FROM sources WHERE folder = ?)"
+		args = append(args, o.Folder)
 	}
 	if o.Cursor != "" {
 		published, id, err := parseCursor(o.Cursor)
@@ -326,9 +332,9 @@ func (d *DB) SetRead(ctx context.Context, ids []int64, read bool) error {
 	return err
 }
 
-// MarkAllRead marks read every unread item in a view, or in a source when
-// one is given, published before before.
-func (d *DB) MarkAllRead(ctx context.Context, view string, sourceID *int64, before time.Time) error {
+// MarkAllRead marks read every unread item in a view, or in a source or a
+// folder when one is given, published before before.
+func (d *DB) MarkAllRead(ctx context.Context, view string, sourceID *int64, folder string, before time.Time) error {
 	if view == "" {
 		view = ViewAll
 	}
@@ -340,6 +346,10 @@ func (d *DB) MarkAllRead(ctx context.Context, view string, sourceID *int64, befo
 	if sourceID != nil {
 		where += " AND source_id = ?"
 		args = append(args, *sourceID)
+	}
+	if folder != "" {
+		where += " AND source_id IN (SELECT id FROM sources WHERE folder = ?)"
+		args = append(args, folder)
 	}
 	if !before.IsZero() {
 		where += " AND published_at < ?"

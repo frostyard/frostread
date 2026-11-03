@@ -141,6 +141,7 @@ type sourceOut struct {
 	ID     int64  `json:"id"`
 	Title  string `json:"title"`
 	Site   string `json:"site,omitzero"`
+	Folder string `json:"folder,omitzero" jsonschema:"the folder the user put it in; absent when none"`
 	Unread int    `json:"unread"`
 }
 
@@ -176,7 +177,8 @@ func (t *tools) listSources(ctx context.Context, _ *mcp.CallToolRequest, _ sourc
 	}
 	out := sourcesOut{Sources: make([]sourceOut, 0, len(sources))}
 	for _, s := range sources {
-		out.Sources = append(out.Sources, sourceOut{ID: s.ID, Title: s.Title, Site: s.SiteURL, Unread: s.Unread})
+		out.Sources = append(out.Sources, sourceOut{ID: s.ID, Title: s.Title, Site: s.SiteURL,
+			Folder: s.Folder, Unread: s.Unread})
 	}
 	return nil, out, nil
 }

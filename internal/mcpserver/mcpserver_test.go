@@ -57,7 +57,12 @@ func newEngine(t *testing.T) *engine.Engine {
 		Config:   config.Config{PollInterval: "20m", NotesFolder: "Reading/", NotesVault: 1},
 		Interval: 20 * time.Minute, Version: "test",
 	})
-	if _, err := e.AddSource(t.Context(), "https://example.com/feed.xml"); err != nil {
+	src, err := e.AddSource(t.Context(), "https://example.com/feed.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The source is in a folder, so list_sources carries it.
+	if err := e.SetFolder(t.Context(), src.ID, "Garden"); err != nil {
 		t.Fatal(err)
 	}
 	return e
@@ -143,7 +148,8 @@ func TestReadScope(t *testing.T) {
 	if call(t, sess, "list_sources", nil, &sources) {
 		t.Fatal("list_sources failed")
 	}
-	if len(sources.Sources) != 1 || sources.Sources[0].Unread != 1 || sources.Sources[0].Title != "Example Journal" {
+	if len(sources.Sources) != 1 || sources.Sources[0].Unread != 1 ||
+		sources.Sources[0].Title != "Example Journal" || sources.Sources[0].Folder != "Garden" {
 		t.Fatalf("sources = %+v", sources)
 	}
 

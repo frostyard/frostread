@@ -51,6 +51,7 @@ what search returns too, unless a query says otherwise.
 | `url` | string | the feed's URL |
 | `siteUrl` | string | the site's home, when the feed names it |
 | `title` | string | the title the owner or the feed gave it |
+| `folder` | string | the folder the owner put it in; absent when it is in none |
 | `unread` | integer | its unread items |
 | `errorCount` | integer | consecutive failed polls |
 | `lastError` | string | the last poll's error, empty when none |
@@ -93,14 +94,15 @@ what search returns too, unless a query says otherwise.
 | `sources.add` | `{url}` | `{source: Source}` | subscribes: when `url` is a page, discovers its feed; polls it at once |
 | `sources.remove` | `{id}` | `{}` | unsubscribes; its items go with it |
 | `sources.rename` | `{id, title}` | `{}` | sets the owner's title |
+| `sources.setFolder` | `{id, folder}` | `{}` | puts the source in the folder, or takes it out with an empty folder; the name is cleaned as described in [Folders](#folders) |
 | `sources.refresh` | `{id?}` | `{}` | polls now: one source, or all of them |
 | `opml.import` | `{xml}` | `{added, skipped}` | adds every outline in an OPML document |
 | `opml.export` | none | `{xml}` | every source as OPML 2.0 |
-| `items.list` | `{view, sourceId?, cursor?, limit?}` | `{items: [ItemSummary], next?}` | newest first; `limit` 1 to 200, 50 when absent; `next` is the next page's cursor |
+| `items.list` | `{view, sourceId?, folder?, cursor?, limit?}` | `{items: [ItemSummary], next?}` | newest first; `limit` 1 to 200, 50 when absent; `next` is the next page's cursor |
 | `items.get` | `{id}` | `ItemDetail` | one item |
 | `items.search` | `{query, limit?}` | `{items: [ItemSummary]}` | best match first, with `snippet` |
 | `items.setRead` | `{ids, read}` | `{}` | marks items read or unread |
-| `items.markAllRead` | `{view?, sourceId?, before?}` | `{}` | marks read every unread item in the view or the source, published before `before` |
+| `items.markAllRead` | `{view?, sourceId?, folder?, before?}` | `{}` | marks read every unread item in the view, the source or the folder, published before `before` |
 | `items.setStarred` | `{id, starred}` | `{}` | |
 | `items.setArchived` | `{id, archived}` | `{}` | |
 | `items.saveAsNote` | `{id}` | `{path, route}` | writes the article into notes; `route` is `/notes/<vaultId>/<path segments, encoded>`, for lodge-client's `open` |
@@ -128,11 +130,11 @@ client: it names the last item of the page it came with, and `items.list`
 answers a cursor it did not issue with `invalidParams`.
 
 Errors are the scaffold's codes: `invalidParams` (a bad view, limit, cursor,
-URL or scheme), `notFound` (an unknown item or source), `conflict` (a URL
-that is already a source), `unavailable` (save-as-note with no token or no
-vault, notes is not reachable, or an export of an article that has no
-text), `tooLarge` (an article whose page alone is at or over the bound on
-`items.render`'s answer) and `internal`.
+URL or scheme, or a `sourceId` with a `folder`), `notFound` (an unknown item
+or source), `conflict` (a URL that is already a source), `unavailable`
+(save-as-note with no token or no vault, notes is not reachable, or an
+export of an article that has no text), `tooLarge` (an article whose page
+alone is at or over the bound on `items.render`'s answer) and `internal`.
 
 `NoteStatus`:
 
@@ -153,6 +155,20 @@ text), `tooLarge` (an article whose page alone is at or over the bound on
 | `waiting` | integer | the unreferenced blobs still inside the grace period |
 | `removed` | integer | the blobs removed; in a dry run, the blobs a real sweep would remove now |
 | `removedBytes` | integer | the size of the removed blobs |
+
+#### Folders
+
+A folder is one level: it is a name on the source, and an empty name is no
+folder. `sources.setFolder` sets it, and `opml.import` and `opml.export`
+keep it. The name MUST be cleaned as `later.save`'s title is, and cut to
+100 runes. `items.list` and `items.markAllRead` take a `folder` that
+selects the items of the sources in that folder; a saved link has no
+source, so no folder holds it, and `sourceId` with `folder` answers
+`invalidParams`. `opml.import` takes a feed's folder from its outermost
+folder outline, and folds a deeper folder into that one; a URL that is
+already a source is skipped, and its folder does not change. `opml.export`
+writes the folders first, by name (two spellings are two folders), each
+with its feeds, and then the feeds that are in none.
 
 #### Notifications
 
@@ -263,7 +279,7 @@ result.
 
 | Tool | Scope | Params | Returns |
 | --- | --- | --- | --- |
-| `list_sources` | `read` | none | each source's id, title, site URL and unread count |
+| `list_sources` | `read` | none | each source's id, title, site URL, folder and unread count |
 | `list_unread` | `read` | `source_id?`, `since?` (RFC 3339), `limit?` (50, at most 200) | summaries of unread items, newest first |
 | `search` | `read` | `query`, `limit?` (50, at most 200) | matching items' ids, titles, URLs, sources and snippets |
 | `read_item` | `read` | `id` | the item's title, URL, source, dates and states, and its extracted text, at most 60,000 characters |
@@ -397,7 +413,8 @@ org.frostyard.Frostread status` therefore finds the app's own readd.
 | --- | --- |
 | `save <url>` | saves a link to read later |
 | `add <feed-url>` | subscribes, discovering the feed from a page |
-| `sources` | lists sources with their unread counts |
+| `sources` | lists sources with their folders and unread counts |
+| `folder <source-id> [name]` | puts the source in the folder; no name takes it out |
 | `note <item-id>` | saves the article as a note, and prints its path and its route in notes |
 | `note-status <item-id>` | prints where the item's note is: `present`, `moved`, `missing` or `unreachable`, with its path or the error |
 | `import <file.opml>` | imports the file's outlines; `-` reads stdin |

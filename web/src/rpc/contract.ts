@@ -61,7 +61,12 @@ const isExtractState = (v: unknown): v is ExtractState => v === "pending" || v =
 export function validateSource(v: unknown, at = "source"): Problems {
   const p: Problems = [];
   if (
-    !object(v, at, ["id", "url", "siteUrl", "title", "unread", "errorCount", "lastError", "polledAt", "nextPollAt"], p)
+    !object(
+      v,
+      at,
+      ["id", "url", "siteUrl", "title", "folder", "unread", "errorCount", "lastError", "polledAt", "nextPollAt"],
+      p,
+    )
   ) {
     return p;
   }
@@ -69,6 +74,7 @@ export function validateSource(v: unknown, at = "source"): Problems {
   field(v, "url", at, p, isString);
   field(v, "siteUrl", at, p, isString, true);
   field(v, "title", at, p, isString);
+  field(v, "folder", at, p, isString, true);
   field(v, "unread", at, p, isNumber);
   field(v, "errorCount", at, p, isNumber, true);
   field(v, "lastError", at, p, isString, true);

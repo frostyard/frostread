@@ -32,6 +32,8 @@ export interface Source {
   /** The site's home, when the feed names it. */
   siteUrl?: string;
   title: string;
+  /** The folder the owner put it in; absent when it is in none. */
+  folder?: string;
   unread: number;
   /** Consecutive failed polls; absent when it has not failed. */
   errorCount?: number;

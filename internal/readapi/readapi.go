@@ -87,6 +87,11 @@ func (s *Service) RenameSource(ctx context.Context, id int64, title string) erro
 	return s.fail(s.Engine.RenameSource(ctx, id, title))
 }
 
+// SetFolder implements sources.setFolder.
+func (s *Service) SetFolder(ctx context.Context, id int64, folder string) error {
+	return s.fail(s.Engine.SetFolder(ctx, id, folder))
+}
+
 // Refresh implements sources.refresh.
 func (s *Service) Refresh(ctx context.Context, id *int64) error {
 	return s.fail(s.Engine.Refresh(ctx, id))
@@ -109,6 +114,9 @@ func (s *Service) ListItems(ctx context.Context, p api.ItemsListParams) (api.Ite
 	if !store.ValidView(p.View) {
 		return api.ItemsPage{}, api.Errorf(api.CodeInvalidParams, "%q is not a view", p.View)
 	}
+	if p.SourceID != 0 && p.Folder != "" {
+		return api.ItemsPage{}, errSourceIDAndFolder()
+	}
 	limit, err := limit(p.Limit)
 	if err != nil {
 		return api.ItemsPage{}, err
@@ -118,7 +126,7 @@ func (s *Service) ListItems(ctx context.Context, p api.ItemsListParams) (api.Ite
 		sourceID = &p.SourceID
 	}
 	items, next, err := s.Engine.ListItems(ctx, store.ListOptions{
-		View: p.View, SourceID: sourceID, Cursor: p.Cursor, Limit: limit,
+		View: p.View, SourceID: sourceID, Folder: p.Folder, Cursor: p.Cursor, Limit: limit,
 	})
 	if err != nil {
 		return api.ItemsPage{}, s.fail(err)
@@ -154,14 +162,23 @@ func (s *Service) SetRead(ctx context.Context, ids []int64, read bool) error {
 }
 
 // MarkAllRead implements items.markAllRead.
-func (s *Service) MarkAllRead(ctx context.Context, view string, sourceID *int64, before time.Time) error {
+func (s *Service) MarkAllRead(ctx context.Context, view string, sourceID *int64, folder string, before time.Time) error {
 	if view == "" {
 		view = store.ViewAll
 	}
 	if !store.ValidView(view) {
 		return api.Errorf(api.CodeInvalidParams, "%q is not a view", view)
 	}
-	return s.fail(s.Engine.MarkAllRead(ctx, write, view, sourceID, before))
+	if sourceID != nil && folder != "" {
+		return errSourceIDAndFolder()
+	}
+	return s.fail(s.Engine.MarkAllRead(ctx, write, view, sourceID, folder, before))
+}
+
+// errSourceIDAndFolder refuses a call that names a source and a folder: a
+// folder is a set of sources, and the two choices contradict each other.
+func errSourceIDAndFolder() error {
+	return api.Errorf(api.CodeInvalidParams, "give sourceId or folder, not both")
 }
 
 // SetStarred implements items.setStarred.
@@ -258,7 +275,7 @@ func (s *Service) SweepBlobs(ctx context.Context, dryRun bool) (api.SweepResult,
 // source converts a stored source to the API's shape.
 func source(src store.Source) api.Source {
 	return api.Source{ID: src.ID, URL: src.URL, SiteURL: src.SiteURL, Title: src.Title,
-		Unread: src.Unread, ErrorCount: src.ErrorCount, LastError: src.LastError,
+		Folder: src.Folder, Unread: src.Unread, ErrorCount: src.ErrorCount, LastError: src.LastError,
 		PolledAt: src.PolledAt.UTC(), NextPollAt: src.NextPollAt.UTC()}
 }
 

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -23,8 +24,8 @@ func open(t *testing.T) (*DB, time.Time) {
 func TestSchemaAndSecret(t *testing.T) {
 	d, _ := open(t)
 	v, err := d.SchemaVersion(t.Context())
-	if err != nil || v != 2 {
-		t.Fatalf("schema version = %d, %v; want 2", v, err)
+	if err != nil || v != 3 {
+		t.Fatalf("schema version = %d, %v; want 3", v, err)
 	}
 	a, err := d.Secret(t.Context())
 	if err != nil || len(a) != 32 {
@@ -132,7 +133,7 @@ func TestMarksAndCounts(t *testing.T) {
 	if len(sources) != 1 || sources[0].Unread != 1 {
 		t.Fatalf("source counts = %+v", sources)
 	}
-	if err := d.MarkAllRead(ctx, ViewAll, nil, time.Time{}); err != nil {
+	if err := d.MarkAllRead(ctx, ViewAll, nil, "", time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	if views, _, _ = d.Counts(ctx); views[ViewUnread] != 0 {
@@ -269,5 +270,163 @@ func TestPolling(t *testing.T) {
 	}
 	if due, err := d.DueSources(ctx, now, 4); err != nil || len(due) != 0 {
 		t.Fatalf("due after poll = %+v, %v; want none", due, err)
+	}
+}
+
+// A folder is one level, on the source: it is set, cleared, and it filters
+// both the list and mark all read.
+func TestSourceFolders(t *testing.T) {
+	d, now := open(t)
+	ctx := t.Context()
+	garden, err := d.AddSource(ctx, Source{URL: "https://example.com/feed.xml", Title: "Example Garden", Folder: "Garden"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := d.Source(ctx, garden.ID); err != nil || got.Folder != "Garden" {
+		t.Fatalf("the new source's folder = %q, %v; want Garden", got.Folder, err)
+	}
+	news, err := d.AddSource(ctx, Source{URL: "https://example.org/feed.xml", Title: "Example News", Folder: "News"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loose, err := d.AddSource(ctx, Source{URL: "https://example.net/feed.xml", Title: "Example Notes"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := d.Source(ctx, loose.ID); got.Folder != "" {
+		t.Fatalf("a source with no folder = %q, want none", got.Folder)
+	}
+	if _, err := d.AddItems(ctx, garden.ID, []NewItem{
+		{GUID: "g1", Title: "Tomatoes", Published: now.Add(-time.Hour)},
+		{GUID: "g2", Title: "Beans", Published: now.Add(-2 * time.Hour)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.AddItems(ctx, news.ID, []NewItem{
+		{GUID: "n1", Title: "Bicycles", Published: now.Add(-3 * time.Hour)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.AddItems(ctx, loose.ID, []NewItem{
+		{GUID: "l1", Title: "Kettles", Published: now.Add(-4 * time.Hour)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.SaveLink(ctx, "https://example.org/later", "example.org"); err != nil {
+		t.Fatal(err)
+	}
+
+	page, _, err := d.ListItems(ctx, ListOptions{View: ViewUnread, Folder: "Garden", Limit: 50})
+	if err != nil || len(page) != 2 {
+		t.Fatalf("the garden's items = %d, %v; want 2", len(page), err)
+	}
+	if page, _, err := d.ListItems(ctx, ListOptions{View: ViewUnread, Folder: "Nowhere", Limit: 50}); err != nil || len(page) != 0 {
+		t.Fatalf("a folder with no source = %d items, %v; want none", len(page), err)
+	}
+	// A saved link has no source, so no folder holds it.
+	if page, _, err := d.ListItems(ctx, ListOptions{View: ViewLater, Folder: "Garden", Limit: 50}); err != nil || len(page) != 0 {
+		t.Fatalf("a saved link in a folder = %d items, %v; want none", len(page), err)
+	}
+
+	// Marking a folder read leaves the other folder's items, the source
+	// outside every folder, and the saved links unread.
+	if err := d.MarkAllRead(ctx, ViewAll, nil, "Garden", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	// Three unread items are left: the news feed's, the loose source's and
+	// the saved link, which no folder holds.
+	if views, _, err := d.Counts(ctx); err != nil || views[ViewUnread] != 3 || views[ViewLater] != 1 {
+		t.Fatalf("counts after the folder's mark all = %+v, %v; want the other items and the saved link", views, err)
+	}
+	for _, c := range []struct {
+		name string
+		o    ListOptions
+	}{
+		{"the other folder", ListOptions{View: ViewAll, Folder: "News", Limit: 50}},
+		{"the source outside every folder", ListOptions{View: ViewAll, SourceID: &loose.ID, Limit: 50}},
+	} {
+		page, _, err := d.ListItems(ctx, c.o)
+		if err != nil || len(page) != 1 || page[0].ReadAt != nil {
+			t.Fatalf("%s was marked read: %+v, %v", c.name, page, err)
+		}
+	}
+	// The garden's own items are read.
+	if page, _, err := d.ListItems(ctx, ListOptions{View: ViewAll, Folder: "Garden", Limit: 50}); err != nil || len(page) != 2 {
+		t.Fatalf("the garden's items = %d, %v; want 2", len(page), err)
+	} else if page[0].ReadAt == nil || page[1].ReadAt == nil {
+		t.Fatalf("the garden's items are unread: %+v", page)
+	}
+
+	// The folder changes, and it clears.
+	if err := d.SetSourceFolder(ctx, garden.ID, "Growing"); err != nil {
+		t.Fatal(err)
+	}
+	if page, _, err := d.ListItems(ctx, ListOptions{View: ViewAll, Folder: "Growing", Limit: 50}); err != nil || len(page) != 2 {
+		t.Fatalf("the new folder's items = %d, %v; want 2", len(page), err)
+	}
+	if err := d.SetSourceFolder(ctx, garden.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := d.Source(ctx, garden.ID); got.Folder != "" {
+		t.Fatalf("a cleared folder = %q, want none", got.Folder)
+	}
+	if err := d.SetSourceFolder(ctx, 9999, "Garden"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a folder on no source = %v, want ErrNotFound", err)
+	}
+}
+
+// A store a version 2 daemon left gains the folder column, and keeps its
+// sources and items: the migration an owner's database goes through.
+func TestUpgradeFromVersion2(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "read.db")
+	d, err := Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	d.Now = func() time.Time { return now }
+	src, err := d.AddSource(t.Context(), Source{URL: "https://example.com/feed.xml", Title: "Example"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.AddItems(t.Context(), src.ID, []NewItem{{GUID: "a", Title: "One"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Take the store back to version 2, as the folder column's migration
+	// had not run.
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{`ALTER TABLE sources DROP COLUMN folder`, `PRAGMA user_version = 2`} {
+		if _, err := raw.ExecContext(t.Context(), q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	up, err := Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = up.Close() })
+	if v, err := up.SchemaVersion(t.Context()); err != nil || v != 3 {
+		t.Fatalf("schema version after the upgrade = %d, %v; want 3", v, err)
+	}
+	got, err := up.Source(t.Context(), src.ID)
+	if err != nil || got.Title != "Example" || got.Folder != "" {
+		t.Fatalf("the source after the upgrade = %+v, %v; want Example in no folder", got, err)
+	}
+	if views, _, err := up.Counts(t.Context()); err != nil || views[ViewAll] != 1 {
+		t.Fatalf("items after the upgrade = %+v, %v; want 1", views, err)
+	}
+	if err := up.SetSourceFolder(t.Context(), src.ID, "Garden"); err != nil {
+		t.Fatal(err)
 	}
 }

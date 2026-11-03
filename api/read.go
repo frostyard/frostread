@@ -16,10 +16,12 @@ import (
 
 // Source is one subscription, as the app shows it.
 type Source struct {
-	ID         int64     `json:"id"`
-	URL        string    `json:"url"`
-	SiteURL    string    `json:"siteUrl,omitzero"`
-	Title      string    `json:"title"`
+	ID      int64  `json:"id"`
+	URL     string `json:"url"`
+	SiteURL string `json:"siteUrl,omitzero"`
+	Title   string `json:"title"`
+	// Folder is the folder the owner put it in; absent when none.
+	Folder     string    `json:"folder,omitzero"`
 	Unread     int       `json:"unread"`
 	ErrorCount int       `json:"errorCount,omitzero"`
 	LastError  string    `json:"lastError,omitzero"`
@@ -53,6 +55,13 @@ type SourceRenameParams struct {
 	Title string `json:"title"`
 }
 
+// SourceSetFolderParams holds the params of sources.setFolder; an empty
+// folder takes the source out of its folder.
+type SourceSetFolderParams struct {
+	ID     int64  `json:"id"`
+	Folder string `json:"folder"`
+}
+
 // SourceRefreshParams holds the params of sources.refresh; a 0 id polls
 // every source.
 type SourceRefreshParams struct {
@@ -79,6 +88,7 @@ type OPMLDocument struct {
 type ItemsListParams struct {
 	View     string `json:"view"`
 	SourceID int64  `json:"sourceId,omitzero"`
+	Folder   string `json:"folder,omitzero"`
 	Cursor   string `json:"cursor,omitzero"`
 	Limit    int    `json:"limit,omitzero"`
 }
@@ -110,6 +120,7 @@ type ItemsSetReadParams struct {
 type ItemsMarkAllParams struct {
 	View     string    `json:"view,omitzero"`
 	SourceID int64     `json:"sourceId,omitzero"`
+	Folder   string    `json:"folder,omitzero"`
 	Before   time.Time `json:"before,omitzero"`
 }
 
@@ -217,6 +228,7 @@ type ReadService interface {
 	AddSource(ctx context.Context, url string) (Source, error)
 	RemoveSource(ctx context.Context, id int64) error
 	RenameSource(ctx context.Context, id int64, title string) error
+	SetFolder(ctx context.Context, id int64, folder string) error
 	Refresh(ctx context.Context, id *int64) error
 	ImportOPML(ctx context.Context, document string) (added, skipped int, err error)
 	ExportOPML(ctx context.Context) (string, error)
@@ -224,7 +236,7 @@ type ReadService interface {
 	GetItem(ctx context.Context, id int64) (engine.Detail, error)
 	Search(ctx context.Context, query string, limit int) (ItemsPage, error)
 	SetRead(ctx context.Context, ids []int64, read bool) error
-	MarkAllRead(ctx context.Context, view string, sourceID *int64, before time.Time) error
+	MarkAllRead(ctx context.Context, view string, sourceID *int64, folder string, before time.Time) error
 	SetStarred(ctx context.Context, id int64, starred bool) error
 	SetArchived(ctx context.Context, id int64, archived bool) error
 	SaveAsNote(ctx context.Context, id int64) (path, route string, err error)
@@ -275,6 +287,13 @@ func registerRead(r *Router, s ReadService) {
 			return nil, err
 		}
 		return nil, s.RenameSource(ctx, p.ID, p.Title)
+	})
+	r.handle("sources.setFolder", session, func(ctx context.Context, raw jsontext.Value) (any, error) {
+		var p SourceSetFolderParams
+		if err := decodeParams(raw, &p, []string{"id", "folder"}); err != nil {
+			return nil, err
+		}
+		return nil, s.SetFolder(ctx, p.ID, p.Folder)
 	})
 	r.handle("sources.refresh", session, func(ctx context.Context, raw jsontext.Value) (any, error) {
 		var p SourceRefreshParams
@@ -341,7 +360,7 @@ func registerRead(r *Router, s ReadService) {
 		if p.SourceID != 0 {
 			sourceID = &p.SourceID
 		}
-		return nil, s.MarkAllRead(ctx, p.View, sourceID, p.Before)
+		return nil, s.MarkAllRead(ctx, p.View, sourceID, p.Folder, p.Before)
 	})
 	r.handle("items.setStarred", session, func(ctx context.Context, raw jsontext.Value) (any, error) {
 		var p ItemStarParams
@@ -464,6 +483,11 @@ func (x ReadClient) RenameSource(ctx context.Context, id int64, title string) er
 	return x.c.Call(ctx, "sources.rename", SourceRenameParams{ID: id, Title: title}, nil)
 }
 
+// SetFolder calls sources.setFolder.
+func (x ReadClient) SetFolder(ctx context.Context, id int64, folder string) error {
+	return x.c.Call(ctx, "sources.setFolder", SourceSetFolderParams{ID: id, Folder: folder}, nil)
+}
+
 // Refresh calls sources.refresh; a 0 id polls every source.
 func (x ReadClient) Refresh(ctx context.Context, id *int64) error {
 	var p SourceRefreshParams
@@ -514,12 +538,13 @@ func (x ReadClient) SetRead(ctx context.Context, ids []int64, read bool) error {
 }
 
 // MarkAllRead calls items.markAllRead.
-func (x ReadClient) MarkAllRead(ctx context.Context, view string, sourceID *int64, before time.Time) error {
+func (x ReadClient) MarkAllRead(ctx context.Context, view string, sourceID *int64, folder string, before time.Time) error {
 	var p ItemsMarkAllParams
 	p.View = view
 	if sourceID != nil {
 		p.SourceID = *sourceID
 	}
+	p.Folder = folder
 	p.Before = before
 	return x.c.Call(ctx, "items.markAllRead", p, nil)
 }

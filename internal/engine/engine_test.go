@@ -773,11 +773,65 @@ func TestMarksAndSearch(t *testing.T) {
 	if err != nil || len(found) != 1 {
 		t.Fatalf("search after extraction = %+v, %v", found, err)
 	}
-	if err := e.MarkAllRead(t.Context(), write, store.ViewAll, nil, time.Time{}); err != nil {
+	if err := e.MarkAllRead(t.Context(), write, store.ViewAll, nil, "", time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	if c, _ := e.Counts(t.Context()); c.Views[store.ViewUnread] != 0 {
 		t.Fatalf("unread after mark all = %d", c.Views[store.ViewUnread])
+	}
+}
+
+// A folder's name is cleaned as a saved page's title is, and cut to 100
+// runes.
+func TestFolderName(t *testing.T) {
+	long := strings.Repeat("a", 120)
+	for _, c := range []struct{ name, in, want string }{
+		{"plain", "Garden", "Garden"},
+		{"trimmed", "  Garden  ", "Garden"},
+		{"one space per run", "Garden\t\t notes\nand more", "Garden notes and more"},
+		{"control characters go", "Gar\x00den\x07", "Garden"},
+		{"white space alone", " \t\n ", ""},
+		{"empty", "", ""},
+		{"not ascii", " G\u00e4rtnern ", "G\u00e4rtnern"},
+		{"cut to 100 runes", long, strings.Repeat("a", 100)},
+		{"a cut leaves no trailing space", strings.Repeat("a", 99) + " bbb", strings.Repeat("a", 99)},
+	} {
+		if got := folderName(c.in); got != c.want {
+			t.Errorf("%s: folderName(%q) = %q, want %q", c.name, c.in, got, c.want)
+		}
+	}
+}
+
+// A folder is on the source, one level: it is set, cleaned, and cleared,
+// and the API hears of it.
+func TestSetFolder(t *testing.T) {
+	e, _, _, changes := setup(t)
+	ctx := t.Context()
+	src, err := e.AddSource(ctx, "https://example.com/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.Folder != "" {
+		t.Fatalf("a new source's folder = %q, want none", src.Folder)
+	}
+	if err := e.SetFolder(ctx, src.ID, "  Garden\tNotes "); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.Source(ctx, src.ID)
+	if err != nil || got.Folder != "Garden Notes" {
+		t.Fatalf("the folder = %q, %v; want Garden Notes", got.Folder, err)
+	}
+	if len(*changes) == 0 || !strings.Contains((*changes)[len(*changes)-1], "unread") {
+		t.Fatalf("changes = %v; want unread", *changes)
+	}
+	if err := e.SetFolder(ctx, src.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := e.Source(ctx, src.ID); got.Folder != "" {
+		t.Fatalf("a cleared folder = %q, want none", got.Folder)
+	}
+	if err := e.SetFolder(ctx, 9999, "Garden"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a folder on no source = %v, want ErrNotFound", err)
 	}
 }
 
@@ -805,6 +859,68 @@ func TestOPMLImportAndExport(t *testing.T) {
 	srcs, _ := e.Sources(t.Context())
 	if len(srcs) != 2 {
 		t.Fatalf("sources = %+v", srcs)
+	}
+}
+
+// An import puts a feed in its outermost folder, and an export writes that
+// folder. A feed that is already a source is skipped, and its folder does
+// not change.
+func TestOPMLFolders(t *testing.T) {
+	e, n, _, _ := setup(t)
+	n.pages["https://example.com/second.xml"] = answer{body: `<?xml version="1.0"?><rss version="2.0"><channel>
+		<title>Second Feed</title><link>https://example.com/second</link>
+		<item><title>An item</title><link>https://example.com/item</link><guid>9</guid></item></channel></rss>`}
+	doc := `<?xml version="1.0"?><opml version="2.0"><body>
+		<outline text="Garden" title="Garden">
+			<outline text="Programming" title="Programming">
+				<outline text="Second" title="Second" xmlUrl="https://example.com/second.xml"/>
+			</outline>
+		</outline>
+		<outline text="Example" title="Example" xmlUrl="https://example.com/feed.xml"/>
+	</body></opml>`
+	ctx := t.Context()
+	added, skipped, err := e.ImportOPML(ctx, doc)
+	if err != nil || added != 2 || skipped != 0 {
+		t.Fatalf("import = %d added, %d skipped, %v", added, skipped, err)
+	}
+	sources, err := e.Sources(ctx)
+	if err != nil || len(sources) != 2 {
+		t.Fatalf("sources = %+v, %v", sources, err)
+	}
+	// The outline's title is the source's title, as an import has it.
+	folders := map[string]string{}
+	for _, s := range sources {
+		folders[s.Title] = s.Folder
+	}
+	if folders["Second"] != "Garden" || folders["Example"] != "" {
+		t.Fatalf("folders = %+v; want Second in Garden, and Example in none", folders)
+	}
+
+	out, err := e.ExportOPML(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `<outline text="Garden" title="Garden">`) {
+		t.Fatalf("the export names no folder:\n%s", out)
+	}
+
+	// The two URLs are sources already: the second import adds nothing, and
+	// the folder the owner set stays.
+	var journal int64
+	for _, s := range sources {
+		if s.URL == "https://example.com/feed.xml" {
+			journal = s.ID
+		}
+	}
+	if err := e.SetFolder(ctx, journal, "Moved"); err != nil {
+		t.Fatal(err)
+	}
+	added, skipped, err = e.ImportOPML(ctx, doc)
+	if err != nil || added != 0 || skipped != 2 {
+		t.Fatalf("the second import = %d added, %d skipped, %v; want 2 skipped", added, skipped, err)
+	}
+	if got, _ := e.Source(ctx, journal); got.Folder != "Moved" {
+		t.Fatalf("the second import moved a source to %q, want the owner's Moved", got.Folder)
 	}
 }
 
