@@ -80,7 +80,8 @@ func (o outline) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 // An outline with no xmlUrl is a folder, and is walked; one with an xmlUrl
 // is a feed. A feed's folder is its outermost enclosing folder's title, or
 // its text when it has no title: folders are flattened into that one, so a
-// deeper folder names nothing. A feed at the top level is in no folder. A
+// deeper folder names nothing, and a feed under an outermost folder with
+// no name is in no folder. A feed at the top level is in no folder. A
 // document with no feeds is ErrInvalid.
 func Import(r io.Reader) ([]Feed, error) {
 	data, err := io.ReadAll(io.LimitReader(r, 10<<20))
@@ -94,8 +95,10 @@ func Import(r io.Reader) ([]Feed, error) {
 		return nil, fmt.Errorf("parse opml: %w: %v", ErrInvalid, err)
 	}
 	var out []Feed
-	var walk func([]outline, string)
-	walk = func(os []outline, folder string) {
+	// inFolder is true below the outermost folder outline: its name, even
+	// an empty one, is the folder of every feed under it.
+	var walk func([]outline, string, bool)
+	walk = func(os []outline, folder string, inFolder bool) {
 		for _, o := range os {
 			if url := strings.TrimSpace(o.XMLURL); url != "" {
 				title := strings.TrimSpace(o.Title)
@@ -106,17 +109,18 @@ func Import(r io.Reader) ([]Feed, error) {
 					Folder: folder})
 				continue
 			}
-			in := folder
-			if in == "" {
-				in = strings.TrimSpace(o.Title)
-				if in == "" {
-					in = strings.TrimSpace(o.Text)
-				}
+			if inFolder {
+				walk(o.Outlines, folder, true)
+				continue
 			}
-			walk(o.Outlines, in)
+			name := strings.TrimSpace(o.Title)
+			if name == "" {
+				name = strings.TrimSpace(o.Text)
+			}
+			walk(o.Outlines, name, true)
 		}
 	}
-	walk(doc.Body.Outlines, "")
+	walk(doc.Body.Outlines, "", false)
 	if len(out) == 0 {
 		return nil, fmt.Errorf("the opml names no feed: %w", ErrInvalid)
 	}

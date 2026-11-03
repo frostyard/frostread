@@ -85,6 +85,21 @@ func TestImportKeepsTheOutermostFolder(t *testing.T) {
 	}
 }
 
+// An outermost folder with no name is still the outermost folder: a deeper
+// folder does not name its feeds, so they are in no folder.
+func TestImportUnnamedOuterFolder(t *testing.T) {
+	doc := `<opml version="2.0"><body><outline text="">` +
+		`<outline text="Inner"><outline type="rss" text="Example" xmlUrl="https://example.com/feed.xml"/></outline>` +
+		`</outline></body></opml>`
+	feeds, err := Import(strings.NewReader(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(feeds) != 1 || feeds[0].Folder != "" {
+		t.Fatalf("feeds = %+v; want 1 feed in no folder", feeds)
+	}
+}
+
 func TestExportRoundTrip(t *testing.T) {
 	in := []Feed{
 		{Title: "Example Feeds", XMLURL: "https://example.net/feed.json"},

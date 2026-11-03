@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -150,8 +151,8 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if len(args) == 0 {
 			return errors.New("usage: readctl folder <source-id> [name]")
 		}
-		var id int64
-		if _, err := fmt.Sscan(args[0], &id); err != nil || id <= 0 {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil || id <= 0 {
 			return errors.New("folder needs a source id")
 		}
 		name := strings.TrimSpace(strings.Join(args[1:], " "))

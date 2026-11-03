@@ -208,8 +208,10 @@ func TestFolderNeedsASourceID(t *testing.T) {
 	if _, err := readctl(t, f, "folder"); err == nil || !strings.Contains(err.Error(), "usage: readctl folder") {
 		t.Fatalf("folder with no id = %v", err)
 	}
-	if _, err := readctl(t, f, "folder", "nope"); err == nil || !strings.Contains(err.Error(), "needs a source id") {
-		t.Fatalf("folder nope = %v", err)
+	for _, id := range []string{"nope", "3junk", "0", "-2", "3.5"} {
+		if _, err := readctl(t, f, "folder", id, "Garden"); err == nil || !strings.Contains(err.Error(), "needs a source id") {
+			t.Fatalf("folder %s = %v", id, err)
+		}
 	}
 	if len(f.set) != 0 {
 		t.Fatal("a refused command reached the daemon")
