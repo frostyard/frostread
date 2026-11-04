@@ -473,15 +473,37 @@ What the work found:
 
 ### Phase 3's record
 
-EVIDENCE-PLACEHOLDER
+Phase 3's Done when holds (2026-11-03). The run is at `main` 5ae1101,
+after frostread#45, in the nsl machine `frostnotes`; the Go gates ran on
+the host, as the Makefile runs them.
 
-- `web/e2e/read.e2e.ts` checks that the built app lists readdev's feeds,
-  shows an article with its inlined image and sends a link click to the
-  stand-in opener.
-- `web/e2e/hostile.e2e.ts` checks that the hostile corpus runs no script
-  and makes no network request from the frame.
-- The Makefile's `ci` target checks that `make ci` passes the host gates
-  and the app build gates.
+| Check | Result |
+| --- | --- |
+| `make ci` | passed: `make verify` (tidy, vet, golangci-lint with 0 issues, the tests, and the dev tags' vet and tests), `make race`, `make cross` (linux/amd64 and linux/arm64), `make web-check` (19 Vitest files, 127 tests), `make app-check` (Biome, tsc, the same 127 tests, the desktop build, `cargo fmt --check`, `cargo clippy -D warnings`, and 27 Rust tests under `dbus-run-session` with `READ_REQUIRE_SESSION_BUS=1`), and `make app-build` (the release binary) |
+| `make app-e2e`, 1st run | passed: 3 files, 7 tests; the leftover check found no process |
+| `make app-e2e`, 2nd run | passed: 3 files, 7 tests; the leftover check found no process |
+| CI on `main` at 5ae1101 | passed, every job ([run 41763026048](https://github.com/frostyard/frostread/actions/runs/41763026048)) |
+
+Each run of the hostile corpus printed the same counts: raw in the
+frame, 70 pages, 12 links clicked, 2 opener URLs and 0 canary hits;
+through readd, 70 items, 0 without a frame, 4 links clicked, 4 opener
+URLs and 0 canary hits.
+
+Each part of the Done when, and the test that shows it:
+
+- The built app lists readdev's feeds and shows an article with its
+  inlined image: `web/e2e/read.e2e.ts`, "lists readdev's feeds in the
+  sidebar" and "shows an article in the frame with its image as a data:
+  URI".
+- The hostile corpus runs no script and makes no network request from
+  the frame: `web/e2e/hostile.e2e.ts`, "runs nothing and reaches
+  nothing raw in the reader's frame" and "... through readd's
+  sanitizer" (3.7's check of the check shows that the suite fails when
+  a guard goes).
+- A click on an article's link reaches a stand-in opener on the app's
+  `PATH`: `web/e2e/read.e2e.ts`, "sends a click on the article's link
+  to the stand-in opener".
+- `make ci` passes: the table's 1st row.
 
 ## Phase 4 — The Flatpak in CI (planner, medium)
 
