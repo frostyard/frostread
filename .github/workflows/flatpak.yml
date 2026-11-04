@@ -1,5 +1,6 @@
 # Builds and tests the standalone Frostread Flatpak on pull requests and push
 # to main (docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md).
+# The Flatpak build runs the launcher, Background helper and smoke test.
 # The sources job checks the offline Go, cargo and pnpm files. Tag and publish
 # steps belong to a later Flatpak phase.
 name: Flatpak

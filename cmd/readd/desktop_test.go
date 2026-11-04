@@ -5,6 +5,7 @@ package main
 // (docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md).
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -485,23 +486,88 @@ func TestBuildFlag(t *testing.T) {
 // buildOutput is what readd -build prints.
 func buildOutput(t *testing.T, o options) string {
 	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, old := w, os.Stdout
-	os.Stdout = out
+	var out bytes.Buffer
+	o.out = &out
 	runErr := run(t.Context(), []string{"-build"}, o)
-	os.Stdout = old
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
-	printed, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if runErr != nil {
 		t.Fatalf("-build: %v", runErr)
 	}
-	return string(printed)
+	return out.String()
+}
+
+// READ_FLATPAK_INFO replaces /.flatpak-info for -build and status.build.
+func TestBuildFlagUsesEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	info := filepath.Join(dir, "flatpak-info")
+	body := "[Instance]\napp-commit=abc\n"
+	if err := os.WriteFile(info, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	o := options{getenv: func(name string) string {
+		if name == "READ_FLATPAK_INFO" {
+			return info
+		}
+		return ""
+	}, out: &out, flatpakInfo: filepath.Join(dir, "explicit")}
+	if err := run(t.Context(), []string{"-build"}, o); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "abc\n" {
+		t.Fatalf("-build = %q, want abc", out.String())
+	}
+}
+
+// -mode reads app.json without a lock or a database.
+func TestModeFlag(t *testing.T) {
+	tests := []struct {
+		name string
+		body *string
+		want string
+		err  bool
+	}{
+		{name: "no file", want: "local\n"},
+		{name: "empty object", body: func() *string { s := "{}"; return &s }(), want: "local\n"},
+		{name: "lodge", body: func() *string { s := `{"lodge":"https://lodge.example.ts.net"}`; return &s }(), want: "lodge\n"},
+		{name: "bad JSON", body: func() *string { s := `{`; return &s }(), err: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			x := newXDG(t)
+			modePath, err := config.ModePath(x.env(nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.body != nil {
+				if err := os.MkdirAll(filepath.Dir(modePath), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(modePath, []byte(*tt.body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var out bytes.Buffer
+			err = run(t.Context(), []string{"-desktop", "-mode"}, options{getenv: x.env(nil), out: &out})
+			if tt.err {
+				if err == nil {
+					t.Fatal("-mode with bad JSON answered without an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.String() != tt.want {
+				t.Fatalf("-mode = %q, want %q", out.String(), tt.want)
+			}
+		})
+	}
+}
+
+func TestModeFlagNeedsDesktop(t *testing.T) {
+	var out bytes.Buffer
+	err := run(t.Context(), []string{"-mode"}, options{out: &out})
+	if err == nil || !strings.Contains(err.Error(), "-mode requires -desktop") {
+		t.Fatalf("-mode = %v, want -desktop error", err)
+	}
 }

@@ -508,6 +508,7 @@ tailnet addresses.
 | `-desktop` | the desktop mode: the paths, the lock and the mode check below |
 | `-log FILE` | after readd holds the lock, move `FILE` to `FILE.1` when it is larger than 1 MiB, and append readd's output (stdout and stderr) to `FILE` |
 | `-build` | print the Flatpak instance's build, an empty line when there is none, and exit 0 |
+| `-mode` | with `-desktop`, print the mode in `app.json`, `local` or `lodge`, and exit 0, with no lock and no database; a file that does not parse is an error. The launcher reads it |
 | `--socket PATH` | the private socket, in either mode; it wins over the derived one |
 | `-debug` | log at debug level |
 
@@ -549,6 +550,9 @@ when one is set.
 group in `/.flatpak-info`, read at start; it is absent off the Flatpak.
 `readd -build` prints the same value, which the launcher compares with
 the latest deployment's to replace an old readd, forward only.
+`READ_FLATPAK_INFO`, when set, names another file in place of
+`/.flatpak-info`, for both: the Flatpak's smoke test gives each stand-in
+deployment its own build this way. The Flatpak never sets it.
 
 **Stopping.** `daemon.shutdown` (caller `local`) answers, and then readd
 stops: it cancels the poller, the extraction workers and the blob sweep,
