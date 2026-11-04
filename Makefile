@@ -73,6 +73,10 @@ GOVULNCHECK_VERSION := v1.9.0
 vulncheck: ## Report reachable vulnerabilities (govulncheck; needs the network)
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
+.PHONY: flatpak-sources
+flatpak-sources: ## Regenerate the Flatpak's offline Go, cargo and pnpm sources
+	scripts/flatpak-sources.sh
+
 ci: verify race cross web-check app-check app-build ## verify, the race detector, cross-builds, the web bundle and the app (nsl)
 
 # The web bundle checks and builds in an nsl machine with Node, never on

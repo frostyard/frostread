@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Frostread
+GenericName=Feed Reader
+Comment=Feeds and a reading list on your own computer
+Exec=frostread
+Icon=org.frostyard.Frostread
+Terminal=false
+Categories=Network;Feed;News;
+Keywords=rss;atom;feeds;news;reader;read later;articles;
+StartupNotify=true

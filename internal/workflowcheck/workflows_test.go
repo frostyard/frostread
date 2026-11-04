@@ -89,6 +89,43 @@ func walk(n *yaml.Node, f func(*yaml.Node)) {
 	}
 }
 
+// values returns the scalar values of a sequence node, or nil.
+func values(n *yaml.Node) []string {
+	if n == nil || n.Kind != yaml.SequenceNode {
+		return nil
+	}
+	out := make([]string, 0, len(n.Content))
+	for _, c := range n.Content {
+		out = append(out, c.Value)
+	}
+	return out
+}
+
+// permMap returns the permissions a mapping node declares as key/value pairs.
+func permMap(p *yaml.Node) map[string]string {
+	out := map[string]string{}
+	if p == nil || p.Kind != yaml.MappingNode {
+		return out
+	}
+	for i := 0; i+1 < len(p.Content); i += 2 {
+		out[p.Content[i].Value] = p.Content[i+1].Value
+	}
+	return out
+}
+
+// samePermissions reports whether got holds exactly the keys and values of want.
+func samePermissions(got, want map[string]string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for k, v := range want {
+		if gotV, ok := got[k]; !ok || gotV != v {
+			return false
+		}
+	}
+	return true
+}
+
 // Every external action is pinned to a full commit SHA (the version a
 // trailing comment names is for people; the SHA is what runs), every
 // workflow starts from declared permissions, and every checkout drops the
@@ -117,5 +154,78 @@ func TestWorkflowsFollowADR0021(t *testing.T) {
 	}
 	if uses == 0 {
 		t.Fatal("no action references found")
+	}
+}
+
+// TestFlatpakWorkflow keeps the first Flatpak workflow build-only: it has
+// source and build jobs, but no tag or publish job yet.
+func TestFlatpakWorkflow(t *testing.T) {
+	root, ok := workflows(t)["flatpak.yml"]
+	if !ok {
+		t.Fatal("no flatpak.yml")
+	}
+	read := map[string]string{"contents": "read"}
+	if got := permMap(get(root, "permissions")); !samePermissions(got, read) {
+		t.Errorf("top-level permissions = %v, want only contents: read", got)
+	}
+
+	jobs := get(root, "jobs")
+	wantNames := map[string]string{
+		"sources": "Flatpak sources (make flatpak-sources)",
+		"flatpak": "Flatpak (build and test)",
+	}
+	for job, wantName := range wantNames {
+		n := get(jobs, job)
+		if n == nil {
+			t.Fatalf("flatpak.yml has no %s job", job)
+		}
+		if name := get(n, "name"); name == nil || name.Value != wantName {
+			t.Errorf("%s job name = %v, want %q", job, name, wantName)
+		}
+		if p := get(n, "permissions"); p != nil && !samePermissions(permMap(p), read) {
+			t.Errorf("%s job permissions = %v, want none or only contents: read", job, permMap(p))
+		}
+	}
+
+	flatpak := get(jobs, "flatpak")
+	container := get(flatpak, "container")
+	image := get(container, "image")
+	if image == nil || !regexp.MustCompile(`^ghcr\.io/.+@sha256:[0-9a-f]{64}$`).MatchString(image.Value) {
+		t.Errorf("flatpak container image = %v, want a ghcr.io image pinned by sha256", image)
+	}
+
+	push := get(get(get(root, "on"), "push"), "tags")
+	for _, tag := range values(push) {
+		if strings.HasPrefix(tag, "v") {
+			t.Errorf("flatpak workflow has tag trigger %q; v* tags are not part of Phase 4", tag)
+		}
+	}
+	if publish := get(jobs, "publish"); publish != nil {
+		t.Error("flatpak.yml has a publish job before the later Flatpak phase")
+	}
+}
+
+// TestCIRequiredJobNames keeps the five required CI job names stable.
+func TestCIRequiredJobNames(t *testing.T) {
+	root, ok := workflows(t)["ci.yml"]
+	if !ok {
+		t.Fatal("no ci.yml")
+	}
+	jobs := get(root, "jobs")
+	want := map[string]string{
+		"verify": "Verify (make verify)",
+		"race":   "Race detector and cross-builds (make race cross)",
+		"web":    "web bundle (make web-check)",
+		"app":    "Desktop app (make app-check app-build)",
+		"deb":    "Snapshot .deb (make deb)",
+	}
+	for job, wantName := range want {
+		n := get(jobs, job)
+		if n == nil {
+			t.Fatalf("ci.yml has no %s job", job)
+		}
+		if name := get(n, "name"); name == nil || name.Value != wantName {
+			t.Errorf("ci %s job name = %v, want %q", job, name, wantName)
+		}
 	}
 }

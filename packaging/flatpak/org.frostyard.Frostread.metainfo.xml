@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.frostyard.Frostread</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Frostread</name>
+  <summary>Feeds and a reading list on your own computer</summary>
+  <developer id="org.frostyard">
+    <name>Frostyard</name>
+  </developer>
+  <description>
+    <p>
+      Frostread follows RSS, Atom and JSON Feed sources, and keeps a list of
+      links to read later. It works on its own: it needs no account, server
+      or other app.
+    </p>
+    <p>
+      A background service inside the app, readd, polls your feeds, keeps
+      each article as it was sent, and shows a clean copy of it. That copy
+      holds no scripts, and its images come with it, so an article never
+      loads anything from the network when you open it.
+    </p>
+    <p>
+      Search covers every article. Mark items read, star them, or archive
+      them. Your subscriptions move in and out as OPML, and an article saves
+      as a Markdown file. The readctl command gives scripts the same access.
+    </p>
+  </description>
+  <launchable type="desktop-id">org.frostyard.Frostread.desktop</launchable>
+  <!-- Taken by make screenshots of the real UI on made-up feeds, served
+       from main of the public repository. internal/packagecheck checks
+       them. -->
+  <screenshots>
+    <screenshot type="default">
+      <caption>An article in the reader, beside the list of unread items</caption>
+      <image>https://raw.githubusercontent.com/frostyard/frostread/main/docs/images/reading.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Links saved to read later</caption>
+      <image>https://raw.githubusercontent.com/frostyard/frostread/main/docs/images/later.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The dark theme, with an article open</caption>
+      <image>https://raw.githubusercontent.com/frostyard/frostread/main/docs/images/dark.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/frostyard/frostread</url>
+  <url type="bugtracker">https://github.com/frostyard/frostread/issues</url>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>readctl</binary>
+  </provides>
+  <categories>
+    <category>Network</category>
+    <category>Feed</category>
+    <category>News</category>
+  </categories>
+  <releases>
+    <release version="0.0.0" date="2026-11-04"/>
+  </releases>
+</component>

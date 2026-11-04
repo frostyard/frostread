@@ -1,0 +1,66 @@
+# Builds and tests the standalone Frostread Flatpak on pull requests and push
+# to main (docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md).
+# The sources job checks the offline Go, cargo and pnpm files. Tag and publish
+# steps belong to a later Flatpak phase.
+name: Flatpak
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flatpak-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  sources:
+    name: Flatpak sources (make flatpak-sources)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Regenerate the offline sources
+        run: make flatpak-sources
+      - name: The committed sources match the lockfiles
+        run: git diff --exit-code -- packaging/flatpak
+
+  flatpak:
+    name: Flatpak (build and test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    # flatpak-builder needs bubblewrap's privileged container. The image is
+    # pinned by digest; --system install below matches the container runtime.
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51@sha256:78d969b18225ae107ca29497bf09c4a3f791e5f1838a9a912a529d0024fb6210
+      options: --privileged
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and test
+        uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
+        with:
+          manifest-path: packaging/flatpak/org.frostyard.Frostread.json
+          bundle: frostread.flatpak
+          artifact-name: frostread-flatpak
+          run-tests: true
+          # A manifest or an offline source change starts the build cache afresh.
+          cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/org.frostyard.Frostread.json', 'packaging/flatpak/cargo-sources.json', 'packaging/flatpak/node-sources.json', 'packaging/flatpak/go-sources.json') }}
+
+      - name: Install the bundle and run readctl
+        # Use the system installation in this container. A user installation
+        # can exist without the GNOME runtime, which makes --user unreliable.
+        run: |
+          flatpak install --system --noninteractive -y frostread.flatpak
+          flatpak run --command=readctl org.frostyard.Frostread --help
