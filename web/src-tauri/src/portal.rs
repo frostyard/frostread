@@ -222,7 +222,7 @@ mod linux {
             answer
                 .body()
                 .deserialize::<(u32, HashMap<String, OwnedValue>)>()
-                .map_err(|e| format!("the file chooser portal's Response: {e}"))
+                .map_err(|_| "the file chooser portal answered a bad Response".to_string())
                 .and_then(|(code, hints)| chosen(code, &hints)),
         )
     }
@@ -287,7 +287,7 @@ mod linux {
                     .ok_or("the file chooser portal answered no uris")?;
                 let uris: Vec<String> = Value::from(uris.clone())
                     .try_into()
-                    .map_err(|e| format!("the file chooser portal's uris: {e}"))?;
+                    .map_err(|_| "the file chooser portal answered invalid uris".to_string())?;
                 let first = uris
                     .first()
                     .ok_or("the file chooser portal chose no file")?;
@@ -305,18 +305,18 @@ mod linux {
     /// relative path, are refused: the app writes only a file on this
     /// machine.
     fn uri_to_path(uri: &str) -> Result<PathBuf, String> {
-        let rest = uri
-            .strip_prefix("file://")
-            .ok_or_else(|| format!("{uri} is not a file:// URI"))?;
+        let rest = uri.strip_prefix("file://").ok_or_else(|| {
+            "the file chooser portal answered a URI that is not file://".to_string()
+        })?;
         let (host, path) = match rest.find('/') {
             Some(at) => rest.split_at(at),
             None => (rest, ""),
         };
         if !host.is_empty() && host != "localhost" {
-            return Err(format!("{uri} is not on this machine"));
+            return Err("the file chooser portal answered a file on another machine".to_string());
         }
         if !path.starts_with('/') {
-            return Err(format!("{uri} names no absolute path"));
+            return Err("the file chooser portal answered no absolute path".to_string());
         }
         Ok(PathBuf::from(OsString::from_vec(percent_decoded(path)?)))
     }
@@ -335,8 +335,12 @@ mod linux {
             let hex = std::str::from_utf8(&digits)
                 .ok()
                 .filter(|h| h.len() == 2 && h.bytes().all(|b| b.is_ascii_hexdigit()))
-                .ok_or_else(|| format!("{path}: a % escape that is not 2 hexadecimal digits"))?;
-            out.push(u8::from_str_radix(hex, 16).map_err(|e| format!("{path}: %{hex}: {e}"))?);
+                .ok_or_else(|| "the file chooser portal answered a broken % escape".to_string())?;
+            out.push(
+                u8::from_str_radix(hex, 16).map_err(|_| {
+                    "the file chooser portal answered a broken % escape".to_string()
+                })?,
+            );
         }
         Ok(out)
     }
@@ -399,16 +403,17 @@ mod linux {
                 Ok(PathBuf::from("/home/u/Résumé.opml"))
             );
             // Another scheme, another host, a relative path and a broken
-            // escape are refused.
+            // escape are refused without URI or path text in the error.
             for refused in [
-                "https://example.test/Frostread.opml",
-                "sftp://example.test/Frostread.opml",
-                "file://otherhost/home/u/Frostread.opml",
-                "file://home/u/Frostread.opml",
-                "file:///home/u/%2.opml",
-                "file:///home/u/%zz.opml",
+                "https://example.test/Secret-Plans-7Q.opml",
+                "sftp://example.test/Secret-Plans-7Q.opml",
+                "file://otherhost/home/u/Secret-Plans-7Q.opml",
+                "file://home/u/Secret-Plans-7Q.opml",
+                "file:///home/u/Secret-Plans-7Q%2.opml",
+                "file:///home/u/Secret-Plans-7Q%zz.opml",
             ] {
-                assert!(uri_to_path(refused).is_err(), "{refused}");
+                let error = uri_to_path(refused).unwrap_err();
+                assert!(!error.contains("Secret-Plans-7Q"), "{error}");
             }
         }
 

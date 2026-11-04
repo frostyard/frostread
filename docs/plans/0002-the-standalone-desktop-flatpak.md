@@ -303,6 +303,16 @@ web-build` built the lodge bundle; `make verify` passed on the host.
   exact text, writes nothing on a cancel, and refuses a name with a
   separator, an empty name, `.`, `..` and a name with no extension
   before it asks.
+- The portal's refusals (`uri_to_path`, `percent_decoded`, a bad
+  Response) are fixed texts: no picked URI or path reaches the page. A
+  test feeds refused URIs that hold `Secret-Plans-7Q` and finds it in no
+  error.
+- `save_text` refuses a name over 255 bytes and a text over 16 MiB before
+  it asks; tests cover 255 and 256 bytes, and 16 MiB and 1 byte more.
+- Vitest drives the production adapter (`desktop/save.ts`,
+  `tauriSaveFile`) with a fake `invoke`: an export calls exactly
+  `save_file` with `{name: "frostread.opml", text}`, and a refused invoke
+  shows its error. With the command name changed, that test fails.
 - The bus tests skip without a session bus, but fail when
   `READ_REQUIRE_SESSION_BUS=1` is set, which `make app-check`, `make
   app-test` and CI's job set: without a bus the 3 tests fail ("no

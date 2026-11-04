@@ -7,6 +7,11 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 
 use crate::{paths, portal};
 
+/// MAX_NAME is the maximum suggested file name in bytes.
+const MAX_NAME: usize = 255;
+/// MAX_TEXT is the maximum text size in bytes: 16 MiB.
+const MAX_TEXT: usize = 16 * 1024 * 1024;
+
 /// Picker asks the platform for one place to save a file.
 pub(crate) trait Picker {
     fn pick(
@@ -78,6 +83,12 @@ pub(crate) async fn save_text(
     name: &str,
     text: &str,
 ) -> Result<bool, String> {
+    if name.len() > MAX_NAME {
+        return Err("the file name is longer than 255 bytes".to_string());
+    }
+    if text.len() > MAX_TEXT {
+        return Err("the text is longer than 16 MiB".to_string());
+    }
     if name.is_empty() {
         return Err("the file name is empty".to_string());
     }
@@ -123,7 +134,7 @@ pub(crate) async fn save_file(
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use super::{Picker, save_text};
+    use super::{MAX_TEXT, Picker, save_text};
 
     struct StandIn {
         path: Option<std::path::PathBuf>,
@@ -220,6 +231,47 @@ mod tests {
             asked.lock().unwrap().is_empty(),
             "a bad name must not ask the picker"
         );
+    }
+
+    #[tokio::test]
+    async fn name_size_is_checked_before_the_picker_is_asked() {
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let picker = StandIn {
+            path: None,
+            asked: Arc::clone(&asked),
+        };
+        let at_limit = format!("{}.opml", "a".repeat(250));
+        assert_eq!(at_limit.len(), 255);
+        assert_eq!(save_text(&picker, &at_limit, "text").await, Ok(false));
+        assert_eq!(asked.lock().unwrap().len(), 1);
+
+        let over_limit = format!("{}.opml", "a".repeat(251));
+        assert_eq!(over_limit.len(), 256);
+        assert!(save_text(&picker, &over_limit, "text").await.is_err());
+        assert_eq!(asked.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn text_size_is_checked_before_the_picker_is_asked() {
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let picker = StandIn {
+            path: None,
+            asked: Arc::clone(&asked),
+        };
+        let at_limit = "x".repeat(MAX_TEXT);
+        assert_eq!(
+            save_text(&picker, "frostread.opml", &at_limit).await,
+            Ok(false)
+        );
+        assert_eq!(asked.lock().unwrap().len(), 1);
+
+        let over_limit = "x".repeat(MAX_TEXT + 1);
+        assert!(
+            save_text(&picker, "frostread.opml", &over_limit)
+                .await
+                .is_err()
+        );
+        assert_eq!(asked.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]

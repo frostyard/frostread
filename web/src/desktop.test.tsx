@@ -3,6 +3,7 @@
 import type { Transport } from "@frostyard/lodge-client/rpc";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tauriSaveFile } from "./desktop/save.js";
 import { BUDGET, BUDGET_WINDOW_MS, createDesktopShell, desktopRoute, type SaveFile } from "./desktop/shell.js";
 import { type Desktop, startDesktop } from "./desktop/start.js";
 import { createMockTransport } from "./rpc/mock.js";
@@ -153,16 +154,33 @@ describe("the desktop entry", () => {
     expect(window.history.length).toBe(before + 1);
   });
 
-  it("exports OPML through the desktop file shell", async () => {
-    const saveFile = vi.fn(async (_name: string, _text: string, _type: string) => true);
-    const desktop = await start("", saveFile);
+  it("exports OPML through the production Tauri save adapter", async () => {
+    const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+    async function fakeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+      calls.push([cmd, args]);
+      return true as T;
+    }
+    const desktop = await start("", tauriSaveFile(fakeInvoke));
     await screen.findByRole("button", { name: "Export OPML" });
     const xml = await desktop.store.getState().exportOPML();
 
     fireEvent.click(screen.getByRole("button", { name: "Export OPML" }));
 
-    await waitFor(() => expect(saveFile).toHaveBeenCalledWith("frostread.opml", xml, "text/x-opml"));
+    await waitFor(() => expect(calls).toEqual([["save_file", { name: "frostread.opml", text: xml }]]));
     expect(desktop.store.getState().error).toBeNull();
+  });
+
+  it("shows an error when the production Tauri save invoke rejects", async () => {
+    async function fakeInvoke<T>(_cmd: string, _args?: Record<string, unknown>): Promise<T> {
+      throw new Error("cannot invoke save_file");
+    }
+    const desktop = await start("", tauriSaveFile(fakeInvoke));
+    await screen.findByRole("button", { name: "Export OPML" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export OPML" }));
+
+    expect(await screen.findByText("cannot invoke save_file")).toBeTruthy();
+    expect(desktop.store.getState().error).toBe("cannot invoke save_file");
   });
 
   it("shows no error when a desktop OPML save is cancelled", async () => {

@@ -2,6 +2,7 @@
 // its own readd. The lodge entry is main.tsx.
 import "./app.css";
 import type { Transport } from "@frostyard/lodge-client/rpc";
+import { tauriSaveFile } from "./desktop/save.js";
 import type { SaveFile } from "./desktop/shell.js";
 import { startDesktop } from "./desktop/start.js";
 import { downloadFile } from "./lib/download.js";
@@ -29,7 +30,7 @@ async function connectDesktop(): Promise<{ transport: Transport; saveFile: SaveF
   const { connectTauri } = await import("./rpc/transport/tauri.js");
   return {
     transport: connectTauri(),
-    saveFile: (name, text) => core.invoke<boolean>("save_file", { name, text }),
+    saveFile: tauriSaveFile(core.invoke),
   };
 }
 
