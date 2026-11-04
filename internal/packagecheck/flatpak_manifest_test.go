@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -118,5 +119,36 @@ func TestFlatpakManifest(t *testing.T) {
 	}
 	if nodeAt < 0 || storeAt < nodeAt {
 		t.Errorf("frostread module: node-sources.json at %d, web/pnpm-workspace.yaml's storeDir at %d; want the storeDir after node-sources.json", nodeAt, storeAt)
+	}
+
+	// The shell's tests read files outside web/ (paths.rs shares
+	// internal/config's socket table); the frostread module copies only web/,
+	// so each such file needs a file source of its own, or cargo test fails
+	// in the build.
+	shipped := map[string]bool{}
+	for _, source := range m.Modules[1].Sources {
+		value, ok := source.(map[string]any)
+		if !ok || value["type"] != "file" {
+			continue
+		}
+		path, _ := value["path"].(string)
+		dest, _ := value["dest"].(string)
+		shipped[filepath.ToSlash(filepath.Join(dest, filepath.Base(path)))] = true
+	}
+	outside := regexp.MustCompile(`"(?:\.\./){3}([^"]+)"`)
+	rs, err := filepath.Glob(filepath.Join("..", "..", "web", "src-tauri", "src", "*.rs"))
+	if err != nil || len(rs) == 0 {
+		t.Fatalf("no shell sources: %v", err)
+	}
+	for _, file := range rs {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, match := range outside.FindAllStringSubmatch(string(data), -1) {
+			if !shipped[match[1]] {
+				t.Errorf("%s reads %s, which the frostread module does not copy", filepath.Base(file), match[1])
+			}
+		}
 	}
 }
