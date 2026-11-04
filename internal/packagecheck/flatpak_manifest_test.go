@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -90,5 +91,32 @@ func TestFlatpakManifest(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(base, name)); err != nil {
 			t.Errorf("manifest source %s is missing: %v", name, err)
 		}
+	}
+
+	// node-sources.json fills an offline pnpm store, and its own shell source
+	// names that store only in a pnpm-workspace.yaml at the module's root.
+	// pnpm runs in web/, so the store must be named in web/'s file after it,
+	// or pnpm install --offline finds no tarball.
+	nodeAt, storeAt := -1, -1
+	for i, source := range m.Modules[1].Sources {
+		switch value := source.(type) {
+		case string:
+			if value == "node-sources.json" {
+				nodeAt = i
+			}
+		case map[string]any:
+			if value["type"] != "shell" {
+				continue
+			}
+			commands, _ := value["commands"].([]any)
+			for _, c := range commands {
+				if c, ok := c.(string); ok && strings.Contains(c, "storeDir: $PWD/flatpak-node/pnpm-store") && strings.HasSuffix(c, ">> web/pnpm-workspace.yaml") {
+					storeAt = i
+				}
+			}
+		}
+	}
+	if nodeAt < 0 || storeAt < nodeAt {
+		t.Errorf("frostread module: node-sources.json at %d, web/pnpm-workspace.yaml's storeDir at %d; want the storeDir after node-sources.json", nodeAt, storeAt)
 	}
 }
