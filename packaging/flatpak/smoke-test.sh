@@ -90,6 +90,19 @@ fi
 EOF
 chmod +x "$work/bin/flatpak-spawn"
 
+cat >"$work/bin/readctl" <<'EOF'
+#!/bin/sh
+if [ -n "${SMOKE_SLOW_SHUTDOWN:-}" ] && [ "${1:-}" = "shutdown" ]; then
+    echo "readd stops"
+    ( sleep 1; "$SMOKE_REAL_READCTL" shutdown </dev/null >/dev/null 2>&1 ) &
+    exit 0
+fi
+exec "$SMOKE_REAL_READCTL" "$@"
+EOF
+chmod +x "$work/bin/readctl"
+SMOKE_REAL_READCTL="$bin/readctl"
+export SMOKE_REAL_READCTL
+
 cat >"$work/libexec/frostread-app" <<'EOF'
 #!/bin/sh
 exit 0
@@ -209,6 +222,12 @@ if ! tail -n 5 "$state/readd.log" | grep -q "another readd uses"; then
     print_logs
     exit 1
 fi
+size="$(wc -c <"$state/readd.log")"
+if [ "$size" -le 1048576 ]; then
+    echo "smoke test: readd.log holds $size bytes; want the running readd's log, over 1 MiB" >&2
+    print_logs
+    exit 1
+fi
 
 rc=0
 timeout 10 readd -desktop --socket "$work/second.sock" >"$work/second.log" 2>&1 || rc=$?
@@ -220,12 +239,13 @@ if [ "$rc" -eq 0 ] || [ "$rc" -eq 124 ] || ! grep -q "another readd uses" "$work
 fi
 
 # Two saved links, with no fetch: an OPML import fetches each feed, and the
-# build has no network. A .invalid host (RFC 6761) never resolves, so the
-# extraction that follows fails at once and reaches nothing, on the host too.
-# The ids show after the update that the same database is open: a new one
-# would number the second link 1.
+# build has no network. The rooted `.onion.` names do not query DNS: Go
+# recognizes `.onion` as special and a trailing root dot keeps the name
+# from getting search-domain suffixes. The extraction follows, but does
+# not resolve these names. The ids show after the update that the same
+# database is open: a new one would number the second link 1.
 for n in one two; do
-    readctl save "https://$n.smoke.invalid/article" >>"$work/saved.log" 2>&1 || {
+    readctl save "https://$n.smoke.onion./article" >>"$work/saved.log" 2>&1 || {
         echo "smoke test: readctl save of the $n link failed" >&2
         cat "$work/saved.log" >&2
         print_logs
@@ -259,7 +279,8 @@ wait_gone() {
 old=$pid
 rm -f "$SMOKE_SPAWN_PID" "$SMOKE_CHILD_PID"
 SMOKE_LATEST_INFO="$work/info-b"
-export SMOKE_LATEST_INFO
+SMOKE_SLOW_SHUTDOWN=1
+export SMOKE_LATEST_INFO SMOKE_SLOW_SHUTDOWN
 "$bin/frostread" >"$work/launcher.log" 2>&1
 for _ in $(seq 1 20); do
     [ -s "$SMOKE_CHILD_PID" ] && break
@@ -287,9 +308,10 @@ printf '%s\n' "$(readctl status)" | grep -qx "build buildB" || {
     print_logs
     exit 1
 }
-got=$(readctl save "https://two.smoke.invalid/article" 2>&1 || true)
-if [ "$got" != "saved 2 two.smoke.invalid" ]; then
-    echo "smoke test: after the update the second link answers '$got', not 'saved 2 two.smoke.invalid'" >&2
+unset SMOKE_SLOW_SHUTDOWN
+got=$(readctl save "https://two.smoke.onion./article" 2>&1 || true)
+if [ "$got" != "saved 2 two.smoke.onion." ]; then
+    echo "smoke test: after the update the second link answers '$got', not 'saved 2 two.smoke.onion.'" >&2
     print_logs
     exit 1
 fi

@@ -100,6 +100,15 @@ if status && [ -n "$have_spawn" ]; then
     fi
     if [ -n "$running" ] && [ -n "$latest" ] && [ "$running" != "$latest" ]; then
         bounded 35 readctl shutdown >>"$state/readd.log" 2>&1 || true
+
+        # readctl shutdown answers while readd is stopping. The old readd
+        # can answer status briefly after that, so do not let it skip the
+        # start block. Wait until status fails; then only a replacement
+        # readd that holds the lock can answer status.
+        deadline=$(($(date +%s) + 10))
+        while [ "$(date +%s)" -lt "$deadline" ] && status; do
+            sleep 0.25
+        done
     fi
 fi
 
