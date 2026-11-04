@@ -16,9 +16,10 @@ type flatpakManifest struct {
 	Command    string   `json:"command"`
 	FinishArgs []string `json:"finish-args"`
 	Modules    []struct {
-		Name         string   `json:"name"`
-		TestCommands []string `json:"test-commands"`
-		Sources      []any    `json:"sources"`
+		Name          string   `json:"name"`
+		BuildCommands []string `json:"build-commands"`
+		TestCommands  []string `json:"test-commands"`
+		Sources       []any    `json:"sources"`
 	} `json:"modules"`
 }
 
@@ -84,6 +85,8 @@ func TestFlatpakManifest(t *testing.T) {
 		"cargo-sources.json",
 		"node-sources.json",
 		"frostread.sh",
+		"smoke-test.sh",
+		"request-background.py",
 		"org.frostyard.Frostread.desktop",
 		"org.frostyard.Frostread.metainfo.xml",
 	} {
@@ -168,5 +171,22 @@ func TestFlatpakManifest(t *testing.T) {
 	}
 	if cargo == 0 {
 		t.Error("frostread module runs no cargo test")
+	}
+
+	wants := append([]string(nil), m.Modules[1].BuildCommands...)
+	if !slices.Contains(wants, "install -Dm755 flatpak/request-background.py /app/bin/frostread-request-background") {
+		t.Errorf("frostread module build-commands = %v, lacks the Background helper install", wants)
+	}
+
+	if len(m.Modules[1].TestCommands) == 0 {
+		t.Error("frostread module has no test-commands")
+	} else {
+		last := m.Modules[1].TestCommands[len(m.Modules[1].TestCommands)-1]
+		if last != "sh flatpak/smoke-test.sh" {
+			t.Errorf("frostread module's last test-command = %q, want sh flatpak/smoke-test.sh", last)
+		}
+	}
+	if !slices.Contains(m.Modules[1].TestCommands, "python3 -m py_compile flatpak/request-background.py") {
+		t.Errorf("frostread module test-commands = %v, lacks the helper py_compile", m.Modules[1].TestCommands)
 	}
 }

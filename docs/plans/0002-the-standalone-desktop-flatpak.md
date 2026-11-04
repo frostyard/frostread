@@ -21,8 +21,8 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-04): **Phase 3 is done; Phase 4's first part is in
-review.**
+Status (2026-11-04): **Phase 3 is done; Phase 4's first part is merged;
+Phase 4's second part is in review.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
@@ -39,13 +39,14 @@ review.**
   in frostread#36 (2026-11-02). 3.7, the hostile corpus, is merged in
   frostread#37 (2026-11-02). [3.8](#phase-3s-record) records this phase's
   evidence.
-- **Phase 4,** first part, is in review in frostread#49 (2026-11-04): the
+- **Phase 4,** first part, is merged in frostread#49 (2026-11-04): the
   manifest with its `readd` and `frostread` modules, the 3 sources files
   and `make flatpak-sources`, the desktop file, the metainfo with 3
   screenshots that `make screenshots` takes and its Go test, and
   `flatpak.yml`'s 2 jobs, whose build installs the bundle and runs
-  `readctl --help`. Its launcher only runs the app. The next part adds the
-  launcher of ADR-0008, `frostread-request-background` and the smoke test.
+  `readctl --help`. The second part is in review (2026-11-04): it adds the
+  launcher of ADR-0008, `frostread-request-background`, `make flatpak-smoke`
+  and the smoke test.
 - **Phases 5 to 11** have not started. Nothing of the lodge connection or
   the release candidate is built, and the clean-install gate (Phase 10)
   has no run yet.
@@ -538,8 +539,10 @@ Each part of the Done when, and the test that shows it:
   job on pull requests and main, SHA-pinned with least privilege;
   `internal/workflowcheck` covers it.
 - The smoke test in the build, without portals: `frostread --background`
-  at the Flatpak's socket; a second readd exits; `readctl` imports an
-  OPML file and lists its sources (no fetch: the build has no network);
+  at the Flatpak's socket; a second readd exits; `readctl` saves 2
+  links, which are still there after the update below (no fetch: the build
+  has no network, and an OPML import fetches each feed, so it is not the
+  check);
   the launcher with a stand-in `flatpak-spawn` ends it, and readd lives
   on; with `app.json` naming lodge, `--background` exits 0; a readd whose
   `build` differs from the stand-in latest commit is replaced at the

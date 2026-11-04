@@ -45,9 +45,9 @@ merged (3.1 frostread#30, 2026-10-29; 3.2 frostread#35, 2026-11-01;
 3.5 frostread#38, 2026-11-02; 3.6 frostread#36, 2026-11-02; and
 3.7 frostread#37, 2026-11-02), and 3.8 records the evidence in plan 0002.
 Phase 4's first part, the Flatpak's manifest, offline sources, desktop
-file, metainfo and CI build, is in review (frostread#49, 2026-11-04); its
-launcher is still an interim one that only runs the app. The launcher, the
-smoke test and the clean-install gate are not built yet.
+file, metainfo and CI build, is merged (frostread#49, 2026-11-04). Phase
+4's second part, the launcher, the Background helper and the smoke test,
+is in review (2026-11-04). The clean-install gate is not built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -121,7 +121,8 @@ counterpart of something those repositories do, read their file.
   the manifest with its `readd` and `frostread` modules, the 3 offline
   sources files (`go-sources.json`, `cargo-sources.json`,
   `node-sources.json`), the desktop file, the metainfo with its
-  screenshots, and the interim launcher `frostread.sh`.
+  screenshots, the launcher `frostread.sh`, `request-background.py` and
+  `smoke-test.sh`.
   `make flatpak-sources` (`scripts/flatpak-sources.sh`, with
   flatpak-builder-tools at a pinned commit, `patches/` and
   `generator-requirements.txt`, and `tools/flatpakgo` for the Go modules)
@@ -162,6 +163,8 @@ counterpart of something those repositories do, read their file.
   the engine's types, run `make contract-update`, then `make web-check`.
 - Never run pnpm, node or cargo on the host. `web/` builds in the nsl
   machine `frostnotes` (`make web-build`), as lodge's apps do.
+- `make flatpak-smoke` builds host readd and readctl, then runs the Flatpak
+  launcher and portal smoke test on the host.
 - `make app-e2e` drives the built desktop app in WebKitGTK, headless in
   the nsl machine: `web/e2e/harness.ts` starts readdev and `readd
   -desktop` (the dev tags) on a temporary XDG tree, imports readdev's

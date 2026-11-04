@@ -75,6 +75,7 @@
         "export PATH=\"$PWD/pnpm-bin:$PATH\" && cd web && pnpm tauri build",
         "install -Dm755 web/src-tauri/target/release/frostread /app/libexec/frostread-app",
         "install -Dm755 flatpak/frostread.sh /app/bin/frostread",
+        "install -Dm755 flatpak/request-background.py /app/bin/frostread-request-background",
         "install -Dm644 flatpak/org.frostyard.Frostread.desktop -t /app/share/applications",
         "install -Dm644 flatpak/org.frostyard.Frostread.metainfo.xml -t /app/share/metainfo",
         "install -Dm644 web/src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/org.frostyard.Frostread.png",
@@ -83,8 +84,11 @@
       ],
       "test-commands": [
         "cd web/src-tauri && if command -v dbus-run-session >/dev/null; then dbus-run-session -- env READ_REQUIRE_SESSION_BUS=1 cargo test --release --offline; else env -u DBUS_SESSION_BUS_ADDRESS cargo test --release --offline; fi",
+        "python3 -m py_compile flatpak/request-background.py",
+        "python3 -c \"from gi.repository import Gio, GLib\"",
         "desktop-file-validate /app/share/applications/org.frostyard.Frostread.desktop",
-        "appstreamcli validate --no-net /app/share/metainfo/org.frostyard.Frostread.metainfo.xml"
+        "appstreamcli validate --no-net /app/share/metainfo/org.frostyard.Frostread.metainfo.xml",
+        "sh flatpak/smoke-test.sh"
       ],
       "sources": [
         {
@@ -105,6 +109,16 @@
         {
           "type": "file",
           "path": "frostread.sh",
+          "dest": "flatpak"
+        },
+        {
+          "type": "file",
+          "path": "smoke-test.sh",
+          "dest": "flatpak"
+        },
+        {
+          "type": "file",
+          "path": "request-background.py",
           "dest": "flatpak"
         },
         {

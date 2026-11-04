@@ -13,6 +13,7 @@
 //
 //	readd [--socket PATH] [-desktop] [-log FILE] [-debug]
 //	readd -build
+//	readd -desktop -mode
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -73,6 +75,8 @@ func main() {
 type options struct {
 	// getenv reads the environment; os.Getenv when nil.
 	getenv func(string) string
+	// out receives lines from -build and -mode; os.Stdout when nil.
+	out io.Writer
 	// fetcher fetches the web; the guarded client when nil.
 	fetcher fetch.Fetcher
 	// flatpakInfo is the .flatpak-info file -build and status.build read;
@@ -87,7 +91,12 @@ func run(ctx context.Context, args []string, o options) error {
 	if o.getenv == nil {
 		o.getenv = os.Getenv
 	}
-	if o.flatpakInfo == "" {
+	if o.out == nil {
+		o.out = os.Stdout
+	}
+	if v := o.getenv("READ_FLATPAK_INFO"); v != "" {
+		o.flatpakInfo = v
+	} else if o.flatpakInfo == "" {
 		o.flatpakInfo = flatpakInfo
 	}
 	fs := flag.NewFlagSet("readd", flag.ContinueOnError)
@@ -97,6 +106,7 @@ func run(ctx context.Context, args []string, o options) error {
 	logPath := fs.String("log", "", "after readd holds the state directory's lock, move FILE to FILE.1 when it is "+
 		"larger than 1 MiB, and append readd's output to FILE")
 	showBuild := fs.Bool("build", false, "print the Flatpak instance's build, and exit")
+	showMode := fs.Bool("mode", false, "print this computer's mode: local or lodge, and exit")
 	debug := fs.Bool("debug", false, "log at debug level")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -106,7 +116,26 @@ func run(ctx context.Context, args []string, o options) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(build) // an empty line off the Flatpak
+		fmt.Fprintln(o.out, build) // an empty line off the Flatpak
+		return nil
+	}
+	if *showMode {
+		if !*desktop {
+			return errors.New("-mode requires -desktop")
+		}
+		modePath, err := config.ModePath(o.getenv)
+		if err != nil {
+			return err
+		}
+		mode, err := config.ReadMode(modePath)
+		if err != nil {
+			return err
+		}
+		if mode.Lodge != "" {
+			fmt.Fprintln(o.out, "lodge")
+		} else {
+			fmt.Fprintln(o.out, "local")
+		}
 		return nil
 	}
 	level := slog.LevelInfo

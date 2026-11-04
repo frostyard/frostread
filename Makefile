@@ -1,4 +1,4 @@
-.PHONY: help build fmt vet lint lint-version-check test race cross vulncheck tidy-check verify check ci contract-update web-build web-check web-fmt app-check app-test app-build app-e2e lodge-package dev-seed dev-lodge svu-version-check bump deb deb-check clean
+.PHONY: help build fmt vet lint lint-version-check test race cross vulncheck tidy-check verify check ci contract-update web-build web-check web-fmt app-check app-test app-build app-e2e flatpak-smoke lodge-package dev-seed dev-lodge svu-version-check bump deb deb-check clean
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -114,6 +114,14 @@ app-test: ## Build the desktop bundle and run the shell's Rust tests (nsl)
 
 app-build: ## Build the release app binary into build/frostread-app (nsl)
 	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web && pnpm install $(FROZEN) --silent && pnpm tauri build && mkdir -p ../build && cp "$$CARGO_TARGET_DIR/release/frostread" ../build/frostread-app'
+
+flatpak-smoke: ## Run the Flatpak's smoke test on the host with host-built readd and readctl
+	rm -rf build/flatpak-smoke
+	mkdir -p build/flatpak-smoke
+	CGO_ENABLED=0 go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o build/flatpak-smoke/ ./cmd/readd ./cmd/readctl
+	cp packaging/flatpak/frostread.sh build/flatpak-smoke/frostread
+	chmod 755 build/flatpak-smoke/frostread
+	FROSTREAD_BIN_DIR="$$(pwd)/build/flatpak-smoke" sh packaging/flatpak/smoke-test.sh
 
 # app-e2e drives the built app in WebKitGTK against readd's desktop mode on
 # readdev's generated feeds, headless in the nsl machine (plan 0002, step
