@@ -59,7 +59,10 @@ func checkScreenshots(meta []byte, root string) []error {
 		return errs
 	}
 
-	const mainPrefix = "/frostyard/frostread/main/"
+	// Each image is a file in docs/images on main: not another file of the
+	// repository, and no path that leaves docs/images once it is cleaned.
+	const mainPrefix = "/frostyard/frostread/main/docs/images/"
+	imagesDir := filepath.Join(absRoot, "docs", "images")
 	for i, screenshot := range screenshots {
 		if len(screenshot.Caption) == 0 || strings.TrimSpace(screenshot.Caption[0]) == "" {
 			errs = append(errs, fmt.Errorf("screenshot %d has an empty caption", i+1))
@@ -86,14 +89,14 @@ func checkScreenshots(meta []byte, root string) []error {
 			}
 
 			rest := strings.TrimPrefix(u.Path, mainPrefix)
-			target := filepath.Join(absRoot, filepath.FromSlash(rest))
-			rel, err := filepath.Rel(absRoot, target)
+			target := filepath.Join(imagesDir, filepath.FromSlash(rest))
+			rel, err := filepath.Rel(imagesDir, target)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("screenshot %d image %d path is invalid: %w", i+1, j+1, err))
 				continue
 			}
-			if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				errs = append(errs, fmt.Errorf("screenshot %d image %d path is outside the repository root", i+1, j+1))
+			if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				errs = append(errs, fmt.Errorf("screenshot %d image %d path %q is not a file in docs/images", i+1, j+1, u.Path))
 				continue
 			}
 
@@ -141,6 +144,15 @@ func TestFlatpakMetainfoScreenshotsRejects(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "docs", "images", "not-png.png"), []byte("not a png"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// A real PNG elsewhere in the repository, such as the app's icon, is no
+	// screenshot.
+	iconPath := filepath.Join(root, "web", "src-tauri", "icons", "icon.png")
+	if err := os.MkdirAll(filepath.Dir(iconPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(iconPath, []byte(pngSignature+"icon"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	component := func(body string) string { return "<component>" + body + "</component>" }
 	screenshot := func(typ, caption, image string) string {
@@ -176,6 +188,8 @@ func TestFlatpakMetainfoScreenshotsRejects(t *testing.T) {
 		{"http URL", component("<screenshots>" + screenshot("default", "Reading", "http://raw.githubusercontent.com/frostyard/frostread/main/docs/images/reading.png") + "</screenshots>"), "scheme"},
 		{"another host", component("<screenshots>" + screenshot("default", "Reading", "https://example.com/frostyard/frostread/main/docs/images/reading.png") + "</screenshots>"), "host"},
 		{"outside main", component("<screenshots>" + screenshot("default", "Reading", "https://raw.githubusercontent.com/other/repository/main/docs/images/reading.png") + "</screenshots>"), "main/"},
+		{"PNG outside docs/images", component("<screenshots>" + screenshot("default", "Reading", "https://raw.githubusercontent.com/frostyard/frostread/main/web/src-tauri/icons/icon.png") + "</screenshots>"), "docs/images"},
+		{"path leaves docs/images", component("<screenshots>" + screenshot("default", "Reading", base+"../../web/src-tauri/icons/icon.png") + "</screenshots>"), "docs/images"},
 		{"file does not exist", component("<screenshots>" + screenshot("default", "Reading", base+"missing.png") + "</screenshots>"), "does not exist"},
 		{"file is not PNG", component("<screenshots>" + screenshot("default", "Reading", base+"not-png.png") + "</screenshots>"), "PNG"},
 	}
