@@ -253,6 +253,14 @@ the same but for one line.
 The blobs stay in the store: an omitted image is not fetched or removed,
 and a later call may show it when the bound allows.
 
+#### OPML export
+
+`opml.export` returns the source list as XML. The lodge entry offers that
+text as `frostread.opml` with a browser download. The desktop shell sends
+the same text to `save_file` and asks the FileChooser portal's `SaveFile`
+in a Flatpak or Tauri's save dialog outside one; readd does not write the
+file.
+
 #### Export as Markdown
 
 `items.exportMarkdown` is the desktop's way to keep an article: the

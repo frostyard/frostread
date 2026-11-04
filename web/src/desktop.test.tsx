@@ -3,7 +3,7 @@
 import type { Transport } from "@frostyard/lodge-client/rpc";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BUDGET, BUDGET_WINDOW_MS, createDesktopShell, desktopRoute } from "./desktop/shell.js";
+import { BUDGET, BUDGET_WINDOW_MS, createDesktopShell, desktopRoute, type SaveFile } from "./desktop/shell.js";
 import { type Desktop, startDesktop } from "./desktop/start.js";
 import { createMockTransport } from "./rpc/mock.js";
 
@@ -29,9 +29,9 @@ afterEach(() => {
 });
 
 /** start runs the desktop entry in the page, on the mock. */
-async function start(hash = ""): Promise<Desktop> {
+async function start(hash = "", saveFile?: SaveFile): Promise<Desktop> {
   if (hash !== "") window.history.replaceState(null, "", hash);
-  started = await startDesktop({ root });
+  started = saveFile === undefined ? await startDesktop({ root }) : await startDesktop({ root, saveFile });
   return started;
 }
 
@@ -151,6 +151,42 @@ describe("the desktop entry", () => {
     });
     expect(window.location.hash).toBe("#/view/starred");
     expect(window.history.length).toBe(before + 1);
+  });
+
+  it("exports OPML through the desktop file shell", async () => {
+    const saveFile = vi.fn(async (_name: string, _text: string, _type: string) => true);
+    const desktop = await start("", saveFile);
+    await screen.findByRole("button", { name: "Export OPML" });
+    const xml = await desktop.store.getState().exportOPML();
+
+    fireEvent.click(screen.getByRole("button", { name: "Export OPML" }));
+
+    await waitFor(() => expect(saveFile).toHaveBeenCalledWith("frostread.opml", xml, "text/x-opml"));
+    expect(desktop.store.getState().error).toBeNull();
+  });
+
+  it("shows no error when a desktop OPML save is cancelled", async () => {
+    const saveFile = vi.fn(async () => false);
+    const desktop = await start("", saveFile);
+    await screen.findByRole("button", { name: "Export OPML" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export OPML" }));
+
+    await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
+    expect(desktop.store.getState().error).toBeNull();
+  });
+
+  it("shows an error when a desktop OPML save rejects", async () => {
+    const saveFile = vi.fn(async () => {
+      throw new Error("cannot save OPML");
+    });
+    const desktop = await start("", saveFile);
+    await screen.findByRole("button", { name: "Export OPML" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export OPML" }));
+
+    expect(await screen.findByText("cannot save OPML")).toBeTruthy();
+    expect(desktop.store.getState().error).toBe("cannot save OPML");
   });
 
   it("has no save page and no bookmarklet entry", async () => {

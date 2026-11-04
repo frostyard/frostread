@@ -35,6 +35,12 @@ export function desktopRoute(hash: string): Route {
   return route.kind === "save" || route.kind === "bookmarklet" ? UNREAD : route;
 }
 
+/** SaveFile saves text at a place the user picks: true when saved, false when the user cancels. */
+export type SaveFile = (name: string, text: string, type: string) => Promise<boolean>;
+
+/** noSaveFile is the shell's saver when its start names none: it refuses, so an export never looks saved. */
+const noSaveFile: SaveFile = () => Promise.reject(new Error("this window cannot save files"));
+
 /**
  * createDesktopShell is the Shell of the desktop's window. `now` is the clock
  * the history budget and the coalescing read, so a test can drive it with
@@ -42,7 +48,11 @@ export function desktopRoute(hash: string): Route {
  * clock: a clock jump (an NTP correction, a restored laptop) must not retire
  * the calls in the budget window early and let the app spend them twice.
  */
-export function createDesktopShell(win: Window = window, now: () => number = () => win.performance.now()): Shell {
+export function createDesktopShell(
+  win: Window = window,
+  now: () => number = () => win.performance.now(),
+  saveFile: SaveFile = noSaveFile,
+): Shell {
   // The first report is the start route, which is already the window's
   // address: it replaces, so a start adds no history entry.
   let first = true;
@@ -175,6 +185,7 @@ export function createDesktopShell(win: Window = window, now: () => number = () 
     openOutside(url) {
       win.open(url, "_blank", "noopener");
     },
+    saveFile,
     // The desktop has no content route (ADR-0008): the reader shows the
     // article from items.render in a sandboxed srcdoc frame instead.
     renderArticles: true,

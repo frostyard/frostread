@@ -14,6 +14,8 @@ export interface Shell {
   openRoute(route: string): void;
   /** openOutside opens an article or a link outside the app. */
   openOutside(url: string): void;
+  /** saveFile asks the shell to save text with name and MIME type. */
+  saveFile(name: string, text: string, type: string): Promise<boolean>;
   /**
    * renderArticles: the article comes from items.render into a srcdoc frame
    * (the desktop, ADR-0008), not from lodge-content's contentSrc.

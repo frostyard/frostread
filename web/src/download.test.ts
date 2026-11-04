@@ -2,6 +2,7 @@
 // named frostread.opml, clicked once.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { downloadOPML } from "./lib/download.js";
+import { lodgeShell } from "./lodge.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -28,5 +29,19 @@ describe("downloadOPML", () => {
 
     vi.runAllTimers();
     expect(revoke).toHaveBeenCalledWith("blob:frostread");
+  });
+
+  it("lets the lodge shell keep the browser download", async () => {
+    vi.useFakeTimers();
+    const create = vi.fn((_blob: Blob) => "blob:lodge-opml");
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: create });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    const saved = await lodgeShell.saveFile("frostread.opml", "<opml/>", "text/x-opml");
+
+    expect(saved).toBe(true);
+    expect(create.mock.calls[0]?.[0].type).toBe("text/x-opml");
+    expect(click).toHaveBeenCalledOnce();
   });
 });
