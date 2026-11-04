@@ -520,9 +520,11 @@ Each part of the Done when, and the test that shows it:
 - The metainfo's `<screenshots>`, which software centres and
   flatpak-index show: 2 to 4 PNGs of the real UI on made-up feeds and
   articles, about 1280x800, the reading view first as `type="default"`,
-  each with a `<caption>`, kept in `docs/images` and named by https URLs
-  on `main`. A Go test fails on a missing default, a URL that is not
-  https, or an image that is not in the repository, as frostmail's and
+  each with a `<caption>`, kept in `docs/images` and named by URLs
+  `https://raw.githubusercontent.com/frostyard/frostread/main/docs/images/…`
+  (a `github.com/…/blob/` URL serves a page, not the PNG). A Go test fails
+  on a missing default, a URL that is not https, on another host or not
+  under that path, or an image that is not in the repository, as frostmail's and
   frostnotes' do (Brian, 2026-11-03: the Flatpaks had no screenshots).
 - `.github/workflows/flatpak.yml`: the sources job and the build-and-test
   job on pull requests and main, SHA-pinned with least privilege;
