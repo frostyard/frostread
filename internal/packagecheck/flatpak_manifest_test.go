@@ -16,8 +16,9 @@ type flatpakManifest struct {
 	Command    string   `json:"command"`
 	FinishArgs []string `json:"finish-args"`
 	Modules    []struct {
-		Name    string `json:"name"`
-		Sources []any  `json:"sources"`
+		Name         string   `json:"name"`
+		TestCommands []string `json:"test-commands"`
+		Sources      []any    `json:"sources"`
 	} `json:"modules"`
 }
 
@@ -150,5 +151,22 @@ func TestFlatpakManifest(t *testing.T) {
 				t.Errorf("%s reads %s, which the frostread module does not copy", filepath.Base(file), match[1])
 			}
 		}
+	}
+
+	// The build sandbox inherits a DBUS_SESSION_BUS_ADDRESS whose socket is
+	// outside it, so portal.rs's session-bus tests fail to connect. The shell's
+	// tests run on a bus of their own, or with no address at all (they skip).
+	cargo := 0
+	for _, c := range m.Modules[1].TestCommands {
+		if !strings.Contains(c, "cargo test") {
+			continue
+		}
+		cargo++
+		if !strings.Contains(c, "dbus-run-session -- env READ_REQUIRE_SESSION_BUS=1 cargo test") || !strings.Contains(c, "env -u DBUS_SESSION_BUS_ADDRESS cargo test") {
+			t.Errorf("frostread module test %q must run cargo test under dbus-run-session, or without the inherited bus address", c)
+		}
+	}
+	if cargo == 0 {
+		t.Error("frostread module runs no cargo test")
 	}
 }
