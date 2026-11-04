@@ -21,29 +21,26 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-02): **Phase 3 is in progress.**
+Status (2026-11-03): **Phase 3 is done.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
   the Read row of core's plan 0010, waits for Lucilla.
 - **Phase 2,** readd's desktop mode, is merged (frostread#25,
   2026-10-28).
-- **Phase 3** has its [steps](#phase-3s-steps) (frostread#29,
-  2026-10-29). 2 are merged, both web only and on the mock transport
-  until 3.2: 3.1, the desktop entry (frostread#30, 2026-10-29), and 3.3,
-  the reader's `srcdoc` frame from `items.render` (frostread#32,
-  2026-10-31). 3.0 is done: Duncan chose frostnotes' `frostnotes`
-  machine, and its checks pass (2026-11-01; the evidence is under
-  [3.0](#phase-3s-steps)). 3.2, the Rust shell, the bridge and the
-  Tauri transport, is merged (frostread#35, 2026-11-01). 3.6, the
-  end-to-end harness, is merged (frostread#36, 2026-11-02; the evidence
-  is under [3.6](#phase-3s-steps)). 3.7, the hostile corpus, is in
-  review (2026-11-02; the evidence is under [3.7](#phase-3s-steps)).
-  Step 3.4 is in review (2026-11-03). Left: 3.5 and 3.8, Phase 3's
-  record.
-- **Phases 4 to 11** have not started. Nothing of the Rust shell, the
-  Flatpak, the lodge connection or the release candidate is built, and
-  the clean-install gate (Phase 10) has no run yet.
+- **Phase 3** has its [steps](#phase-3s-steps). 3.0 is done on
+  frostnotes' `frostnotes` machine (2026-11-01). 3.1, the desktop entry,
+  is merged in frostread#30 (2026-10-29). 3.2, the Rust shell, is merged
+  in frostread#35 (2026-11-01). 3.3, the reader's `srcdoc` frame, is
+  merged in frostread#32 (2026-10-31). 3.4, files through the shell, is
+  merged in frostread#45 (2026-11-03). 3.5, app checks in CI, is merged
+  in frostread#38 (2026-11-02). 3.6, the end-to-end harness, is merged
+  in frostread#36 (2026-11-02). 3.7, the hostile corpus, is merged in
+  frostread#37 (2026-11-02). [3.8](#phase-3s-record) records this phase's
+  evidence.
+- **Phases 4 to 11** have not started. Nothing of the Flatpak, the lodge
+  connection or the release candidate is built, and the clean-install
+  gate (Phase 10) has no run yet.
 
 ## Who helps
 
@@ -282,7 +279,7 @@ What the run found:
 - **Owners:** the planner.
 - **Depends on:** 3.2.
 
-**3.4's evidence (2026-11-03, in review).** In the nsl machine
+**3.4's evidence (2026-11-03, merged in frostread#45).** In the nsl machine
 `frostnotes`: `make app-check` passed (Biome, tsc, 19 Vitest files with
 126 tests, the desktop build, `cargo fmt --check`, `cargo clippy -D
 warnings`, and 25 Rust tests under `dbus-run-session` with
@@ -336,7 +333,7 @@ web-build` built the lodge bundle; `make verify` passed on the host.
   required check (a repository setting).
 - **Depends on:** 3.2.
 
-**3.5's evidence (2026-11-02, in review).** The new job, `Desktop app
+**3.5's evidence (2026-11-02, merged in frostread#38).** The new job, `Desktop app
 (make app-check app-build)` in `.github/workflows/ci.yml`, passed on its
 pull request in 7 min 54 s on `ubuntu-24.04` without a cache
 ([run 41477139260](https://github.com/frostyard/frostread/actions/runs/41477139260)):
@@ -407,7 +404,7 @@ its last line, a `pgrep` for readd, readdev, the app and
 - **Owners:** the planner; Duncan's machine.
 - **Depends on:** 3.6.
 
-**3.7's evidence (2026-11-02, in review).** In the nsl machine
+**3.7's evidence (2026-11-02, merged in frostread#37).** In the nsl machine
 `frostnotes`, `make app-e2e` passed 2 times in a row: 5 tests each (3.6's
 3 and the corpus's 2), and the leftover check found no process. The
 corpus is 70 pages in [web/e2e/hostile](../../web/e2e/hostile/README.md):
@@ -473,6 +470,18 @@ What the work found:
   says Phase 3 is done.
 - **Owners:** the planner.
 - **Depends on:** 3.4, 3.5 and 3.7.
+
+### Phase 3's record
+
+EVIDENCE-PLACEHOLDER
+
+- `web/e2e/read.e2e.ts` checks that the built app lists readdev's feeds,
+  shows an article with its inlined image and sends a link click to the
+  stand-in opener.
+- `web/e2e/hostile.e2e.ts` checks that the hostile corpus runs no script
+  and makes no network request from the frame.
+- The Makefile's `ci` target checks that `make ci` passes the host gates
+  and the app build gates.
 
 ## Phase 4 — The Flatpak in CI (planner, medium)
 

@@ -13,13 +13,14 @@ frostread is lodge's `read` app: a tailnet-only feed reader and read-later
 list. It polls sources and fetches pages from the public web; lodge owns
 every listener, and the browser loads nothing remote.
 
-Planned, not built:
 [ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
 (Accepted) adds a desktop Flatpak, `org.frostyard.Frostread`: a Tauri
 shell over this web bundle, with its own readd in a desktop mode, local by
 default, and lodge as a connection the user chooses.
-[Plan 0002](../plans/0002-the-standalone-desktop-flatpak.md) builds it;
-this document changes with each of its phases.
+[Plan 0002](../plans/0002-the-standalone-desktop-flatpak.md) builds it.
+Built: readd's desktop mode (Phase 2) and the shell (Phase 3, done
+2026-11-03). Not built yet: the Flatpak, the lodge connection and the
+release (Phases 4 to 11). This document changes with each phase.
 
 ```
  feeds, pages, images ──▶ internal/fetch (kit/netguard) ──▶ poller, extract
@@ -31,6 +32,8 @@ this document changes with each of its phases.
                         └──/mcp/read──▶ mcpserver ──▶ engine
    readctl ──unix──▶ readd private socket ──▶ engine
    notes ◀──agent socket◀── internal/notes ◀── engine (save as note)
+   desktop window ──Tauri IPC──▶ shell (bridge.rs) ──unix──▶ readd -desktop
+                                                       private socket ──▶ engine
 ```
 
 ## Design
@@ -56,6 +59,30 @@ socket: no lodge socket, no content route, no MCP and no notes client, and
 no TCP port. `daemon.shutdown` lets the window stop it in order, and
 `items.exportMarkdown` gives the reader a Markdown file instead of a
 note.
+
+**The desktop shell.** The Tauri v2 shell is in `web/src-tauri/` over
+the web project's desktop entry ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
+[plan 0002's Phase 3 steps](../plans/0002-the-standalone-desktop-flatpak.md#phase-3s-steps)).
+`bridge.rs` moves newline-delimited lines to readd's private socket and
+back. It never parses a line. A closed socket sends a `Closed` event to
+the window, and the next call connects again. `paths.rs` derives the socket as
+`internal/config` does. `tauri.conf.json` holds ADR-0008's CSP exactly:
+`default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; frame-src 'self'; form-action 'none'; object-src 'none'`.
+`on_navigation` admits only the app frame. `on_new_window` opens `http`,
+`https` and `mailto` links with the opener and denies every new window.
+`on_download` denies downloads. Single instance focuses the main window.
+`save_file` uses the FileChooser portal in a Flatpak and the dialog plugin
+elsewhere. The capabilities grant only `allow-readd-connect`,
+`allow-readd-send` and `allow-save-file`.
+
+The desktop entry (`web/desktop.html`, `web/src/desktop.tsx`) follows
+the system's color scheme. It keeps its route in the URL fragment and
+the window's own history, with a budget of 50 history calls in 10 s,
+below WebKit's limit. It has no save page and no bookmarklet. OPML
+export goes through `save_file`; the lodge entry keeps its download.
+`make app-e2e` drives the built app in WebKitGTK, with the hostile
+corpus ([plan 0002, Phase 3's record](../plans/0002-the-standalone-desktop-flatpak.md#phase-3s-record)).
+Phase 5 adds what the real desktop shows: the real portals, on a VM.
 
 **The store.** SQLite on local disk, WAL, foreign keys on, migrations by
 `user_version`:
@@ -206,8 +233,8 @@ runes, and the address is checked with `fetch.Check` before it is stored
   [ADR-0004](../adr/0004-save-as-note-goes-through-notes-mcp-on-the-agent-socket.md),
   [ADR-0005](../adr/0005-articles-are-extracted-sanitized-and-kept-as-sent.md),
   [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md),
-  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md);
-  planned: [ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
+  [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md),
+  [ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
   (the desktop Flatpak)
 - Contracts: [specs/api.md](../specs/api.md)
 - Built in: [roadmap — Phases 1 to 8](../plans/0001-roadmap.md); the

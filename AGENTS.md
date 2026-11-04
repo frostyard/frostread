@@ -39,14 +39,12 @@ ADR-0007, the blob sweep, are Accepted (Brian, 2026-10-22).
 ADR-0008, the standalone desktop Flatpak, is Accepted (Brian, 2026-10-28);
 [plan 0002](docs/plans/0002-the-standalone-desktop-flatpak.md) builds it:
 Phase 2, readd's desktop mode, is merged (frostread#25, 2026-10-28), and
-Phase 3, the desktop shell, is planned in steps (2026-10-29): step 3.1,
-the desktop entry, is merged (frostread#30, 2026-10-29), and step 3.3,
-the reader's `srcdoc` frame from `items.render`, is merged (frostread#32,
-2026-10-31), and step 3.2, the Rust shell, is merged (frostread#35,
-2026-11-01), and step 3.6, the end-to-end harness (`make app-e2e`), is
-merged (frostread#36, 2026-11-02). Step 3.7, the hostile corpus, is in
-review (2026-11-02). The Flatpak and the clean-install gate are not built
-yet.
+Phase 3, the desktop shell, is done (2026-11-03): steps 3.1 to 3.7 are
+merged (3.1 frostread#30, 2026-10-29; 3.2 frostread#35, 2026-11-01;
+3.3 frostread#32, 2026-10-31; 3.4 frostread#45, 2026-11-03;
+3.5 frostread#38, 2026-11-02; 3.6 frostread#36, 2026-11-02; and
+3.7 frostread#37, 2026-11-02), and 3.8 records the evidence in plan 0002.
+The Flatpak and the clean-install gate are not built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -91,6 +89,22 @@ counterpart of something those repositories do, read their file.
   lodge's development build on loopback with Read and Notes, generated
   feeds, a generated vault and Read's scoped notes token. It reads the
   `../lodge` and `../frostnotes` checkouts and changes neither.
+- `web/src-tauri/`: the Tauri v2 shell for identifier
+  `org.frostyard.Frostread`; `bridge.rs` moves lines between the window
+  and readd's private socket and never parses them; `paths.rs` derives
+  the socket as `internal/config` does, from a test data table both
+  share; `files.rs` and `portal.rs` save a file the user picks, through
+  the FileChooser portal in a Flatpak and the dialog plugin elsewhere;
+  `main.rs` admits only the app in the main frame, opens `http`, `https`
+  and `mailto` links with the opener and denies every new window, and
+  keeps a single instance; `capabilities/default.json` grants only the
+  bridge and `save_file`.
+- `web/src/desktop.tsx` and `web/src/desktop/`: the desktop entry,
+  `web/desktop.html`, built into `build/desktop`: the desktop `Shell`
+  and the saver; the Tauri transport is
+  `web/src/rpc/transport/tauri.ts`, and the reader's `srcdoc` frame is
+  `web/src/components/RenderedArticle.tsx`.
+- `web/e2e/`: `make app-e2e`'s harness and suites, and the hostile corpus.
 - `web/`: the web bundle on `@frostyard/lodge-client` (client/v0.3.2,
   whose `rpc` subpath carries JSON-RPC) and `@frostyard/lodge-ui`
   (ui/v0.6.0).
@@ -115,6 +129,13 @@ counterpart of something those repositories do, read their file.
   checks (`make web-check`, nsl). CI also runs a `vulncheck` job
   (`make vulncheck`: govulncheck, pinned in the Makefile; it needs the
   network, so no gate runs it). Keep it at 0 reachable findings.
+- `make app-check` runs Biome, tsc, Vitest, the desktop build,
+  `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test` under
+  `dbus-run-session` with `READ_REQUIRE_SESSION_BUS=1`. `make app-build`
+  builds the release binary into `build/frostread-app`. Both run in the
+  nsl machine `frostnotes` (`APP_NSL_MACHINE`) with
+  `CARGO_TARGET_DIR=/var/tmp/frostread/target`. `make ci` runs both, and
+  CI's job `Desktop app (make app-check app-build)` runs them.
 - The daemon's wire answers are the web app's contract:
   `internal/readapi`'s contract test writes `web/src/rpc/testdata`, and
   `make check` fails when a golden is stale. After a change to `api/` or
