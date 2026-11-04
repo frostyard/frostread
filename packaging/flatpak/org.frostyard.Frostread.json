@@ -1,0 +1,146 @@
+{
+  "app-id": "org.frostyard.Frostread",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "51",
+  "sdk": "org.gnome.Sdk",
+  "sdk-extensions": [
+    "org.freedesktop.Sdk.Extension.golang",
+    "org.freedesktop.Sdk.Extension.node24",
+    "org.freedesktop.Sdk.Extension.rust-stable"
+  ],
+  "command": "frostread",
+  "finish-args": [
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--share=ipc",
+    "--device=dri",
+    "--share=network"
+  ],
+  "modules": [
+    {
+      "name": "readd",
+      "buildsystem": "simple",
+      "build-options": {
+        "append-path": "/usr/lib/sdk/golang/bin",
+        "env": {
+          "GOPROXY": "file:///run/build/readd/goproxy",
+          "GOSUMDB": "off",
+          "GOTOOLCHAIN": "local",
+          "GOFLAGS": "-trimpath -buildvcs=false -modcacherw",
+          "GOMODCACHE": "/run/build/readd/.gomodcache",
+          "GOCACHE": "/run/build/readd/.gocache",
+          "CGO_ENABLED": "0"
+        }
+      },
+      "build-commands": [
+        "go build -ldflags '-s -w -X main.version=flatpak' -o build/ ./cmd/readd ./cmd/readctl",
+        "install -Dm755 -t /app/bin build/readd build/readctl"
+      ],
+      "test-commands": [
+        "/app/bin/readctl --help"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "../..",
+          "skip": [
+            ".git",
+            ".github",
+            ".flatpak-builder",
+            "build",
+            "dist",
+            "docs",
+            "web",
+            "flatpak_app",
+            "repo"
+          ]
+        },
+        "go-sources.json"
+      ]
+    },
+    {
+      "name": "frostread",
+      "buildsystem": "simple",
+      "build-options": {
+        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin",
+        "env": {
+          "CARGO_HOME": "/run/build/frostread/cargo",
+          "CARGO_NET_OFFLINE": "true",
+          "XDG_CACHE_HOME": "/run/build/frostread/flatpak-node/cache",
+          "CI": "true"
+        }
+      },
+      "build-commands": [
+        "export PATH=\"$PWD/pnpm-bin:$PATH\" && cd web && pnpm install --offline --frozen-lockfile --trust-lockfile",
+        "export PATH=\"$PWD/pnpm-bin:$PATH\" && cd web && pnpm tauri build",
+        "install -Dm755 web/src-tauri/target/release/frostread /app/libexec/frostread-app",
+        "install -Dm755 flatpak/frostread.sh /app/bin/frostread",
+        "install -Dm644 flatpak/org.frostyard.Frostread.desktop -t /app/share/applications",
+        "install -Dm644 flatpak/org.frostyard.Frostread.metainfo.xml -t /app/share/metainfo",
+        "install -Dm644 web/src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/org.frostyard.Frostread.png",
+        "install -Dm644 web/src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/org.frostyard.Frostread.png",
+        "install -Dm644 web/src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/org.frostyard.Frostread.png"
+      ],
+      "test-commands": [
+        "cd web/src-tauri && if command -v dbus-run-session >/dev/null; then dbus-run-session -- env READ_REQUIRE_SESSION_BUS=1 cargo test --release --offline; else env -u DBUS_SESSION_BUS_ADDRESS cargo test --release --offline; fi",
+        "desktop-file-validate /app/share/applications/org.frostyard.Frostread.desktop",
+        "appstreamcli validate --no-net /app/share/metainfo/org.frostyard.Frostread.metainfo.xml"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "../../web",
+          "dest": "web",
+          "skip": [
+            "node_modules",
+            "src-tauri/target",
+            "src-tauri/gen"
+          ]
+        },
+        {
+          "type": "file",
+          "path": "../../internal/config/testdata/desktop-socket.json",
+          "dest": "internal/config/testdata"
+        },
+        {
+          "type": "file",
+          "path": "frostread.sh",
+          "dest": "flatpak"
+        },
+        {
+          "type": "file",
+          "path": "org.frostyard.Frostread.desktop",
+          "dest": "flatpak"
+        },
+        {
+          "type": "file",
+          "path": "org.frostyard.Frostread.metainfo.xml",
+          "dest": "flatpak"
+        },
+        {
+          "type": "archive",
+          "url": "https://registry.npmjs.org/@pnpm/exe.linux-x64/-/exe.linux-x64-12.10.1.tgz",
+          "sha512": "641c95d034605b319a0d28d3e5d75104049dc33fabfea3cc621ee8e911a63d08ed4463456d297de316360dc00cf26a82399254503b405d0fb0a415dc7692a592",
+          "dest": "pnpm-bin",
+          "only-arches": [
+            "x86_64"
+          ]
+        },
+        {
+          "type": "shell",
+          "commands": [
+            "sed -i '/^storeDir:/d' web/pnpm-workspace.yaml"
+          ]
+        },
+        "node-sources.json",
+        {
+          "type": "shell",
+          "commands": [
+            "echo \"storeDir: $PWD/flatpak-node/pnpm-store\" >> web/pnpm-workspace.yaml"
+          ]
+        },
+        "cargo-sources.json"
+      ]
+    }
+  ]
+}

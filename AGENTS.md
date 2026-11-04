@@ -44,7 +44,10 @@ merged (3.1 frostread#30, 2026-10-29; 3.2 frostread#35, 2026-11-01;
 3.3 frostread#32, 2026-10-31; 3.4 frostread#45, 2026-11-03;
 3.5 frostread#38, 2026-11-02; 3.6 frostread#36, 2026-11-02; and
 3.7 frostread#37, 2026-11-02), and 3.8 records the evidence in plan 0002.
-The Flatpak and the clean-install gate are not built yet.
+Phase 4's first part, the Flatpak's manifest, offline sources, desktop
+file, metainfo and CI build, is in review (frostread#49, 2026-11-04); its
+launcher is still an interim one that only runs the app. The launcher, the
+smoke test and the clean-install gate are not built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -114,10 +117,27 @@ counterpart of something those repositories do, read their file.
   tests the staged tree and its units. `make deb` builds the release
   `.deb` with nFPM (`packaging/nfpm.yaml`, checked by
   `packaging/deb-check.py`); `make bump` tags a release.
+- `packaging/flatpak`: the Flatpak `org.frostyard.Frostread` (ADR-0008):
+  the manifest with its `readd` and `frostread` modules, the 3 offline
+  sources files (`go-sources.json`, `cargo-sources.json`,
+  `node-sources.json`), the desktop file, the metainfo with its
+  screenshots, and the interim launcher `frostread.sh`.
+  `make flatpak-sources` (`scripts/flatpak-sources.sh`, with
+  flatpak-builder-tools at a pinned commit, `patches/` and
+  `generator-requirements.txt`, and `tools/flatpakgo` for the Go modules)
+  writes the 3 files; it needs the network, Go and Python 3, and no Node,
+  pnpm or Rust. `internal/packagecheck` tests the manifest's permissions
+  and the metainfo's screenshots.
+- `dev/screenshots` and `web/e2e/screenshots.suite.ts`: `make screenshots`
+  takes the metainfo's 3 PNGs in `docs/images/` from the real desktop app
+  on made-up feeds, in the nsl machine.
 - `.github/workflows/`: `ci.yml` (the jobs of `make ci`, plus `deb`, a
-  snapshot `.deb`) and `release.yml` (a tag builds, attests and publishes
-  the `.deb`). `internal/workflowcheck` tests that their actions are
-  SHA-pinned with least privilege (frostyard/core ADR-0021).
+  snapshot `.deb`), `release.yml` (a tag builds, attests and publishes
+  the `.deb`) and `flatpak.yml` (the sources check and the Flatpak's
+  build and tests, which installs the bundle and runs `readctl --help`;
+  no tag or publish yet). `internal/workflowcheck` tests that their
+  actions are SHA-pinned with least privilege (frostyard/core ADR-0021),
+  the Flatpak workflow's jobs, and the required check names of `ci.yml`.
 
 ## Gates
 
@@ -151,6 +171,13 @@ counterpart of something those repositories do, read their file.
   readd, and fails on any request to its loopback canary. It needs a
   display, so `make ci` leaves it out; run it after a change to the shell,
   the desktop entry, the reader's frame or the sanitizer.
+- After a change to `go.mod`, `go.sum`, `web/pnpm-lock.yaml` or
+  `web/src-tauri/Cargo.lock`, run `make flatpak-sources` and commit the 3
+  files: CI's job `Flatpak sources (make flatpak-sources)` fails on any
+  difference. The job `Flatpak (build and test)` builds the Flatpak; the
+  2 Flatpak jobs are not required checks.
+- After a change to the UI that the screenshots show, run
+  `make screenshots` (nsl) and commit the PNGs.
 - Fix a lint finding rather than loosening `.golangci.yml`.
 - Tests run unfiltered (`go test ./...`). No test reaches the network: it
   uses `httptest`, and never sleeps to synchronize.

@@ -73,6 +73,10 @@ GOVULNCHECK_VERSION := v1.9.0
 vulncheck: ## Report reachable vulnerabilities (govulncheck; needs the network)
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
+.PHONY: flatpak-sources
+flatpak-sources: ## Regenerate the Flatpak's offline Go, cargo and pnpm sources
+	scripts/flatpak-sources.sh
+
 ci: verify race cross web-check app-check app-build ## verify, the race detector, cross-builds, the web bundle and the app (nsl)
 
 # The web bundle checks and builds in an nsl machine with Node, never on
@@ -122,6 +126,12 @@ app-build: ## Build the release app binary into build/frostread-app (nsl)
 app-e2e: app-build ## Drive the built app in WebKitGTK against readd and readdev, headless (nsl); F= picks tests
 	CGO_ENABLED=0 go build -tags 'devfetch devfeeds' $(GOFLAGS) -o build/e2e/ ./cmd/readd ./cmd/readctl ./cmd/readdev
 	$(IN_APP_NSL) 'cd web && pnpm install $(FROZEN) --silent && env -u WAYLAND_DISPLAY GDK_BACKEND=x11 xvfb-run -a -s "-screen 0 1280x800x24" pnpm exec vitest run -c vitest.e2e.config.ts $(F); rc=$$?; if pgrep -af -r D,I,R,S,T,t "[b]uild/e2e/|[f]rostread-app|[W]ebKitWebDriver"; then echo "app-e2e: a process of the run is left" >&2; rc=1; fi; exit $$rc'
+
+.PHONY: screenshots
+screenshots: app-build ## Take the 1280x800 Flatpak metainfo screenshots with made-up feeds (nsl)
+	CGO_ENABLED=0 go build -tags 'devfetch devfeeds' $(GOFLAGS) -o build/e2e/ ./cmd/readd ./cmd/readctl ./cmd/readdev
+	CGO_ENABLED=0 go build -tags devfeeds $(GOFLAGS) -o build/e2e/screenshots-server ./dev/screenshots
+	$(IN_APP_NSL) 'if curl -fs -o /dev/null http://127.0.0.1:8099/; then echo "screenshots: port 8099 is in use" >&2; exit 1; fi; cd web && pnpm install $(FROZEN) --silent && env -u WAYLAND_DISPLAY GDK_BACKEND=x11 xvfb-run -a -s "-screen 0 1280x800x24" pnpm exec vitest run -c vitest.screenshots.config.ts; rc=$$?; if pgrep -af -r D,I,R,S,T,t "[b]uild/e2e/|[f]rostread-app|[W]ebKitWebDriver|[s]creenshots-server"; then echo "screenshots: a process of the run is left" >&2; rc=1; fi; exit $$rc'
 
 # lodge-package stages the app under LODGE_DESTDIR in lodge's install
 # layout, with packaging/lodge/stage.sh. It replaces only this app's own

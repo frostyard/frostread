@@ -98,6 +98,36 @@ export class Session {
     await this.do("DELETE", "");
   }
 
+  /** windowRect reads the window's outer position and size. */
+  windowRect(): Promise<{ x: number; y: number; width: number; height: number }> {
+    return this.do("GET", "/window/rect");
+  }
+
+  /** setWindowRect sets the window's outer position and size. */
+  setWindowRect(rect: { x: number; y: number; width: number; height: number }): Promise<void> {
+    return this.do("POST", "/window/rect", rect);
+  }
+
+  /** pointerMove moves the pointer to x,y, so a shot has no hover state. */
+  pointerMove(x: number, y: number): Promise<void> {
+    return this.do("POST", "/actions", {
+      actions: [
+        {
+          type: "pointer",
+          id: "screenshot-pointer",
+          parameters: { pointerType: "mouse" },
+          actions: [{ type: "pointerMove", x, y }],
+        },
+      ],
+    });
+  }
+
+  /** screenshot takes a PNG of the window as the driver returns it. */
+  async screenshot(): Promise<Buffer> {
+    const base64 = await this.do<string>("GET", "/screenshot");
+    return Buffer.from(base64, "base64");
+  }
+
   /** execute runs a synchronous script in the page and returns its result. */
   execute<T>(script: string, ...args: unknown[]): Promise<T> {
     return this.do<T>("POST", "/execute/sync", { script, args });

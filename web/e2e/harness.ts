@@ -241,6 +241,18 @@ export interface LaunchOptions {
    * at origin.
    */
   hostile?: { origin: string };
+  /** server replaces readdev for a made-up feed set, such as the screenshots run. */
+  server?: {
+    addr: string;
+    allow?: string;
+    command: string;
+    args: string[];
+    opmlArgs: string[];
+    name: string;
+    extractions: number;
+  };
+  /** environment adds variables to readd, the driver and the app. */
+  environment?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -298,8 +310,8 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
   };
 
   try {
-    const port = await freePort();
-    const addr = `127.0.0.1:${port}`;
+    const port = opts.server ? 0 : await freePort();
+    const addr = opts.server?.addr ?? `127.0.0.1:${port}`;
     // The canary is a second server on loopback, and it must not be the one
     // readd's development escape admits: READ_DEV_ALLOW names readdev alone.
     if (opts.hostile && new URL(opts.hostile.origin).host === addr) {
@@ -308,9 +320,9 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
     // With the corpus, its pages go into the run's own directory, pointed at
     // the canary, and readdev serves them as Dev Hostile. readdev reads the
     // directory at start and never changes it.
-    const readdevArgs = ["-addr", addr];
-    const opmlArgs = ["-addr", addr, "-opml"];
-    let extractions = 3;
+    const readdevArgs = opts.server?.args ?? ["-addr", addr];
+    const opmlArgs = opts.server?.opmlArgs ?? ["-addr", addr, "-opml"];
+    let extractions = opts.server?.extractions ?? 3;
     if (opts.hostile) {
       const files = hostileFiles(opts.hostile.origin);
       const hostileDir = join(dir, "hostile");
@@ -320,20 +332,24 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
       opmlArgs.push("-hostile", hostileDir);
       extractions += files.length;
     }
-    const readdev = start(join(E2E, "readdev"), readdevArgs, base, "readdev");
-    procs.push({ proc: readdev.proc, what: "readdev" });
-    await until(`readdev on ${addr}`, () => reachable(`http://${addr}/`), 30_000);
+    const feedCommand = opts.server?.command ?? join(E2E, "readdev");
+    const feedName = opts.server?.name ?? "readdev";
+    const readdev = start(feedCommand, readdevArgs, base, feedName);
+    procs.push({ proc: readdev.proc, what: feedName });
+    await until(`${feedName} on ${addr}`, () => reachable(`http://${addr}/`), 30_000);
 
     // READ_SOCKET names readd's private socket to readctl and to the app
     // (web/src-tauri/src/paths.rs); the XDG homes are the run's own.
     const appEnv: NodeJS.ProcessEnv = {
       ...base,
+      ...opts.environment,
       READ_SOCKET: socket,
       XDG_CACHE_HOME: join(dir, "cache"),
       XDG_CONFIG_HOME: join(dir, "config"),
       XDG_DATA_HOME: join(dir, "data"),
     };
-    const readd = start(join(E2E, "readd"), ["-desktop"], { ...appEnv, READ_DEV_ALLOW: addr }, "readd");
+    const allow = opts.server?.allow ?? addr;
+    const readd = start(join(E2E, "readd"), ["-desktop"], { ...appEnv, READ_DEV_ALLOW: allow }, "readd");
     procs.push({ proc: readd.proc, what: "readd" });
     await until("readd's desktop socket", () => existsSync(socket), 30_000);
 
@@ -343,7 +359,7 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
     // throws here, and launch's catch stops the run.
     const opml = join(dir, "dev.opml");
     const seed = { killSignal: "SIGKILL", timeout: SEED_TIMEOUT_MS } as const;
-    writeFileSync(opml, execFileSync(join(E2E, "readdev"), opmlArgs, { ...seed, env: base }));
+    writeFileSync(opml, execFileSync(feedCommand, opmlArgs, { ...seed, env: base }));
     execFileSync(join(E2E, "readctl"), ["import", opml], { ...seed, env: appEnv });
     execFileSync(join(E2E, "readctl"), ["poll"], { ...seed, env: appEnv });
     // Three development items arrive as a summary alone, and readd extracts

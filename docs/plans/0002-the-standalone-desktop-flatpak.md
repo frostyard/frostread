@@ -21,7 +21,8 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-03): **Phase 3 is done.**
+Status (2026-11-04): **Phase 3 is done; Phase 4's first part is in
+review.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
@@ -38,9 +39,16 @@ Status (2026-11-03): **Phase 3 is done.**
   in frostread#36 (2026-11-02). 3.7, the hostile corpus, is merged in
   frostread#37 (2026-11-02). [3.8](#phase-3s-record) records this phase's
   evidence.
-- **Phases 4 to 11** have not started. Nothing of the Flatpak, the lodge
-  connection or the release candidate is built, and the clean-install
-  gate (Phase 10) has no run yet.
+- **Phase 4,** first part, is in review in frostread#49 (2026-11-04): the
+  manifest with its `readd` and `frostread` modules, the 3 sources files
+  and `make flatpak-sources`, the desktop file, the metainfo with 3
+  screenshots that `make screenshots` takes and its Go test, and
+  `flatpak.yml`'s 2 jobs, whose build installs the bundle and runs
+  `readctl --help`. Its launcher only runs the app. The next part adds the
+  launcher of ADR-0008, `frostread-request-background` and the smoke test.
+- **Phases 5 to 11** have not started. Nothing of the lodge connection or
+  the release candidate is built, and the clean-install gate (Phase 10)
+  has no run yet.
 
 ## Who helps
 
