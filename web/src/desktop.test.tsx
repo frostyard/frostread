@@ -3,7 +3,8 @@
 import type { Transport } from "@frostyard/lodge-client/rpc";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BUDGET, BUDGET_WINDOW_MS, createDesktopShell, desktopRoute } from "./desktop/shell.js";
+import { tauriSaveFile } from "./desktop/save.js";
+import { BUDGET, BUDGET_WINDOW_MS, createDesktopShell, desktopRoute, type SaveFile } from "./desktop/shell.js";
 import { type Desktop, startDesktop } from "./desktop/start.js";
 import { createMockTransport } from "./rpc/mock.js";
 
@@ -29,9 +30,9 @@ afterEach(() => {
 });
 
 /** start runs the desktop entry in the page, on the mock. */
-async function start(hash = ""): Promise<Desktop> {
+async function start(hash = "", saveFile?: SaveFile): Promise<Desktop> {
   if (hash !== "") window.history.replaceState(null, "", hash);
-  started = await startDesktop({ root });
+  started = saveFile === undefined ? await startDesktop({ root }) : await startDesktop({ root, saveFile });
   return started;
 }
 
@@ -151,6 +152,59 @@ describe("the desktop entry", () => {
     });
     expect(window.location.hash).toBe("#/view/starred");
     expect(window.history.length).toBe(before + 1);
+  });
+
+  it("exports OPML through the production Tauri save adapter", async () => {
+    const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+    async function fakeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+      calls.push([cmd, args]);
+      return true as T;
+    }
+    const desktop = await start("", tauriSaveFile(fakeInvoke));
+    await screen.findByRole("button", { name: "Export OPML" });
+    const xml = await desktop.store.getState().exportOPML();
+
+    fireEvent.click(screen.getByRole("button", { name: "Export OPML" }));
+
+    await waitFor(() => expect(calls).toEqual([["save_file", { name: "frostread.opml", text: xml }]]));
+    expect(desktop.store.getState().error).toBeNull();
+  });
+
+  it("shows an error when the production Tauri save invoke rejects", async () => {
+    async function fakeInvoke<T>(_cmd: string, _args?: Record<string, unknown>): Promise<T> {
+      throw new Error("cannot invoke save_file");
+    }
+    const desktop = await start("", tauriSaveFile(fakeInvoke));
+    await screen.findByRole("button", { name: "Export OPML" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export OPML" }));
+
+    expect(await screen.findByText("cannot invoke save_file")).toBeTruthy();
+    expect(desktop.store.getState().error).toBe("cannot invoke save_file");
+  });
+
+  it("shows no error when a desktop OPML save is cancelled", async () => {
+    const saveFile = vi.fn(async () => false);
+    const desktop = await start("", saveFile);
+    await screen.findByRole("button", { name: "Export OPML" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export OPML" }));
+
+    await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
+    expect(desktop.store.getState().error).toBeNull();
+  });
+
+  it("shows an error when a desktop OPML save rejects", async () => {
+    const saveFile = vi.fn(async () => {
+      throw new Error("cannot save OPML");
+    });
+    const desktop = await start("", saveFile);
+    await screen.findByRole("button", { name: "Export OPML" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export OPML" }));
+
+    expect(await screen.findByText("cannot save OPML")).toBeTruthy();
+    expect(desktop.store.getState().error).toBe("cannot save OPML");
   });
 
   it("has no save page and no bookmarklet entry", async () => {

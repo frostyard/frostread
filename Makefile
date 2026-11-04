@@ -102,11 +102,11 @@ web-build: ## Build the web bundle for lodge's /app/read/ into build/web (nsl)
 # the bundle comes first. The release binary lands in build/frostread-app.
 app-check: ## Lint (Biome), typecheck and test web/, then fmt, clippy and test the shell (nsl)
 	$(IN_APP_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm run check && pnpm run build:desktop'
-	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test'
+	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && dbus-run-session -- env READ_REQUIRE_SESSION_BUS=1 cargo test'
 
 app-test: ## Build the desktop bundle and run the shell's Rust tests (nsl)
 	$(IN_APP_NSL) 'cd web && pnpm install $(FROZEN) --silent && pnpm run build:desktop'
-	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web/src-tauri && cargo test'
+	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web/src-tauri && dbus-run-session -- env READ_REQUIRE_SESSION_BUS=1 cargo test'
 
 app-build: ## Build the release app binary into build/frostread-app (nsl)
 	$(IN_APP_NSL) 'export CARGO_TARGET_DIR=$(APP_TARGET_DIR); cd web && pnpm install $(FROZEN) --silent && pnpm tauri build && mkdir -p ../build && cp "$$CARGO_TARGET_DIR/release/frostread" ../build/frostread-app'

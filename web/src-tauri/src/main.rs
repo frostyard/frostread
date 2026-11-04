@@ -5,7 +5,9 @@
 //! docs/plans/0002-the-standalone-desktop-flatpak.md, step 3.2.
 
 mod bridge;
+mod files;
 mod paths;
+mod portal;
 
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -18,8 +20,9 @@ fn main() {
             second_launch(app)
         }))
         // The opener opens a link outside the app (ADR-0008, "Links open in
-        // the browser"); the dialog is step 3.4's. Neither grants the page a
-        // command: capabilities/default.json grants the bridge's two alone.
+        // the browser"); the dialog plugin saves files through step 3.4's
+        // command. Neither grants the page a core command: the page reaches
+        // only the bridge and the explicit file command in capabilities.
         //
         // open_js_links_on_click(false): by default the plugin injects a
         // script that turns a click on a _blank link into a call of
@@ -35,7 +38,8 @@ fn main() {
         .manage(bridge::Bridge::default())
         .invoke_handler(tauri::generate_handler![
             bridge::readd_connect,
-            bridge::readd_send
+            bridge::readd_send,
+            files::save_file
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
@@ -251,10 +255,10 @@ mod tests {
         assert_eq!(opens_to("mailto:a@e.test"), "mailto:a@e.test");
     }
 
-    // The capability the window gets: the bridge's two commands, and nothing
-    // of Tauri's. A command the page gains arrives here first.
+    // The capability the window gets: the bridge's two commands and the
+    // explicit file saver, with no core, dialog or opener permission.
     #[test]
-    fn grants_only_the_bridge() {
+    fn grants_only_the_shell_commands() {
         let caps = include_str!("../capabilities/default.json");
         let list = caps
             .split("\"permissions\"")
@@ -262,7 +266,10 @@ mod tests {
             .and_then(|s| s.split(']').next())
             .unwrap();
         let granted: Vec<&str> = list.split('"').skip(1).step_by(2).collect();
-        assert_eq!(granted, ["allow-readd-connect", "allow-readd-send"]);
+        assert_eq!(
+            granted,
+            ["allow-readd-connect", "allow-readd-send", "allow-save-file"]
+        );
         assert!(
             caps.contains("\"main\""),
             "the capability names no window: {caps}"

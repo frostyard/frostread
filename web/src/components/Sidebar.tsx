@@ -4,7 +4,6 @@
 import { IconButton } from "@frostyard/lodge-ui/react";
 import { AlertTriangle, ArrowLeft, Download, Ellipsis, Plus, RefreshCw, Upload } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
-import { downloadOPML } from "../lib/download.js";
 import { BOOKMARKLET, type Route } from "../lib/routes.js";
 import { type Source, VIEW_TITLES, VIEWS } from "../rpc/api.js";
 import { useShell } from "../shell.js";
@@ -23,6 +22,7 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
   const addSource = useRead((state) => state.addSource);
   const importOPML = useRead((state) => state.importOPML);
   const exportOPML = useRead((state) => state.exportOPML);
+  const setError = useRead((state) => state.setError);
   const [adding, setAdding] = useState(false);
   const [managingId, setManagingId] = useState<number | null>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -41,7 +41,12 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
 
   const exportAll = async () => {
     const xml = await exportOPML();
-    if (xml !== "") downloadOPML(xml);
+    if (xml === "") return;
+    try {
+      await shell.saveFile("frostread.opml", xml, "text/x-opml");
+    } catch (error) {
+      setError(error);
+    }
   };
 
   const unreadOf = (id: number) => counts.sources.find((row) => row.sourceId === id)?.unread ?? 0;

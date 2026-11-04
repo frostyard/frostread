@@ -77,6 +77,7 @@ export interface ReadActions {
   setScheme(scheme: "light" | "dark"): void;
   changed(): Promise<void>;
   clearError(): void;
+  setError(error: unknown): void;
   loadStatus(): Promise<void>;
   loadCounts(): Promise<void>;
   loadSources(): Promise<void>;
@@ -533,6 +534,10 @@ export function createReadStore(): StoreApi<ReadStore> {
 
     clearError() {
       set({ error: null });
+    },
+
+    setError(error) {
+      set({ error: message(error) });
     },
 
     async loadStatus() {

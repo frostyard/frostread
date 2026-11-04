@@ -39,7 +39,8 @@ Status (2026-11-02): **Phase 3 is in progress.**
   end-to-end harness, is merged (frostread#36, 2026-11-02; the evidence
   is under [3.6](#phase-3s-steps)). 3.7, the hostile corpus, is in
   review (2026-11-02; the evidence is under [3.7](#phase-3s-steps)).
-  Left: 3.4 and 3.5, and 3.8, Phase 3's record.
+  Step 3.4 is in review (2026-11-03). Left: 3.5 and 3.8, Phase 3's
+  record.
 - **Phases 4 to 11** have not started. Nothing of the Rust shell, the
   Flatpak, the lodge connection or the release candidate is built, and
   the clean-install gate (Phase 10) has no run yet.
@@ -280,6 +281,48 @@ What the run found:
   lodge entry still downloads. The real portals wait for Phase 5.
 - **Owners:** the planner.
 - **Depends on:** 3.2.
+
+**3.4's evidence (2026-11-03, in review).** In the nsl machine
+`frostnotes`: `make app-check` passed (Biome, tsc, 19 Vitest files with
+126 tests, the desktop build, `cargo fmt --check`, `cargo clippy -D
+warnings`, and 25 Rust tests under `dbus-run-session` with
+`READ_REQUIRE_SESSION_BUS=1`); `make app-e2e` passed (3 files, 7 tests:
+3.6's suite and the hostile corpus, with no leftover process); `make
+web-build` built the lodge bundle; `make verify` passed on the host.
+
+- The shell's command `save_file` (`web/src-tauri/src/files.rs`) takes a
+  plain file name and the text. In the Flatpak it asks the FileChooser
+  portal's `SaveFile` (`portal.rs`, frostmail's, with the request's
+  options in a function a test reads); elsewhere the dialog plugin's save
+  dialog over the window. The shell writes the text; a cancel writes
+  nothing. `capabilities/default.json` grants the page `allow-save-file`
+  and still no dialog or opener permission.
+- Rust tests: the portal's options, request path, URI and Response rules,
+  a portal of the tests' own on a session bus (answer, cancel, a portal
+  that leaves the bus); `save_text` with a stand-in picker writes the
+  exact text, writes nothing on a cancel, and refuses a name with a
+  separator, an empty name, `.`, `..` and a name with no extension
+  before it asks.
+- The portal's refusals (`uri_to_path`, `percent_decoded`, a bad
+  Response) are fixed texts: no picked URI or path reaches the page. A
+  test feeds refused URIs that hold `Secret-Plans-7Q` and finds it in no
+  error.
+- `save_text` refuses a name over 255 bytes and a text over 16 MiB before
+  it asks; tests cover 255 and 256 bytes, and 16 MiB and 1 byte more.
+- Vitest drives the production adapter (`desktop/save.ts`,
+  `tauriSaveFile`) with a fake `invoke`: an export calls exactly
+  `save_file` with `{name: "frostread.opml", text}`, and a refused invoke
+  shows its error. With the command name changed, that test fails.
+- The bus tests skip without a session bus, but fail when
+  `READ_REQUIRE_SESSION_BUS=1` is set, which `make app-check`, `make
+  app-test` and CI's job set: without a bus the 3 tests fail ("no
+  DBUS_SESSION_BUS_ADDRESS"), so CI cannot pass them by skipping. CI's
+  app job installs `dbus` for `dbus-run-session`.
+- Vitest: the desktop's export calls the shell's saver with
+  `frostread.opml` and `opml.export`'s exact text; a cancel shows no
+  error; a refusal shows it; the lodge shell still downloads
+  `frostread.opml` as `text/x-opml`.
+- The real portals wait for Phase 5.
 
 **3.5 — The app checks in CI (small).**
 - A new job in `.github/workflows/ci.yml` runs `make app-check`'s checks

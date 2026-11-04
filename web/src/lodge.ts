@@ -2,6 +2,7 @@
 // open an article outside, read the article's content URL. Outside lodge
 // (vite dev) there is no shell, and the article's text is not available.
 import type { Lodge } from "@frostyard/lodge-client";
+import { downloadFile } from "./lib/download.js";
 import type { Shell } from "./shell.js";
 
 /** LodgeConnection is the part of lodge-client's Lodge this app uses. */
@@ -56,6 +57,10 @@ export const lodgeShell: Shell = {
   reportRoute,
   openRoute,
   openOutside,
+  saveFile(name, text, type) {
+    downloadFile(name, text, type);
+    return Promise.resolve(true);
+  },
   renderArticles: false,
   contentSrc,
 };

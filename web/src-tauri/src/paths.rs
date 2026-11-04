@@ -9,6 +9,16 @@ use std::path::{Component, Path, PathBuf};
 /// The application ID, as internal/config.AppID.
 const APP_ID: &str = "org.frostyard.Frostread";
 
+/// Whether this process runs in Frostread's Flatpak: FLATPAK_ID must equal
+/// the application's own ID. Another application's Flatpak is not this app.
+pub fn in_flatpak() -> bool {
+    in_flatpak_from(|key| std::env::var_os(key))
+}
+
+fn in_flatpak_from(getenv: impl Fn(&str) -> Option<OsString>) -> bool {
+    getenv("FLATPAK_ID").is_some_and(|id| id == APP_ID)
+}
+
 /// readd's private socket for this process.
 pub fn socket() -> Result<PathBuf, String> {
     socket_from(|key| std::env::var_os(key))
@@ -63,11 +73,22 @@ fn clean(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::socket_from;
+    use super::{in_flatpak_from, socket_from};
     use serde::Deserialize;
     use std::collections::HashMap;
     use std::ffi::OsString;
     use std::path::PathBuf;
+
+    #[test]
+    fn only_this_apps_flatpak_id_counts() {
+        assert!(in_flatpak_from(|key| {
+            (key == "FLATPAK_ID").then(|| OsString::from("org.frostyard.Frostread"))
+        }));
+        assert!(!in_flatpak_from(|key| {
+            (key == "FLATPAK_ID").then(|| OsString::from("org.frostyard.Other"))
+        }));
+        assert!(!in_flatpak_from(|_| None));
+    }
 
     /// The table's shape, as internal/config's Go test reads it.
     #[derive(Deserialize)]

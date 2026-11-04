@@ -12,13 +12,14 @@ import { readAPI } from "../rpc/api.js";
 import { watchChanges } from "../rpc/events.js";
 import { ShellProvider } from "../shell.js";
 import { createReadStore } from "../store.js";
-import { createDesktopShell, desktopRoute } from "./shell.js";
+import { createDesktopShell, desktopRoute, type SaveFile } from "./shell.js";
 
 /** DesktopOptions say where the app starts: root is required, the rest default for the real window. */
 export interface DesktopOptions {
   root: HTMLElement;
   win?: Window;
   transport?: Transport;
+  saveFile?: SaveFile;
 }
 
 /** Desktop is a started desktop app: its store, and the call that stops it. */
@@ -66,7 +67,7 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   const root = createRoot(options.root);
   root.render(
     <StrictMode>
-      <ShellProvider shell={createDesktopShell(win)}>
+      <ShellProvider shell={createDesktopShell(win, () => win.performance.now(), options.saveFile)}>
         <StoreProvider store={store}>
           <ErrorBoundary>
             <App />
