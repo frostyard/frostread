@@ -105,11 +105,19 @@ export SMOKE_REAL_READCTL
 
 cat >"$work/libexec/frostread-app" <<'EOF'
 #!/bin/sh
+# The app must start with no child: the launcher's Background helper
+# (which lives 2 s here) must not be one, or it stays a zombie for the
+# window's life. read is a builtin, so the check itself forks nothing.
+# The file has no newline, so read returns 1 but still sets kids.
+kids=
+read -r kids </proc/$$/task/$$/children || true
+printf '%s\n' "$kids" >"$SMOKE_APP_CHILDREN"
 exit 0
 EOF
 cat >"$work/bin/frostread-request-background" <<'EOF'
 #!/bin/sh
 printf 'args:%s\n' "$*" >>"$SMOKE_REQUEST_ARGS"
+sleep 2
 EOF
 chmod +x "$work/libexec/frostread-app" "$work/bin/frostread-request-background"
 
@@ -118,7 +126,8 @@ SMOKE_CHILD_PID="$work/readd.pid"
 SMOKE_SPAWN_FAULT="$work/spawn.fault"
 SMOKE_DETACHED_PID="$work/detached.pid"
 SMOKE_REQUEST_ARGS="$work/request.args"
-export SMOKE_SPAWN_PID SMOKE_CHILD_PID SMOKE_SPAWN_FAULT SMOKE_DETACHED_PID SMOKE_REQUEST_ARGS
+SMOKE_APP_CHILDREN="$work/app.children"
+export SMOKE_SPAWN_PID SMOKE_CHILD_PID SMOKE_SPAWN_FAULT SMOKE_DETACHED_PID SMOKE_REQUEST_ARGS SMOKE_APP_CHILDREN
 
 info() {
     printf '[Application]\napp-commit=not-the-build\n\n[Instance]\napp-commit=%s\n' "$2" >"$1"
@@ -199,6 +208,15 @@ if [ ! -s "$SMOKE_REQUEST_ARGS" ]; then
 fi
 if [ ! -s "$SMOKE_REQUEST_ARGS" ]; then
     echo "smoke test: the launcher did not run the Background helper" >&2
+    print_logs
+    exit 1
+fi
+kids=
+if [ -r "$SMOKE_APP_CHILDREN" ]; then
+    IFS= read -r kids <"$SMOKE_APP_CHILDREN" || true
+fi
+if [ -n "$kids" ]; then
+    echo "smoke test: the Background helper is a child of the app" >&2
     print_logs
     exit 1
 fi

@@ -153,5 +153,7 @@ if ! status; then
     fi
 fi
 
-frostread-request-background >>"$state/background.log" 2>&1 &
+# Start the helper in a subshell, so it is not a child of the Tauri app.
+# A Tauri app does not reap this helper and would leave it defunct.
+( frostread-request-background >>"$state/background.log" 2>&1 & )
 exec "$app" "$@"
