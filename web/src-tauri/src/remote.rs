@@ -21,81 +21,6 @@ pub struct Mode {
     pub lodge: String,
 }
 
-struct DuplicateChecked;
-
-impl<'de> Deserialize<'de> for DuplicateChecked {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct DuplicateVisitor;
-
-        impl<'de> Visitor<'de> for DuplicateVisitor {
-            type Value = DuplicateChecked;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("a JSON value")
-            }
-
-            fn visit_bool<E>(self, _value: bool) -> Result<Self::Value, E> {
-                Ok(DuplicateChecked)
-            }
-
-            fn visit_i64<E>(self, _value: i64) -> Result<Self::Value, E> {
-                Ok(DuplicateChecked)
-            }
-
-            fn visit_u64<E>(self, _value: u64) -> Result<Self::Value, E> {
-                Ok(DuplicateChecked)
-            }
-
-            fn visit_f64<E>(self, _value: f64) -> Result<Self::Value, E> {
-                Ok(DuplicateChecked)
-            }
-
-            fn visit_str<E>(self, _value: &str) -> Result<Self::Value, E> {
-                Ok(DuplicateChecked)
-            }
-
-            fn visit_string<E>(self, _value: String) -> Result<Self::Value, E> {
-                Ok(DuplicateChecked)
-            }
-
-            fn visit_unit<E>(self) -> Result<Self::Value, E> {
-                Ok(DuplicateChecked)
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E> {
-                Ok(DuplicateChecked)
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::SeqAccess<'de>,
-            {
-                while seq.next_element::<DuplicateChecked>()?.is_some() {}
-                Ok(DuplicateChecked)
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let mut seen = HashSet::new();
-                while let Some(key) = map.next_key::<String>()? {
-                    if !seen.insert(key) {
-                        return Err(serde::de::Error::custom("duplicate object member name"));
-                    }
-                    let _: DuplicateChecked = map.next_value()?;
-                }
-                Ok(DuplicateChecked)
-            }
-        }
-
-        deserializer.deserialize_any(DuplicateVisitor)
-    }
-}
-
 struct RawMode {
     lodge: Option<String>,
 }
@@ -155,6 +80,92 @@ impl<'de> Deserialize<'de> for RawMode {
     }
 }
 
+enum Frame {
+    Object {
+        names: HashSet<String>,
+        expect_key: bool,
+    },
+    Array,
+}
+
+/// Check duplicate names after typed parsing. The byte scan skips values without
+/// converting numbers, like Go's json/v2 when it ignores an unknown member.
+fn reject_duplicate_names(data: &[u8]) -> Result<(), String> {
+    let mut frames: Vec<Frame> = Vec::new();
+    let mut i = 0;
+    while i < data.len() {
+        match data[i] {
+            b'{' => {
+                frames.push(Frame::Object {
+                    names: HashSet::new(),
+                    expect_key: true,
+                });
+                i += 1;
+            }
+            b'[' => {
+                frames.push(Frame::Array);
+                i += 1;
+            }
+            b'}' | b']' => {
+                frames.pop();
+                i += 1;
+            }
+            b':' => {
+                if let Some(Frame::Object { expect_key, .. }) = frames.last_mut() {
+                    *expect_key = false;
+                }
+                i += 1;
+            }
+            b',' => {
+                if let Some(Frame::Object { expect_key, .. }) = frames.last_mut() {
+                    *expect_key = true;
+                }
+                i += 1;
+            }
+            b'"' => {
+                let start = i;
+                i += 1;
+                let mut backslashes = 0;
+                while i < data.len() {
+                    match data[i] {
+                        b'\\' => {
+                            backslashes += 1;
+                            i += 1;
+                        }
+                        b'"' if backslashes % 2 == 0 => {
+                            i += 1;
+                            break;
+                        }
+                        b'"' => {
+                            backslashes = 0;
+                            i += 1;
+                        }
+                        _ => {
+                            backslashes = 0;
+                            i += 1;
+                        }
+                    }
+                }
+
+                if let Some(Frame::Object { names, expect_key }) = frames.last_mut()
+                    && *expect_key
+                {
+                    let token = std::str::from_utf8(&data[start..i])
+                        .map_err(|e| format!("app.json: {e}"))?;
+                    let name: String =
+                        serde_json::from_str(token).map_err(|e| format!("app.json: {e}"))?;
+                    if !names.insert(name.clone()) {
+                        return Err(format!("duplicate member name {name}"));
+                    }
+                    *expect_key = false;
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    Ok(())
+}
+
 /// Read app.json beside frostread's desktop configuration.
 pub(crate) fn load_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<Mode, String> {
     let path = mode_path_from(&getenv)?;
@@ -163,10 +174,9 @@ pub(crate) fn load_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<Mod
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Mode::default()),
         Err(e) => return Err(format!("read {}: {e}", path.display())),
     };
-    serde_json::from_slice::<DuplicateChecked>(&data)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
     let raw: RawMode =
         serde_json::from_slice(&data).map_err(|e| format!("{}: {e}", path.display()))?;
+    reject_duplicate_names(&data).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(Mode {
         lodge: raw.lodge.unwrap_or_default().trim().to_string(),
     })

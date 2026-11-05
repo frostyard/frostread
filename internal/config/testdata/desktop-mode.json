@@ -1,19 +1,139 @@
 [
-  {"name":"no file","lodge":"","error":false},
-  {"name":"empty object","file":"{}","lodge":"","error":false},
-  {"name":"lodge","file":"{\"lodge\":\"https://lodge.example.ts.net\"}","lodge":"https://lodge.example.ts.net","error":false},
-  {"name":"spaces around lodge","file":"{\"lodge\":\"  https://lodge.example.ts.net  \"}","lodge":"https://lodge.example.ts.net","error":false},
-  {"name":"empty lodge","file":"{\"lodge\":\"\"}","lodge":"","error":false},
-  {"name":"null lodge","file":"{\"lodge\":null}","lodge":"","error":false},
-  {"name":"unknown member beside lodge","file":"{\"lodge\":\"https://lodge.example.ts.net\",\"theme\":\"dark\"}","lodge":"https://lodge.example.ts.net","error":false},
-  {"name":"capitalized Lodge is unknown","file":"{\"Lodge\":\"https://lodge.example.ts.net\"}","lodge":"","error":false},
-  {"name":"lodge is a number","file":"{\"lodge\":5}","lodge":"","error":true},
-  {"name":"empty file","file":"","lodge":"","error":true},
-  {"name":"array","file":"[]","lodge":"","error":true},
-  {"name":"not JSON","file":"{\"lodge\":","lodge":"","error":true},
-  {"name":"duplicate lodge","file":"{\"lodge\":\"https://one.example.ts.net\",\"lodge\":\"https://two.example.ts.net\"}","lodge":"","error":true},
-  {"name":"duplicate unknown top level member","file":"{\"theme\":1,\"theme\":2}","lodge":"","error":true},
-  {"name":"duplicate nested unknown member","file":"{\"x\":{\"a\":1,\"a\":2}}","lodge":"","error":true},
-  {"name":"duplicate member in unknown array object","file":"{\"x\":[{\"a\":1,\"a\":2}]}","lodge":"","error":true},
-  {"name":"same key in different unknown objects","file":"{\"a\":{\"k\":1},\"b\":{\"k\":2}}","lodge":"","error":false}
+  {
+    "name": "no file",
+    "lodge": "",
+    "error": false
+  },
+  {
+    "name": "empty object",
+    "file": "{}",
+    "lodge": "",
+    "error": false
+  },
+  {
+    "name": "lodge",
+    "file": "{\"lodge\":\"https://lodge.example.ts.net\"}",
+    "lodge": "https://lodge.example.ts.net",
+    "error": false
+  },
+  {
+    "name": "spaces around lodge",
+    "file": "{\"lodge\":\"  https://lodge.example.ts.net  \"}",
+    "lodge": "https://lodge.example.ts.net",
+    "error": false
+  },
+  {
+    "name": "empty lodge",
+    "file": "{\"lodge\":\"\"}",
+    "lodge": "",
+    "error": false
+  },
+  {
+    "name": "null lodge",
+    "file": "{\"lodge\":null}",
+    "lodge": "",
+    "error": false
+  },
+  {
+    "name": "unknown member beside lodge",
+    "file": "{\"lodge\":\"https://lodge.example.ts.net\",\"theme\":\"dark\"}",
+    "lodge": "https://lodge.example.ts.net",
+    "error": false
+  },
+  {
+    "name": "capitalized Lodge is unknown",
+    "file": "{\"Lodge\":\"https://lodge.example.ts.net\"}",
+    "lodge": "",
+    "error": false
+  },
+  {
+    "name": "lodge is a number",
+    "file": "{\"lodge\":5}",
+    "lodge": "",
+    "error": true
+  },
+  {
+    "name": "empty file",
+    "file": "",
+    "lodge": "",
+    "error": true
+  },
+  {
+    "name": "array",
+    "file": "[]",
+    "lodge": "",
+    "error": true
+  },
+  {
+    "name": "not JSON",
+    "file": "{\"lodge\":",
+    "lodge": "",
+    "error": true
+  },
+  {
+    "name": "duplicate lodge",
+    "file": "{\"lodge\":\"https://one.example.ts.net\",\"lodge\":\"https://two.example.ts.net\"}",
+    "lodge": "",
+    "error": true
+  },
+  {
+    "name": "duplicate unknown top level member",
+    "file": "{\"theme\":1,\"theme\":2}",
+    "lodge": "",
+    "error": true
+  },
+  {
+    "name": "duplicate nested unknown member",
+    "file": "{\"x\":{\"a\":1,\"a\":2}}",
+    "lodge": "",
+    "error": true
+  },
+  {
+    "name": "duplicate member in unknown array object",
+    "file": "{\"x\":[{\"a\":1,\"a\":2}]}",
+    "lodge": "",
+    "error": true
+  },
+  {
+    "name": "same key in different unknown objects",
+    "file": "{\"a\":{\"k\":1},\"b\":{\"k\":2}}",
+    "lodge": "",
+    "error": false
+  },
+  {
+    "name": "large unknown number",
+    "file": "{\"lodge\":\"https://lodge.example.ts.net\",\"extra\":1e1000}",
+    "lodge": "https://lodge.example.ts.net",
+    "error": false
+  },
+  {
+    "name": "nested large numbers",
+    "file": "{\"lodge\":\"https://lodge.example.ts.net\",\"x\":[{\"y\":-1e-1000,\"z\":123456789012345678901234567890}]}",
+    "lodge": "https://lodge.example.ts.net",
+    "error": false
+  },
+  {
+    "name": "escaped duplicate key",
+    "file": "{\"a\":1,\"\\u0061\":2}",
+    "lodge": "",
+    "error": true
+  },
+  {
+    "name": "key-like string values",
+    "file": "{\"a\":\"a\",\"b\":\"a\"}",
+    "lodge": "",
+    "error": false
+  },
+  {
+    "name": "null document",
+    "file": "null",
+    "lodge": "",
+    "error": false
+  },
+  {
+    "name": "a string document",
+    "file": "\"https://lodge.example.ts.net\"",
+    "lodge": "",
+    "error": true
+  }
 ]
