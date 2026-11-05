@@ -11,5 +11,9 @@
   {"name":"empty file","file":"","lodge":"","error":true},
   {"name":"array","file":"[]","lodge":"","error":true},
   {"name":"not JSON","file":"{\"lodge\":","lodge":"","error":true},
-  {"name":"duplicate lodge","file":"{\"lodge\":\"https://one.example.ts.net\",\"lodge\":\"https://two.example.ts.net\"}","lodge":"","error":true}
+  {"name":"duplicate lodge","file":"{\"lodge\":\"https://one.example.ts.net\",\"lodge\":\"https://two.example.ts.net\"}","lodge":"","error":true},
+  {"name":"duplicate unknown top level member","file":"{\"theme\":1,\"theme\":2}","lodge":"","error":true},
+  {"name":"duplicate nested unknown member","file":"{\"x\":{\"a\":1,\"a\":2}}","lodge":"","error":true},
+  {"name":"duplicate member in unknown array object","file":"{\"x\":[{\"a\":1,\"a\":2}]}","lodge":"","error":true},
+  {"name":"same key in different unknown objects","file":"{\"a\":{\"k\":1},\"b\":{\"k\":2}}","lodge":"","error":false}
 ]

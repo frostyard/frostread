@@ -5,15 +5,16 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::time::Instant;
 
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use serde::Serialize;
 use tauri::{State, Window, ipc::Channel};
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-#[cfg(test)]
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{
+    AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
+};
 use tokio::net::UnixStream;
 use tokio::net::unix::OwnedWriteHalf;
 use tokio::sync::{Mutex, mpsc, oneshot, watch};
@@ -25,6 +26,13 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use crate::{paths, remote};
 
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+
+fn lodge_websocket_config() -> WebSocketConfig {
+    let mut config = WebSocketConfig::default();
+    config.max_message_size = Some(LODGE_FRAME_LIMIT);
+    config.max_frame_size = Some(LODGE_FRAME_LIMIT);
+    config
+}
 
 /// One line to lodge, and the result of writing that line.
 struct WriteRequest {
@@ -83,19 +91,42 @@ pub enum BridgeMessage {
 #[derive(Default)]
 pub struct Bridge {
     connections: Mutex<HashMap<String, Connection>>,
+    attempts: std::sync::Mutex<HashMap<String, u64>>,
+    next_attempt: AtomicU64,
 }
 
 impl Bridge {
-    /// Drop a closed window's connection.
+    /// Begin a connection attempt before the first await. A newer attempt
+    /// invalidates the older attempt for the same window.
+    fn begin(&self, label: &str) -> u64 {
+        let id = self.next_attempt.fetch_add(1, Ordering::Relaxed) + 1;
+        self.attempts.lock().unwrap().insert(label.to_string(), id);
+        id
+    }
+
+    /// Drop a closed window's connection and invalidate every pending attempt.
     pub async fn forget(&self, label: &str) {
+        self.attempts.lock().unwrap().remove(label);
         self.connections.lock().await.remove(label);
     }
 
-    async fn keep(&self, label: &str, writer: Writer, stop: watch::Sender<bool>) {
-        self.connections
-            .lock()
-            .await
-            .insert(label.to_string(), Connection { writer, stop });
+    /// Keep a connection only while its attempt is still the window's current attempt.
+    async fn keep(
+        &self,
+        attempt: u64,
+        label: &str,
+        writer: Writer,
+        stop: watch::Sender<bool>,
+    ) -> bool {
+        let mut connections = self.connections.lock().await;
+        let attempts = self.attempts.lock().unwrap();
+        if attempts.get(label) != Some(&attempt) {
+            stop.send_replace(true);
+            drop(writer);
+            return false;
+        }
+        connections.insert(label.to_string(), Connection { writer, stop });
+        true
     }
 }
 
@@ -125,22 +156,24 @@ pub async fn readd_connect(
     bridge: State<'_, Bridge>,
     on_message: Channel<BridgeMessage>,
 ) -> Result<(), String> {
+    let label = window.label().to_string();
+    let attempt = bridge.begin(&label);
     readd_connect_inner(
         |key| std::env::var_os(key),
         |lock, socket| async move {
             stop_local_readd_inner(Instant::now() + Duration::from_secs(30), &lock, &socket).await
         },
         |path| {
-            let window = window.clone();
             let bridge = bridge.inner();
             let on_message = on_message.clone();
-            async move { connect_local(path, window, bridge, on_message).await }
+            let label = label.clone();
+            async move { connect_local(path, attempt, label, bridge, on_message).await }
         },
         |lodge| {
-            let window = window.clone();
             let bridge = bridge.inner();
             let on_message = on_message.clone();
-            async move { connect_lodge_mode(lodge, window, bridge, on_message).await }
+            let label = label.clone();
+            async move { connect_lodge_mode(lodge, attempt, label, bridge, on_message).await }
         },
     )
     .await
@@ -178,7 +211,8 @@ where
 /// Open one local Unix-socket connection and keep exactly one per window.
 async fn connect_local(
     path: PathBuf,
-    window: Window,
+    attempt: u64,
+    label: String,
     bridge: &Bridge,
     on_message: Channel<BridgeMessage>,
 ) -> Result<(), String> {
@@ -186,27 +220,19 @@ async fn connect_local(
         .await
         .map_err(|e| format!("connect to readd at {}: {e}", path.display()))?;
     let (read, write) = stream.into_split();
-    let label = window.label().to_string();
     let (stop_tx, mut stop_rx) = watch::channel(false);
-    bridge
-        .keep(&label, Writer::Stream(write), stop_tx.clone())
-        .await;
+    if !bridge
+        .keep(attempt, &label, Writer::Stream(write), stop_tx.clone())
+        .await
+    {
+        stop_tx.send_replace(true);
+        return Err("the connection was replaced".to_string());
+    }
     tauri::async_runtime::spawn(async move {
-        let mut reader = BufReader::new(read);
-        let error = loop {
-            tokio::select! {
-                line = read_line(&mut reader, MAX_LINE) => match line {
-                    Ok(Some(line)) => {
-                        if on_message.send(BridgeMessage::Line { line }).is_err() {
-                            break "the webview stopped listening".to_string();
-                        }
-                    }
-                    Ok(None) => break "readd closed the connection".to_string(),
-                    Err(e) => break format!("read from readd: {e}"),
-                },
-                _ = stop_requested(&mut stop_rx) => break "the connection was replaced".to_string(),
-            }
-        };
+        let error = forward(read, &mut stop_rx, |message| {
+            on_message.send(message).is_ok()
+        })
+        .await;
         stop_tx.send_replace(true);
         let _ = on_message.send(BridgeMessage::Closed { error });
     });
@@ -225,9 +251,7 @@ async fn connect_lodge(lodge: &remote::Lodge) -> Result<Socket, String> {
         .map_err(|_| format!("lodge's origin {} is not a header", lodge.origin()))?;
     req.headers_mut().insert("Origin", origin);
 
-    let mut config = WebSocketConfig::default();
-    config.max_message_size = Some(LODGE_FRAME_LIMIT);
-    config.max_frame_size = Some(LODGE_FRAME_LIMIT);
+    let config = lodge_websocket_config();
     let (ws, _) = tokio_tungstenite::connect_async_with_config(req, Some(config), false)
         .await
         .map_err(|e| format!("connect to read through lodge at {}: {e}", lodge.origin()))?;
@@ -265,16 +289,20 @@ where
 
 async fn connect_lodge_mode(
     lodge: remote::Lodge,
-    window: Window,
+    attempt: u64,
+    label: String,
     bridge: &Bridge,
     on_message: Channel<BridgeMessage>,
 ) -> Result<(), String> {
     let ws = connect_lodge(&lodge).await?;
     let (connection, _tasks) = spawn_lodge(ws, move |message| on_message.send(message).is_ok());
     let stop = connection.stop.clone();
-    bridge
-        .keep(window.label(), Writer::Lodge(connection), stop)
-        .await;
+    if !bridge
+        .keep(attempt, &label, Writer::Lodge(connection), stop)
+        .await
+    {
+        return Err("the connection was replaced".to_string());
+    }
     Ok(())
 }
 
@@ -350,8 +378,15 @@ async fn lodge_writer<S, E>(
         tokio::select! {
             request = requests.recv() => match request {
                 Some(request) => {
-                    let result = sink.send(Message::text(request.line)).await;
-                    let result = result.map_err(|e| format!("write to lodge: {e}"));
+                    let send = sink.send(Message::text(request.line));
+                    tokio::pin!(send);
+                    let result = tokio::select! {
+                        result = &mut send => result.map_err(|e| format!("write to lodge: {e}")),
+                        _ = stop_requested(&mut stop_rx) => {
+                            let _ = request.done.send(Err("write to lodge: the writer stopped".to_string()));
+                            break;
+                        }
+                    };
                     let failed = result.is_err();
                     let _ = request.done.send(result);
                     if failed {
@@ -361,7 +396,13 @@ async fn lodge_writer<S, E>(
                 None => break,
             },
             _ = ping.tick() => {
-                if sink.send(Message::text(PING_TEXT)).await.is_err() {
+                let send = sink.send(Message::text(PING_TEXT));
+                tokio::pin!(send);
+                let ping_result = tokio::select! {
+                    result = &mut send => result,
+                    _ = stop_requested(&mut stop_rx) => break,
+                };
+                if ping_result.is_err() {
                     break;
                 }
             },
@@ -387,14 +428,7 @@ pub async fn readd_send(
         .get_mut(window.label())
         .ok_or("not connected to readd")?;
     match &mut connection.writer {
-        Writer::Stream(write) => {
-            let mut frame = line.into_bytes();
-            frame.push(b'\n');
-            write
-                .write_all(&frame)
-                .await
-                .map_err(|e| format!("write to readd: {e}"))
-        }
+        Writer::Stream(write) => send_line(write, line).await,
         Writer::Lodge(connection) => {
             let (done_tx, done_rx) = oneshot::channel();
             connection
@@ -467,28 +501,32 @@ pub(crate) async fn stop_local_readd_inner(
 
 /// forward hands every line read from `read` to `on_message`, until the
 /// connection ends, and answers why it ended.
-#[cfg(test)]
-async fn forward<R: AsyncRead + Unpin>(
+async fn forward<R: AsyncRead + Unpin, F: FnMut(BridgeMessage) -> bool>(
     read: R,
-    mut on_message: impl FnMut(BridgeMessage) -> bool,
+    stop_rx: &mut watch::Receiver<bool>,
+    mut on_message: F,
 ) -> String {
     let mut reader = BufReader::new(read);
     loop {
-        match read_line(&mut reader, MAX_LINE).await {
-            Ok(Some(line)) => {
-                if !on_message(BridgeMessage::Line { line }) {
-                    break "the webview stopped listening".to_string();
+        tokio::select! {
+            line = read_line(&mut reader, MAX_LINE) => match line {
+                Ok(Some(line)) => {
+                    if !on_message(BridgeMessage::Line { line }) {
+                        break "the webview stopped listening".to_string();
+                    }
                 }
+                Ok(None) => break "readd closed the connection".to_string(),
+                Err(e) => break format!("read from readd: {e}"),
+            },
+            _ = stop_requested(stop_rx) => {
+                break "the connection was replaced".to_string();
             }
-            Ok(None) => break "readd closed the connection".to_string(),
-            Err(e) => break format!("read from readd: {e}"),
         }
     }
 }
 
 /// send_line writes one message and its newline to `write`; a message of
 /// more than one line is refused.
-#[cfg(test)]
 async fn send_line<W: AsyncWrite + Unpin>(write: &mut W, line: String) -> Result<(), String> {
     let frame = frame(line)?;
     write
@@ -521,7 +559,6 @@ async fn read_line<R: AsyncBufRead + Unpin>(r: &mut R, max: usize) -> io::Result
 }
 
 /// The bytes on the wire for one message: the line and its newline.
-#[cfg(test)]
 fn frame(line: String) -> Result<Vec<u8>, String> {
     if line.contains('\n') {
         return Err("a frame must be a single line".into());
@@ -586,7 +623,10 @@ mod tests {
 
     fn pump(read: tokio::net::unix::OwnedReadHalf) -> mpsc::UnboundedReceiver<BridgeMessage> {
         let (tx, rx) = mpsc::unbounded_channel();
-        tauri::async_runtime::spawn(forward(read, move |message| tx.send(message).is_ok()));
+        tauri::async_runtime::spawn(async move {
+            let (_stop_tx, mut stop_rx) = watch::channel(false);
+            forward(read, &mut stop_rx, move |message| tx.send(message).is_ok()).await;
+        });
         rx
     }
 
@@ -624,13 +664,18 @@ mod tests {
                 .await
                 .unwrap();
             let mut lines = 0;
-            let reason = forward(&a_line_of(MAX_LINE).into_bytes()[..], |message| {
-                if let BridgeMessage::Line { line } = message {
-                    assert_eq!(line, a_line_of(MAX_LINE));
-                    lines += 1;
-                }
-                true
-            })
+            let (_stop_tx, mut stop_rx) = watch::channel(false);
+            let reason = forward(
+                &a_line_of(MAX_LINE).into_bytes()[..],
+                &mut stop_rx,
+                |message| {
+                    if let BridgeMessage::Line { line } = message {
+                        assert_eq!(line, a_line_of(MAX_LINE));
+                        lines += 1;
+                    }
+                    true
+                },
+            )
             .await;
             assert_eq!(lines, 1);
             assert_eq!(reason, "readd closed the connection");
@@ -642,7 +687,8 @@ mod tests {
         let mut input = vec![b'x'; MAX_LINE + 1];
         input.push(b'\n');
         let mut lines = 0;
-        let reason = block_on(forward(&input[..], |message| {
+        let (_stop_tx, mut stop_rx) = watch::channel(false);
+        let reason = block_on(forward(&input[..], &mut stop_rx, |message| {
             if let BridgeMessage::Line { .. } = message {
                 lines += 1;
             }
@@ -700,6 +746,37 @@ mod tests {
         }
     }
 
+    struct PendingSink;
+
+    impl Sink<Message> for PendingSink {
+        type Error = io::Error;
+
+        fn poll_ready(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn start_send(self: Pin<&mut Self>, _message: Message) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+    }
+
     struct FailingSink;
 
     impl Sink<Message> for FailingSink {
@@ -732,6 +809,104 @@ mod tests {
         ) -> Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn forgotten_attempt_is_not_kept() {
+        let bridge = Bridge::default();
+        let id = bridge.begin("main");
+        bridge.forget("main").await;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let (stop_tx, stop_rx) = watch::channel(false);
+        let connection = LodgeConnection {
+            writer: tx,
+            stop: stop_tx.clone(),
+        };
+        assert!(
+            !bridge
+                .keep(id, "main", Writer::Lodge(connection), stop_tx)
+                .await
+        );
+        assert!(
+            *stop_rx.borrow(),
+            "stale connection kept its stop signal clear"
+        );
+        assert!(bridge.connections.lock().await.get("main").is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn newer_attempt_stays_when_older_attempt_finishes() {
+        let bridge = Bridge::default();
+        let id1 = bridge.begin("main");
+        let id2 = bridge.begin("main");
+
+        let (tx2, _rx2) = mpsc::unbounded_channel();
+        let (stop2_tx, stop2_rx) = watch::channel(false);
+        let connection2 = LodgeConnection {
+            writer: tx2,
+            stop: stop2_tx.clone(),
+        };
+        assert!(
+            bridge
+                .keep(id2, "main", Writer::Lodge(connection2), stop2_tx)
+                .await
+        );
+
+        let (tx1, _rx1) = mpsc::unbounded_channel();
+        let (stop1_tx, stop1_rx) = watch::channel(false);
+        let connection1 = LodgeConnection {
+            writer: tx1,
+            stop: stop1_tx.clone(),
+        };
+        assert!(
+            !bridge
+                .keep(id1, "main", Writer::Lodge(connection1), stop1_tx)
+                .await
+        );
+        assert!(*stop1_rx.borrow(), "old attempt did not stop");
+        assert!(
+            !*stop2_rx.borrow(),
+            "new attempt was stopped by the old one"
+        );
+        assert!(bridge.connections.lock().await.contains_key("main"));
+
+        bridge.forget("main").await;
+        assert!(*stop2_rx.borrow(), "forget did not stop the kept attempt");
+    }
+
+    #[tokio::test(start_paused = true, flavor = "current_thread")]
+    async fn pending_lodge_send_stops_on_replacement() {
+        let (stop_tx, stop_rx) = watch::channel(false);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let task = tokio::spawn(lodge_writer(PendingSink, rx, stop_tx.clone(), stop_rx));
+
+        let (done_tx, done_rx) = oneshot::channel();
+        tx.send(WriteRequest {
+            line: "waiting".to_string(),
+            done: done_tx,
+        })
+        .unwrap();
+        tokio::task::yield_now().await;
+
+        stop_tx.send_replace(true);
+        let done = tokio::time::timeout(Duration::from_secs(1), done_rx)
+            .await
+            .expect("a pending lodge send ignored the stop signal")
+            .unwrap();
+        assert_eq!(done, Err("write to lodge: the writer stopped".to_string()));
+
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("the lodge writer stayed alive after stop")
+            .unwrap();
+    }
+
+    #[test]
+    fn lodge_websocket_config_has_memory_bounds() {
+        let config = lodge_websocket_config();
+        assert_eq!(config.max_message_size, Some(LODGE_FRAME_LIMIT));
+        assert_eq!(config.max_frame_size, Some(LODGE_FRAME_LIMIT));
     }
 
     #[tokio::test(start_paused = true, flavor = "current_thread")]
@@ -943,6 +1118,104 @@ mod tests {
             }
             server.await.unwrap();
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn lodge_text_at_the_line_limit_arrives_once() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+            ws.send(Message::text("x".repeat(MAX_LINE))).await.unwrap();
+            let _ = ws.close(None).await;
+        });
+
+        let lodge = remote::Lodge::parse(&format!("http://{addr}")).unwrap();
+        let ws = connect_lodge(&lodge).await.unwrap();
+        let (messages_tx, mut messages_rx) = mpsc::unbounded_channel();
+        let (connection, tasks) = spawn_lodge(ws, move |message| messages_tx.send(message).is_ok());
+
+        match messages_rx.recv().await.unwrap() {
+            BridgeMessage::Line { line } => assert_eq!(line.len(), MAX_LINE),
+            BridgeMessage::Closed { error } => panic!("exact-limit frame closed: {error}"),
+        }
+        drop(connection);
+        for task in tasks {
+            tokio::time::timeout(Duration::from_secs(2), task)
+                .await
+                .expect("the exact-limit task stayed alive")
+                .unwrap();
+        }
+        server.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn lodge_text_over_the_line_limit_ends_with_closed() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let _ = ws.send(Message::text("x".repeat(MAX_LINE + 1))).await;
+        });
+
+        let lodge = remote::Lodge::parse(&format!("http://{addr}")).unwrap();
+        let ws = connect_lodge(&lodge).await.unwrap();
+        let (messages_tx, mut messages_rx) = mpsc::unbounded_channel();
+        let (connection, tasks) = spawn_lodge(ws, move |message| messages_tx.send(message).is_ok());
+
+        let closed = messages_rx.recv().await.unwrap();
+        match closed {
+            BridgeMessage::Closed { error } => {
+                assert!(error.contains(&MAX_LINE.to_string()), "{error}");
+            }
+            BridgeMessage::Line { .. } => panic!("over-limit frame arrived as a line"),
+        }
+        drop(connection);
+        for task in tasks {
+            tokio::time::timeout(Duration::from_secs(2), task)
+                .await
+                .expect("the over-limit task stayed alive")
+                .unwrap();
+        }
+        let _ = server.await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn lodge_text_over_the_lodge_frame_limit_ends_with_closed() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let _ = ws.send(Message::text("x".repeat(32 << 20))).await;
+        });
+
+        let lodge = remote::Lodge::parse(&format!("http://{addr}")).unwrap();
+        let ws = connect_lodge(&lodge).await.unwrap();
+        let (messages_tx, mut messages_rx) = mpsc::unbounded_channel();
+        let (connection, tasks) = spawn_lodge(ws, move |message| messages_tx.send(message).is_ok());
+
+        let closed = messages_rx.recv().await.unwrap();
+        match closed {
+            BridgeMessage::Closed { error } => {
+                assert!(
+                    error.starts_with("read from lodge:"),
+                    "the limit did not come from tungstenite: {error}"
+                );
+                assert!(!error.contains("lodge sent a line over"), "{error}");
+            }
+            BridgeMessage::Line { .. } => panic!("frame over lodge's limit arrived as a line"),
+        }
+        drop(connection);
+        for task in tasks {
+            tokio::time::timeout(Duration::from_secs(2), task)
+                .await
+                .expect("the frame-limit task stayed alive")
+                .unwrap();
+        }
+        let _ = server.await;
     }
 
     #[tokio::test(start_paused = true, flavor = "current_thread")]

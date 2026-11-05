@@ -2,6 +2,7 @@
 //! The Rust derivations copy internal/config: a shared test table keeps
 //! the XDG paths, and the mode's JSON rules, in step.
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
@@ -18,6 +19,81 @@ const MODE_FILE: &str = "app.json";
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Mode {
     pub lodge: String,
+}
+
+struct DuplicateChecked;
+
+impl<'de> Deserialize<'de> for DuplicateChecked {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct DuplicateVisitor;
+
+        impl<'de> Visitor<'de> for DuplicateVisitor {
+            type Value = DuplicateChecked;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a JSON value")
+            }
+
+            fn visit_bool<E>(self, _value: bool) -> Result<Self::Value, E> {
+                Ok(DuplicateChecked)
+            }
+
+            fn visit_i64<E>(self, _value: i64) -> Result<Self::Value, E> {
+                Ok(DuplicateChecked)
+            }
+
+            fn visit_u64<E>(self, _value: u64) -> Result<Self::Value, E> {
+                Ok(DuplicateChecked)
+            }
+
+            fn visit_f64<E>(self, _value: f64) -> Result<Self::Value, E> {
+                Ok(DuplicateChecked)
+            }
+
+            fn visit_str<E>(self, _value: &str) -> Result<Self::Value, E> {
+                Ok(DuplicateChecked)
+            }
+
+            fn visit_string<E>(self, _value: String) -> Result<Self::Value, E> {
+                Ok(DuplicateChecked)
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E> {
+                Ok(DuplicateChecked)
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E> {
+                Ok(DuplicateChecked)
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                while seq.next_element::<DuplicateChecked>()?.is_some() {}
+                Ok(DuplicateChecked)
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut seen = HashSet::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    if !seen.insert(key) {
+                        return Err(serde::de::Error::custom("duplicate object member name"));
+                    }
+                    let _: DuplicateChecked = map.next_value()?;
+                }
+                Ok(DuplicateChecked)
+            }
+        }
+
+        deserializer.deserialize_any(DuplicateVisitor)
+    }
 }
 
 struct RawMode {
@@ -87,6 +163,8 @@ pub(crate) fn load_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<Mod
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Mode::default()),
         Err(e) => return Err(format!("read {}: {e}", path.display())),
     };
+    serde_json::from_slice::<DuplicateChecked>(&data)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     let raw: RawMode =
         serde_json::from_slice(&data).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(Mode {
