@@ -216,7 +216,7 @@ func (e *Engine) subscribe(ctx context.Context, rawurl, title, folder string) (s
 	}
 	next := e.now().Add(-time.Second) // due at once
 	src, err := e.o.Store.AddSource(ctx, store.Source{URL: feedURL, Title: title, Folder: folder,
-		SiteURL: f.SiteURL, ETag: res.ETag, LastModified: res.LastModified}, next)
+		SiteURL: f.SiteURL}, next)
 	if err != nil {
 		return store.Source{}, err
 	}
