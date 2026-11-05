@@ -119,6 +119,12 @@ func TestExportRoundTrip(t *testing.T) {
 	if feeds[0].Title != "Example Feeds" || feeds[1].HTMLURL != "https://example.com/" {
 		t.Fatalf("round trip order or fields = %+v", feeds)
 	}
+	if !strings.Contains(string(data), `<opml version="2.0">`) {
+		t.Fatalf("export root is not OPML 2.0:\n%s", data)
+	}
+	if !strings.Contains(string(data), `<head>`) || !strings.Contains(string(data), `<title>Frostread subscriptions</title>`) {
+		t.Fatalf("export has no Frostread subscriptions head:\n%s", data)
+	}
 	if feeds[0].Folder != "" || feeds[1].Folder != "" {
 		t.Fatalf("round trip folders = %+v", feeds)
 	}
@@ -140,6 +146,12 @@ func TestExportWritesFoldersAndRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc := string(data)
+	if !strings.Contains(doc, `<opml version="2.0">`) {
+		t.Fatalf("folder export root is not OPML 2.0:\n%s", doc)
+	}
+	if !strings.Contains(doc, `<head>`) || !strings.Contains(doc, `<title>Frostread subscriptions</title>`) {
+		t.Fatalf("folder export has no Frostread subscriptions head:\n%s", doc)
+	}
 	garden := strings.Index(doc, `<outline text="Garden" title="Garden">`)
 	news := strings.Index(doc, `<outline text="News" title="News">`)
 	top := strings.Index(doc, `xmlUrl="https://example.com/top.xml"`)

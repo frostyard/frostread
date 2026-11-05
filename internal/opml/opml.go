@@ -27,7 +27,13 @@ type Feed struct {
 // document is an OPML file as encoding/xml sees it.
 type document struct {
 	XMLName xml.Name `xml:"opml"`
+	Version string   `xml:"version,attr"`
+	Head    head     `xml:"head"`
 	Body    body     `xml:"body"`
+}
+
+type head struct {
+	Title string `xml:"title"`
 }
 
 type body struct {
@@ -158,7 +164,11 @@ func Export(feeds []Feed) ([]byte, error) {
 		}
 		return strings.Compare(a, b)
 	})
-	doc := document{Body: body{Outlines: make([]outline, 0, len(names)+len(loose))}}
+	doc := document{
+		Version: "2.0",
+		Head:    head{Title: "Frostread subscriptions"},
+		Body:    body{Outlines: make([]outline, 0, len(names)+len(loose))},
+	}
 	for _, name := range names {
 		doc.Body.Outlines = append(doc.Body.Outlines, outline{
 			Text: name, Title: name, Outlines: folders[name], folder: true,
