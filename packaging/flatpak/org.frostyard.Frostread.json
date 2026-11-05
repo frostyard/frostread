@@ -108,6 +108,16 @@
         },
         {
           "type": "file",
+          "path": "../../internal/config/testdata/desktop-mode.json",
+          "dest": "internal/config/testdata"
+        },
+        {
+          "type": "file",
+          "path": "../../internal/config/testdata/desktop-dirs.json",
+          "dest": "internal/config/testdata"
+        },
+        {
+          "type": "file",
           "path": "frostread.sh",
           "dest": "flatpak"
         },

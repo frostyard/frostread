@@ -49,7 +49,8 @@ file, metainfo and CI build, is merged (frostread#49, 2026-11-04). Phase
 4's second part, the launcher, the Background helper and the smoke test,
 is merged (frostread#50, 2026-11-04). Phase 5, the check on a real Snow
 desktop with real portals, is in review (frostread#51, 2026-11-04); its
-record is in plan 0002. The clean-install gate is not built yet.
+record is in plan 0002. Phase 6's part 1, the shell's lodge
+connection, is in review (2026-11-05). The clean-install gate is not built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -102,7 +103,11 @@ counterpart of something those repositories do, read their file.
   `../lodge` and `../frostnotes` checkouts and changes neither.
 - `web/src-tauri/`: the Tauri v2 shell for identifier
   `org.frostyard.Frostread`; `bridge.rs` moves lines between the window
-  and readd's private socket and never parses them; `paths.rs` derives
+  and readd's private socket, or lodge's `/app/read/api` in lodge mode,
+  and never parses them; `remote.rs` reads `app.json` and lodge's
+  address, and stops a local readd before a lodge connection, from 2
+  tables of cases it shares with `internal/config`
+  (`testdata/desktop-mode.json`, `testdata/desktop-dirs.json`); `paths.rs` derives
   the socket as `internal/config` does, from a test data table both
   share; `files.rs` and `portal.rs` save a file the user picks, through
   the FileChooser portal in a Flatpak and the dialog plugin elsewhere;

@@ -19,18 +19,13 @@ fn in_flatpak_from(getenv: impl Fn(&str) -> Option<OsString>) -> bool {
     getenv("FLATPAK_ID").is_some_and(|id| id == APP_ID)
 }
 
-/// readd's private socket for this process.
-pub fn socket() -> Result<PathBuf, String> {
-    socket_from(|key| std::env::var_os(key))
-}
-
 /// socket_from is DesktopSocket: READ_SOCKET when it is not empty (whatever
 /// it holds), else an absolute XDG_RUNTIME_DIR and frostread/readd.sock
 /// under it, in the directory the Flatpak's sandboxes share when FLATPAK_ID
 /// is the app's. Flatpak shares $XDG_RUNTIME_DIR/app/<id> between every
 /// sandbox of the app, and the rest of $XDG_RUNTIME_DIR is private to each
 /// one, so the window and readd meet only there.
-fn socket_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, String> {
+pub(crate) fn socket_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, String> {
     if let Some(over) = getenv("READ_SOCKET").filter(|value| !value.is_empty()) {
         return Ok(PathBuf::from(over));
     }
@@ -54,7 +49,7 @@ fn socket_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, Str
 /// clean is filepath.Clean for an absolute path, as filepath.Join applies
 /// it: a `.` element and repeated or trailing separators go, and `..` goes
 /// up one element but never above the root.
-fn clean(path: &Path) -> PathBuf {
+pub(crate) fn clean(path: &Path) -> PathBuf {
     let mut clean = PathBuf::new();
     for part in path.components() {
         match part {
