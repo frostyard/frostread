@@ -37,6 +37,8 @@ func (e *Engine) PollDue(ctx context.Context) (int, error) {
 	var wg sync.WaitGroup
 	for _, src := range sources {
 		wg.Go(func() {
+			// Each poll's goroutine records its own panic.
+			defer e.o.Problems.RecoverPanic()
 			if err := e.pollSource(ctx, src); err != nil {
 				e.log.Warn("a source did not poll", "source", src.ID, "host", host(src.URL), "err", err)
 			}
@@ -65,6 +67,9 @@ func (e *Engine) Refresh(ctx context.Context, id *int64) error {
 	var first error
 	for _, src := range sources {
 		wg.Go(func() {
+			// Each poll's goroutine records its own panic: the request's
+			// recovery covers only the request's goroutine.
+			defer e.o.Problems.RecoverPanic()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			if err := e.pollSource(ctx, src); err != nil {

@@ -44,17 +44,22 @@ id before the error's text.
 
 | Where | How |
 | --- | --- |
-| readd's `main` goroutine | `defer rec.RecoverPanic()`, the first defer of `main` |
-| the poller, the extraction workers and the blob sweep | `defer rec.RecoverPanic()`, the first statement of each `workers.Go` goroutine |
+| readd's `main` goroutine | `defer o.problems.RecoverPanic()`, the first defer of `main` |
+| the poller and the blob sweep | `defer rec.RecoverPanic()`, the first statement of their `workers.Go` goroutines in `run` |
+| each extraction worker, and each poll that `PollDue` or `Refresh` starts | `defer e.o.Problems.RecoverPanic()`, the first statement of each goroutine the engine starts (`engine.Options.Problems`) |
+| the accept loops of lodge's socket and the private socket, and the badge's count | `defer rec.RecoverPanic()` in each goroutine `run` and `badgeCounter` start |
 | each JSON-RPC request, on both sockets | `rpcserver.Options.Panics` wraps the router; the kit then recovers the panic again and answers internal, as before |
 | the content route and MCP (lodge's host) | a handler that defers `rec.RecoverPanic()` around `ServeHTTP`; net/http then handles the panic as before |
-| any other goroutine, and a fatal error | `rec.CrashOutput()`: the Go runtime writes the crash to a file, and the next start of readd turns it into 1 record |
+| any other goroutine (such as the kit's connection goroutines outside a request), and a fatal error | `rec.CrashOutput()`: the Go runtime writes the crash to a file, and the next start of readd turns it into 1 record |
 | the shell | `rec.install_panic_hook(env!("CARGO_MANIFEST_DIR"))` in `main.rs`, before `tauri::Builder`; the record's `FROSTYARD_LOCATION` is `src/<file>.rs:<line>` for a panic in the shell's own crate |
 
 ### The crash file
 
-readd calls `CrashOutput` only after it holds the state directory's lock,
-so `-build`, `-mode`, `-version` and a second readd make no crash file.
+`main` gives `run` the options of `mainOptions`: the build's recorder and
+`crashOutput`. readd calls `CrashOutput` only on an active recorder and
+only after it holds the state directory's lock, so a build that is not a
+release, `-build`, `-mode`, `-version` and a second readd make no crash
+file.
 Its folder is `$STATE_DIRECTORY/frostyard-problems/org.frostyard.Frostread`
 on lodge's host (`/var/lib/frostread/...`), and
 `$XDG_STATE_HOME/frostyard-problems/org.frostyard.Frostread` in the

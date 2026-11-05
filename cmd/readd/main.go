@@ -68,18 +68,28 @@ const flatpakInfo = "/.flatpak-info"
 var version = "dev"
 
 func main() {
-	// A release build records its problems; any other build's recorder is
-	// inert (docs/specs/problem-records.md).
-	rec := problems.New(AppID, releaseVersion(version), problems.ComponentDaemon)
+	o := mainOptions()
 	// The first defer, so it runs last: a panic of main's goroutine is
 	// recorded after everything else unwinds. os.Exit below skips it, and
 	// there is no panic then.
-	defer rec.RecoverPanic()
+	defer o.problems.RecoverPanic()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx, os.Args[1:], options{problems: rec, crashOutput: true}); err != nil && !errors.Is(err, flag.ErrHelp) {
+	if err := run(ctx, os.Args[1:], o); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, "readd:", err)
 		os.Exit(1)
+	}
+}
+
+// mainOptions is what main gives run: the recorder of this build, which a
+// release build makes active and any other build inert, and the crash
+// file (docs/specs/problem-records.md). A test gives opts, such as its own
+// journal socket, and runs it in a child process: CrashOutput changes the
+// whole process.
+func mainOptions(opts ...problems.Option) options {
+	return options{
+		problems:    problems.New(AppID, releaseVersion(version), problems.ComponentDaemon, opts...),
+		crashOutput: true,
 	}
 }
 
@@ -322,15 +332,14 @@ func run(ctx context.Context, args []string, o options) error {
 	var workers sync.WaitGroup
 	defer func() { stop(); workers.Wait() }()
 	pl := &poller.Poller{Poll: eng.PollDue, Log: log.With("part", "poller")}
-	// Each worker records its own panic: RecoverPanic covers 1 goroutine.
+	// Each goroutine records its own panic: RecoverPanic covers 1
+	// goroutine. RunExtraction's goroutine only waits: each of its workers,
+	// and each poll PollDue starts, has its own RecoverPanic in the engine.
 	workers.Go(func() {
 		defer rec.RecoverPanic()
 		pl.Run(runCtx)
 	})
-	workers.Go(func() {
-		defer rec.RecoverPanic()
-		eng.RunExtraction(runCtx, engine.ExtractWorkers)
-	})
+	workers.Go(func() { eng.RunExtraction(runCtx, engine.ExtractWorkers) })
 	workers.Go(func() {
 		defer rec.RecoverPanic()
 		eng.RunBlobSweep(runCtx)
@@ -392,10 +401,18 @@ func run(ctx context.Context, args []string, o options) error {
 		return fmt.Errorf("lodge socket: %w", err)
 	}
 	errs := make(chan error, 2)
-	go func() { errs <- app.lodge.Serve(runCtx, ln) }()
+	// The accept loops record their own panics; the kit's connection
+	// goroutines answer through the recorded dispatcher and handlers.
+	go func() {
+		defer rec.RecoverPanic()
+		errs <- app.lodge.Serve(runCtx, ln)
+	}()
 	served := 1
 	if private != nil {
-		go func() { errs <- app.rpc.Serve(runCtx, private, app.router) }()
+		go func() {
+			defer rec.RecoverPanic()
+			errs <- app.rpc.Serve(runCtx, private, app.router)
+		}()
 		served++
 	}
 	log.Info("serving lodge's "+ID+" app", "socket", ln.Addr().String(), "version", version)
@@ -473,7 +490,7 @@ func newApp(log *slog.Logger, s *server) (*app, error) {
 	}
 	var badge *badgeCounter
 	if s.unread != nil {
-		badge = &badgeCounter{unread: s.unread, log: log}
+		badge = &badgeCounter{unread: s.unread, log: log, problems: s.problems}
 	}
 	return &app{rpc: s.rpc, router: router, lodge: &lodgeapp.Server{
 		Health: func(ctx context.Context) lodgeapp.Health {
@@ -500,6 +517,9 @@ type badgeCounter struct {
 	unread func(ctx context.Context) (int, error)
 	log    *slog.Logger
 	busy   atomic.Bool
+	// problems records a panic of the count's goroutine; nil records
+	// nothing.
+	problems *problems.Recorder
 }
 
 // badgeResult is a count, or the error that stopped it.
@@ -521,6 +541,7 @@ func (b *badgeCounter) badge(ctx context.Context) int {
 	// The buffer lets a count that ends after the timeout go.
 	done := make(chan badgeResult, 1)
 	go func() {
+		defer b.problems.RecoverPanic()
 		defer b.busy.Store(false)
 		n, err := b.unread(ctx)
 		done <- badgeResult{n: n, err: err}

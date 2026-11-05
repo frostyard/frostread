@@ -36,14 +36,18 @@ func (e *Engine) Enqueue(id int64) {
 
 // RunExtraction extracts queued items until ctx ends, on n workers (2 when
 // n is 0). Each worker also sweeps the store, so an item whose enqueue was
-// dropped is not lost.
+// dropped is not lost. Each worker records its own panic: a deferred
+// RecoverPanic covers only its goroutine.
 func (e *Engine) RunExtraction(ctx context.Context, n int) {
 	if n <= 0 {
 		n = ExtractWorkers
 	}
 	var wg sync.WaitGroup
 	for range n {
-		wg.Go(func() { e.worker(ctx) })
+		wg.Go(func() {
+			defer e.o.Problems.RecoverPanic()
+			e.worker(ctx)
+		})
 	}
 	wg.Wait()
 }
