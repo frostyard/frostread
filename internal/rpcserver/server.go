@@ -7,6 +7,7 @@ package rpcserver
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"log/slog"
 	"net"
@@ -22,6 +23,37 @@ type Options struct {
 	// Name is reported by rpc.hello, such as "readd v0.1.0".
 	Name   string
 	Logger *slog.Logger
+	// Panics records a handler's panic before the kit recovers it and
+	// answers internal (docs/specs/problem-records.md); nil records
+	// nothing. A *problems.Recorder is one.
+	Panics PanicRecorder
+}
+
+// PanicRecorder records a panic of the calling goroutine and panics again
+// with the same value. Its RecoverPanic must be deferred directly, as
+// github.com/frostyard/std/problems requires.
+type PanicRecorder interface {
+	RecoverPanic()
+}
+
+// recordingDispatcher runs each request under the PanicRecorder. The
+// kit's recovery is outside it: the request still answers internal.
+type recordingDispatcher struct {
+	next   jsonrpc.Dispatcher
+	panics PanicRecorder
+}
+
+func (d recordingDispatcher) Dispatch(ctx context.Context, method string, params jsontext.Value) (any, error) {
+	defer d.panics.RecoverPanic()
+	return d.next.Dispatch(ctx, method, params)
+}
+
+// dispatcher is r, wrapped when the server records panics.
+func (s *Server) dispatcher(r *api.Router) jsonrpc.Dispatcher {
+	if s.opts.Panics == nil {
+		return r
+	}
+	return recordingDispatcher{next: r, panics: s.opts.Panics}
 }
 
 // Server implements api.RPCService and api.EventsService, and serves a
@@ -52,7 +84,7 @@ func New(opts Options) *Server {
 // ctx ends, each as a local caller. Every connection is guarded: no request
 // with an id too long to answer under items.render's bound reaches the kit.
 func (s *Server) Serve(ctx context.Context, ln net.Listener, r *api.Router) error {
-	return s.rpc.Serve(ctx, guardListener{Listener: ln, log: s.opts.Logger}, r,
+	return s.rpc.Serve(ctx, guardListener{Listener: ln, log: s.opts.Logger}, s.dispatcher(r),
 		func(ctx context.Context) context.Context {
 			return api.WithCaller(ctx, api.CallerLocal)
 		})
@@ -61,7 +93,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, r *api.Router) erro
 // ServeConn serves one connection whose listener has authenticated it as
 // caller: lodge's /api as a session. Its lines are guarded too.
 func (s *Server) ServeConn(ctx context.Context, nc net.Conn, r *api.Router, caller api.CallerKind) {
-	s.rpc.ServeConn(api.WithCaller(ctx, caller), newGuardConn(nc, s.opts.Logger), r)
+	s.rpc.ServeConn(api.WithCaller(ctx, caller), newGuardConn(nc, s.opts.Logger), s.dispatcher(r))
 }
 
 // Hello implements rpc.hello.

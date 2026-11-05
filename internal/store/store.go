@@ -32,7 +32,18 @@ var (
 	ErrNotFound = errors.New("store: not found")
 	// ErrConflict means a uniqueness rule rejected the write.
 	ErrConflict = errors.New("store: conflict")
+	// ErrMigrate is wrapped by every error of the schema's migration,
+	// a database newer than this readd included. readd records it as the
+	// problem store.migrate_failed (docs/specs/problem-records.md).
+	ErrMigrate = errors.New("store: the migration failed")
 )
+
+// migrateError is an error of migrate: its text is the cause's, and it
+// wraps both the cause and ErrMigrate.
+type migrateError struct{ err error }
+
+func (e *migrateError) Error() string   { return e.err.Error() }
+func (e *migrateError) Unwrap() []error { return []error{e.err, ErrMigrate} }
 
 // TimeFormat is how times are stored: UTC, fixed width, lexically sortable.
 const TimeFormat = "2006-01-02T15:04:05.000Z"
@@ -114,7 +125,16 @@ func loadMigrations() ([]migration, error) {
 }
 
 // migrate applies the migrations after the database's user_version.
+// Every error it returns wraps ErrMigrate.
 func (d *DB) migrate(ctx context.Context) error {
+	if err := d.applyMigrations(ctx); err != nil {
+		return &migrateError{err: err}
+	}
+	return nil
+}
+
+// applyMigrations is migrate's work; migrate marks its errors.
+func (d *DB) applyMigrations(ctx context.Context) error {
 	ms, err := loadMigrations()
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)

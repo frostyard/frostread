@@ -432,6 +432,16 @@ and publishes the sysext `readd`
 ([snosi#1173](https://github.com/frostyard/snosi/pull/1173)). See
 [After the sysexts](#after-the-sysexts).
 
+## Problem records
+
+readd and the desktop app record their panics, and readd 5 coded internal
+errors, in the local systemd journal: a migration that fails, a second
+readd on lodge's host, an extraction or a render that fails in readd, and a
+blob sweep that fails. frostread sends nothing over a network for them.
+Only chairlift, when its user turns reporting on, sends reports from a
+host. Only a release build records. See
+[docs/specs/problem-records.md](docs/specs/problem-records.md).
+
 ## Docs
 
 - [docs/README.md](docs/README.md): the index.
@@ -439,4 +449,6 @@ and publishes the sysext `readd`
   they fit.
 - [docs/specs/api.md](docs/specs/api.md): the API, `readctl`, the config
   and the state layout.
+- [docs/specs/problem-records.md](docs/specs/problem-records.md): the
+  problem records in the local journal.
 - [AGENTS.md](AGENTS.md): the rules for every agent that works here.

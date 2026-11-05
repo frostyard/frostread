@@ -41,6 +41,9 @@ An ADR marked (Proposed) waits for the owner; the others are Accepted.
 - [The Read app's interface](specs/api.md): the JSON-RPC methods, the MCP
   tools and scope, the content routes, the web routes, `readctl`, the
   configuration, the state layout, and what the fetcher may do
+- [Problem records](specs/problem-records.md): the panics and the 5 coded
+  internal errors readd and the shell write to the local journal, and the
+  Flatpak's version stamping
 
 ### Plans
 

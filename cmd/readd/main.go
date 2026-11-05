@@ -11,8 +11,12 @@
 // whether the window uses lodge instead
 // (docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md).
 //
+// readd writes problem records, its panics and 5 coded internal errors, to
+// the local journal, and sends nothing (docs/specs/problem-records.md).
+//
 //	readd [--socket PATH] [-desktop] [-log FILE] [-debug]
 //	readd -build
+//	readd -version
 //	readd -desktop -mode
 package main
 
@@ -24,6 +28,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -35,6 +40,7 @@ import (
 	"github.com/frostyard/lodge/kit/jsonrpc"
 	"github.com/frostyard/lodge/kit/lodgeapp"
 	"github.com/frostyard/lodge/kit/mcpsession"
+	"github.com/frostyard/std/problems"
 
 	"github.com/frostyard/frostread/api"
 	"github.com/frostyard/frostread/internal/blobs"
@@ -62,11 +68,28 @@ const flatpakInfo = "/.flatpak-info"
 var version = "dev"
 
 func main() {
+	o := mainOptions()
+	// The first defer, so it runs last: a panic of main's goroutine is
+	// recorded after everything else unwinds. os.Exit below skips it, and
+	// there is no panic then.
+	defer o.problems.RecoverPanic()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx, os.Args[1:], options{}); err != nil && !errors.Is(err, flag.ErrHelp) {
+	if err := run(ctx, os.Args[1:], o); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, "readd:", err)
 		os.Exit(1)
+	}
+}
+
+// mainOptions is what main gives run: the recorder of this build, which a
+// release build makes active and any other build inert, and the crash
+// file (docs/specs/problem-records.md). A test gives opts, such as its own
+// journal socket, and runs it in a child process: CrashOutput changes the
+// whole process.
+func mainOptions(opts ...problems.Option) options {
+	return options{
+		problems:    problems.New(AppID, releaseVersion(version), problems.ComponentDaemon, opts...),
+		crashOutput: true,
 	}
 }
 
@@ -85,6 +108,13 @@ type options struct {
 	// listening is called with the private socket's path once readd accepts
 	// connections on it, so a test needs no sleep.
 	listening func(socket string)
+	// problems records readd's panics and internal faults; nil records
+	// nothing.
+	problems *problems.Recorder
+	// crashOutput makes run call problems.CrashOutput once readd holds the
+	// state directory's lock. Only main sets it: CrashOutput changes the
+	// whole process, a test's too.
+	crashOutput bool
 }
 
 func run(ctx context.Context, args []string, o options) error {
@@ -107,9 +137,14 @@ func run(ctx context.Context, args []string, o options) error {
 		"larger than 1 MiB, and append readd's output to FILE")
 	showBuild := fs.Bool("build", false, "print the Flatpak instance's build, and exit")
 	showMode := fs.Bool("mode", false, "print this computer's mode: local or lodge, and exit")
+	showVersion := fs.Bool("version", false, "print readd's version, and exit")
 	debug := fs.Bool("debug", false, "log at debug level")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *showVersion {
+		fmt.Fprintln(o.out, version)
+		return nil
 	}
 	if *showBuild {
 		build, err := config.Build(o.flatpakInfo)
@@ -143,6 +178,10 @@ func run(ctx context.Context, args []string, o options) error {
 		level = slog.LevelDebug
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	rec := o.problems
+	if err := rec.Err(); err != nil {
+		log.Debug("problem records are off", "err", err)
+	}
 
 	// The desktop's paths are the XDG ones; lodge's are the host's, as
 	// systemd passes them.
@@ -179,6 +218,11 @@ func run(ctx context.Context, args []string, o options) error {
 	}
 	lock, err := lockStateDir(state)
 	if err != nil {
+		// The Flatpak's launcher starts a second readd on purpose, and
+		// expects this error; on lodge's host it is a fault.
+		if errors.Is(err, errLockHeld) && !*desktop {
+			rec.Error(CodeLockHeld, err)
+		}
 		return err
 	}
 	defer func() { _ = lock.Close() }()
@@ -187,6 +231,13 @@ func run(ctx context.Context, args []string, o options) error {
 	if *logPath != "" {
 		if err := logTo(*logPath); err != nil {
 			return fmt.Errorf("-log %s: %w", *logPath, err)
+		}
+	}
+	// The crash file comes after the lock: -build, -mode, -version and a
+	// second readd make none.
+	if o.crashOutput && rec.Err() == nil {
+		if err := rec.CrashOutput(); err != nil {
+			log.Warn("the crash file could not be set up", "err", err)
 		}
 	}
 	if *desktop {
@@ -206,6 +257,10 @@ func run(ctx context.Context, args []string, o options) error {
 
 	db, err := store.Open(ctx, filepath.Join(state, "frostread.db"))
 	if err != nil {
+		// A stopped start is no fault of the schema.
+		if errors.Is(err, store.ErrMigrate) && ctx.Err() == nil {
+			rec.Error(CodeMigrateFailed, err)
+		}
 		return err
 	}
 	defer func() { _ = db.Close() }()
@@ -222,7 +277,7 @@ func run(ctx context.Context, args []string, o options) error {
 		f = fetch.New(version)
 	}
 	x := &extract.Extractor{Fetch: f, Blobs: b}
-	srv := rpcserver.New(rpcserver.Options{Name: "readd " + version, Logger: log})
+	srv := rpcserver.New(rpcserver.Options{Name: "readd " + version, Logger: log, Panics: rec})
 
 	// Lodge's content route renders articles for lodge-content; a desktop
 	// window asks items.render for the same page, and serves no route.
@@ -233,7 +288,7 @@ func run(ctx context.Context, args []string, o options) error {
 
 	opts := engine.Options{
 		Store: db, Blobs: b, Fetch: f, Extractor: x, Config: cfg, Interval: interval,
-		Version: version, Build: build, OnChange: srv.Broadcast, Log: log,
+		Version: version, Build: build, OnChange: srv.Broadcast, Log: log, Problems: rec,
 	}
 	var eng *engine.Engine
 	var env lodgeapp.Env
@@ -277,9 +332,18 @@ func run(ctx context.Context, args []string, o options) error {
 	var workers sync.WaitGroup
 	defer func() { stop(); workers.Wait() }()
 	pl := &poller.Poller{Poll: eng.PollDue, Log: log.With("part", "poller")}
-	workers.Go(func() { pl.Run(runCtx) })
+	// Each goroutine records its own panic: RecoverPanic covers 1
+	// goroutine. RunExtraction's goroutine only waits: each of its workers,
+	// and each poll PollDue starts, has its own RecoverPanic in the engine.
+	workers.Go(func() {
+		defer rec.RecoverPanic()
+		pl.Run(runCtx)
+	})
 	workers.Go(func() { eng.RunExtraction(runCtx, engine.ExtractWorkers) })
-	workers.Go(func() { eng.RunBlobSweep(runCtx) })
+	workers.Go(func() {
+		defer rec.RecoverPanic()
+		eng.RunBlobSweep(runCtx)
+	})
 
 	ra := readapi.New(eng, log)
 	if *desktop {
@@ -321,7 +385,8 @@ func run(ctx context.Context, args []string, o options) error {
 	mcp := mcpsession.New(mcpserver.Handler(mcpserver.Options{Engine: eng, Version: version, Log: log}),
 		mcpsession.Options{CheckScope: mcpserver.CheckScope, Logger: log})
 	defer func() { _ = mcp.Close() }()
-	app, err := newApp(log, &server{rpc: srv, read: ra, content: page, mcp: mcp, unread: db.UnreadCount})
+	app, err := newApp(log, &server{rpc: srv, read: ra, content: page, mcp: mcp, unread: db.UnreadCount,
+		problems: rec})
 	if err != nil {
 		if private != nil {
 			_ = private.Close()
@@ -336,10 +401,18 @@ func run(ctx context.Context, args []string, o options) error {
 		return fmt.Errorf("lodge socket: %w", err)
 	}
 	errs := make(chan error, 2)
-	go func() { errs <- app.lodge.Serve(runCtx, ln) }()
+	// The accept loops record their own panics; the kit's connection
+	// goroutines answer through the recorded dispatcher and handlers.
+	go func() {
+		defer rec.RecoverPanic()
+		errs <- app.lodge.Serve(runCtx, ln)
+	}()
 	served := 1
 	if private != nil {
-		go func() { errs <- app.rpc.Serve(runCtx, private, app.router) }()
+		go func() {
+			defer rec.RecoverPanic()
+			errs <- app.rpc.Serve(runCtx, private, app.router)
+		}()
 		served++
 	}
 	log.Info("serving lodge's "+ID+" app", "socket", ln.Addr().String(), "version", version)
@@ -380,6 +453,9 @@ type server struct {
 	// unread is the badge on lodge's rail: the Unread view's count
 	// (lodge ADR-0020). Nil sends no badge.
 	unread func(ctx context.Context) (int, error)
+	// problems records a panic of the content route and of MCP; nil
+	// records nothing.
+	problems *problems.Recorder
 }
 
 // app is the daemon's API, and lodge's socket server for it.
@@ -403,9 +479,18 @@ func newApp(log *slog.Logger, s *server) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The content route and MCP record their panics; a route the server
+	// does not have stays nil.
+	var page, mcp http.Handler
+	if s.content != nil {
+		page = recovering(s.content, s.problems)
+	}
+	if s.mcp != nil {
+		mcp = recovering(s.mcp, s.problems)
+	}
 	var badge *badgeCounter
 	if s.unread != nil {
-		badge = &badgeCounter{unread: s.unread, log: log}
+		badge = &badgeCounter{unread: s.unread, log: log, problems: s.problems}
 	}
 	return &app{rpc: s.rpc, router: router, lodge: &lodgeapp.Server{
 		Health: func(ctx context.Context) lodgeapp.Health {
@@ -418,8 +503,8 @@ func newApp(log *slog.Logger, s *server) (*app, error) {
 		API: func(ctx context.Context, nc net.Conn, _ lodgeapp.Caller) {
 			s.rpc.ServeConn(ctx, nc, router, api.CallerSession)
 		},
-		Content: s.content,
-		MCP:     s.mcp,
+		Content: page,
+		MCP:     mcp,
 		Logger:  log,
 	}}, nil
 }
@@ -432,6 +517,9 @@ type badgeCounter struct {
 	unread func(ctx context.Context) (int, error)
 	log    *slog.Logger
 	busy   atomic.Bool
+	// problems records a panic of the count's goroutine; nil records
+	// nothing.
+	problems *problems.Recorder
 }
 
 // badgeResult is a count, or the error that stopped it.
@@ -453,6 +541,7 @@ func (b *badgeCounter) badge(ctx context.Context) int {
 	// The buffer lets a count that ends after the timeout go.
 	done := make(chan badgeResult, 1)
 	go func() {
+		defer b.problems.RecoverPanic()
 		defer b.busy.Store(false)
 		n, err := b.unread(ctx)
 		done <- badgeResult{n: n, err: err}

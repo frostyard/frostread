@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/frostyard/frostread/internal/extract"
 	"github.com/frostyard/frostread/internal/fetch"
 	"github.com/frostyard/frostread/internal/store"
 )
@@ -35,14 +36,18 @@ func (e *Engine) Enqueue(id int64) {
 
 // RunExtraction extracts queued items until ctx ends, on n workers (2 when
 // n is 0). Each worker also sweeps the store, so an item whose enqueue was
-// dropped is not lost.
+// dropped is not lost. Each worker records its own panic: a deferred
+// RecoverPanic covers only its goroutine.
 func (e *Engine) RunExtraction(ctx context.Context, n int) {
 	if n <= 0 {
 		n = ExtractWorkers
 	}
 	var wg sync.WaitGroup
 	for range n {
-		wg.Go(func() { e.worker(ctx) })
+		wg.Go(func() {
+			defer e.o.Problems.RecoverPanic()
+			e.worker(ctx)
+		})
 	}
 	wg.Wait()
 }
@@ -100,6 +105,7 @@ func (e *Engine) ExtractItem(ctx context.Context, id int64) error {
 	if feedContent != "" && len([]rune(it.Text)) >= FullArticle {
 		content, images, err := e.o.Extractor.Inline(ctx, feedContent, it.URL, it.Title)
 		if err != nil {
+			e.recordExtract(ctx, id, err)
 			return e.extractFailed(ctx, id, err)
 		}
 		if err := e.o.Store.SetExtraction(ctx, id, store.Extraction{
@@ -125,6 +131,7 @@ func (e *Engine) ExtractItem(ctx context.Context, id int64) error {
 	// The original is kept as sent, before anything changes it.
 	hash, err := e.o.Blobs.Put(ctx, bytes.NewReader(res.Body), "text/html")
 	if err != nil {
+		e.recordExtract(ctx, id, err)
 		return e.extractFailed(ctx, id, err)
 	}
 	if err := e.o.Store.SetOriginal(ctx, id, hash); err != nil {
@@ -132,6 +139,7 @@ func (e *Engine) ExtractItem(ctx context.Context, id int64) error {
 	}
 	art, err := e.o.Extractor.Extract(ctx, res.Body, res.URL)
 	if err != nil {
+		e.recordExtract(ctx, id, err)
 		return e.extractFailed(ctx, id, err)
 	}
 	if err := e.o.Store.SetExtraction(ctx, id, store.Extraction{
@@ -143,6 +151,19 @@ func (e *Engine) ExtractItem(ctx context.Context, id int64) error {
 	e.log.Info("extracted", "item", id, "host", host(it.URL), "images", len(art.Images))
 	e.change("unread", "later", "all")
 	return nil
+}
+
+// recordExtract writes the problem record extract.failed for a fault of
+// the extractor or the blob store. A page with no article is the page's
+// fault, and a stopped readd's cancelled work is no fault: neither records.
+// A fetch error, an HTTP error status and an item with no address never
+// reach it: those are network and data faults
+// (docs/specs/problem-records.md).
+func (e *Engine) recordExtract(ctx context.Context, id int64, err error) {
+	if ctx.Err() != nil || errors.Is(err, extract.ErrNoArticle) {
+		return
+	}
+	e.o.Problems.Error(CodeExtractFailed, fmt.Errorf("extract item %d: %w", id, err))
 }
 
 // extractFailed records why an extraction failed.

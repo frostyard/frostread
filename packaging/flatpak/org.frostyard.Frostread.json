@@ -33,7 +33,7 @@
         }
       },
       "build-commands": [
-        "go build -ldflags '-s -w -X main.version=flatpak' -o build/ ./cmd/readd ./cmd/readctl",
+        "v=$(head -n 1 packaging/flatpak/release-version 2>/dev/null | tr -cd '0-9a-z.-'); go build -ldflags \"-s -w -X main.version=${v:-dev}\" -o build/ ./cmd/readd ./cmd/readctl",
         "install -Dm755 -t /app/bin build/readd build/readctl"
       ],
       "test-commands": [
@@ -72,7 +72,7 @@
       },
       "build-commands": [
         "export PATH=\"$PWD/pnpm-bin:$PATH\" && cd web && pnpm install --offline --frozen-lockfile --trust-lockfile",
-        "export PATH=\"$PWD/pnpm-bin:$PATH\" && cd web && pnpm tauri build",
+        "export PATH=\"$PWD/pnpm-bin:$PATH\" && sh flatpak/tauri-build.sh",
         "install -Dm755 web/src-tauri/target/release/frostread /app/libexec/frostread-app",
         "install -Dm755 flatpak/frostread.sh /app/bin/frostread",
         "install -Dm755 flatpak/request-background.py /app/bin/frostread-request-background",
@@ -114,6 +114,11 @@
         {
           "type": "file",
           "path": "smoke-test.sh",
+          "dest": "flatpak"
+        },
+        {
+          "type": "file",
+          "path": "tauri-build.sh",
           "dest": "flatpak"
         },
         {

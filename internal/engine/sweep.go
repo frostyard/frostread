@@ -201,6 +201,7 @@ func (e *Engine) RunBlobSweep(ctx context.Context) {
 		}
 		if _, err := e.SweepBlobs(ctx, dryRun); err != nil && ctx.Err() == nil {
 			e.log.Error("the blob sweep failed", "err", err)
+			e.o.Problems.Error(CodeSweepFailed, err)
 		}
 		timer.Reset(every)
 	}

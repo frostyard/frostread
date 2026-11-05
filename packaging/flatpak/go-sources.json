@@ -97,6 +97,18 @@
   },
   {
     "type": "file",
+    "url": "https://proxy.golang.org/github.com/frostyard/std/@v/v0.5.0.mod",
+    "sha256": "7766a34d9f161d2a8b2f39dc308de34f6478b00f15fed9467ea160c7ce7cf04e",
+    "dest": "goproxy/github.com/frostyard/std/@v"
+  },
+  {
+    "type": "file",
+    "url": "https://proxy.golang.org/github.com/frostyard/std/@v/v0.5.0.zip",
+    "sha256": "52e237d3169827d1de4910b859c955685907c1b9de3f916f3e996fd1589e2647",
+    "dest": "goproxy/github.com/frostyard/std/@v"
+  },
+  {
+    "type": "file",
     "url": "https://proxy.golang.org/github.com/go-shiori/dom/@v/v0.0.0-20230515143342-73569d674e1c.mod",
     "sha256": "04c2f88987ad839912a5554d1b8c60ccc56d1c962d8220212a2c744e2aa09b9b",
     "dest": "goproxy/github.com/go-shiori/dom/@v"

@@ -86,6 +86,7 @@ func TestFlatpakManifest(t *testing.T) {
 		"node-sources.json",
 		"frostread.sh",
 		"smoke-test.sh",
+		"tauri-build.sh",
 		"request-background.py",
 		"org.frostyard.Frostread.desktop",
 		"org.frostyard.Frostread.metainfo.xml",
