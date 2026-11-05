@@ -62,6 +62,12 @@ counterpart of something those repositories do, read their file.
   is the Flatpak's own readd: only the private socket, its own state
   directory, the `flock`, the mode file `app.json`, and `-log`
   ([ADR-0008](docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)).
+- `cmd/readd/problems.go` and `web/src-tauri/src/problems.rs`: the
+  problem records in the local journal, readd's 5 codes and the panics of
+  readd and the shell, on frostyard/std
+  ([spec](docs/specs/problem-records.md)); `internal/problemtest` is the
+  tests' stand-in journal. `scripts/release-version.sh` and
+  `packaging/flatpak/tauri-build.sh` stamp the Flatpak with a tag's version.
 - `cmd/readctl`: the CLI, over the private socket; `-desktop` finds the
   Flatpak's own.
 - `api/`, `internal/rpcserver`: the JSON-RPC API on `kit/jsonrpc`.

@@ -8,12 +8,20 @@ mod bridge;
 mod files;
 mod paths;
 mod portal;
+mod problems;
 
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 
 fn main() {
+    let context = tauri::generate_context!();
+    // A release build records its panics in the local journal; an
+    // unstamped build's recorder is inert (docs/specs/problem-records.md).
+    // The hook is installed here, in the app's crate: the crate reads the
+    // caller's file to find the crate root of a panic's location.
+    let rec = problems::recorder(&context.package_info().version.to_string());
+    rec.install_panic_hook(env!("CARGO_MANIFEST_DIR"));
     tauri::Builder::default()
         // First, so a second launch hands over before anything else starts.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -67,7 +75,7 @@ fn main() {
                 .build()?;
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("frostread failed to start");
 }
 

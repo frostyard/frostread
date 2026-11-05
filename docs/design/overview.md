@@ -272,10 +272,26 @@ runes, and the address is checked with `fetch.Check` before it is stored
   changed, keeps a hash with no blob: no re-fetch can give the bytes as
   they were sent, so none is stored under that hash. Such an item still
   shows its stored, sanitized text and its extraction.
+- **Problem records:** see [Problem records](#problem-records) below.
 - **Restoring an old database:** it may name blobs the sweep removed since
   the snapshot. A restore inside the grace period is safe; an older one
   needs the `blobs/` directory from the same snapshot, or its items show
   a missing image or an original that is gone.
+
+## Problem records
+
+readd and the shell write their panics, and readd 5 coded internal errors,
+to the local systemd journal with frostyard/std's `problems` package and
+its Rust crate. frostread sends nothing: chairlift,
+when its user turns reporting on, is the host's only sender
+([core ADR-0069](https://github.com/frostyard/core/blob/main/docs/adr/0069-report-problems-local-first-opt-in-with-one-sender-per-host.md)).
+A record is an internal fault only: a migration that fails, a second readd
+on lodge's host, an extraction that fails in readd, a page over
+`items.render`'s bound, and a scheduled sweep that fails. A network, an
+authentication or a data fault records nothing. Only a release build
+records: `dev` and the other unstamped versions make the recorder inert.
+The codes, their conditions, the panic coverage and the Flatpak's version
+stamping are in [specs/problem-records.md](../specs/problem-records.md).
 
 ## References
 
@@ -288,6 +304,7 @@ runes, and the address is checked with `fetch.Check` before it is stored
   [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md),
   [ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
   (the desktop Flatpak)
-- Contracts: [specs/api.md](../specs/api.md)
+- Contracts: [specs/api.md](../specs/api.md),
+  [specs/problem-records.md](../specs/problem-records.md)
 - Built in: [roadmap — Phases 1 to 8](../plans/0001-roadmap.md); the
   desktop in [plan 0002](../plans/0002-the-standalone-desktop-flatpak.md)

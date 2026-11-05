@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,6 +35,33 @@ func TestSchemaAndSecret(t *testing.T) {
 	b, err := d.Secret(t.Context())
 	if err != nil || string(a) != string(b) {
 		t.Fatalf("the second secret differs: %v", err)
+	}
+}
+
+// Every error of the migration wraps ErrMigrate, with its text as before:
+// readd records it as store.migrate_failed (docs/specs/problem-records.md).
+func TestMigrateErrorsWrapErrMigrate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "read.db")
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(t.Context(), `PRAGMA user_version = 9999`); err != nil {
+		t.Fatal(err)
+	}
+	_ = raw.Close()
+	_, err = Open(t.Context(), path)
+	if !errors.Is(err, ErrMigrate) {
+		t.Fatalf("open a newer database = %v, want ErrMigrate", err)
+	}
+	fresh, _ := open(t)
+	n, err2 := fresh.SchemaVersion(t.Context())
+	if err2 != nil {
+		t.Fatal(err2)
+	}
+	want := fmt.Sprintf("open database %s: migrate: database schema 9999 is newer than this readd (%d)", path, n)
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
 	}
 }
 

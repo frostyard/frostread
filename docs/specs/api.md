@@ -508,6 +508,7 @@ tailnet addresses.
 | `-desktop` | the desktop mode: the paths, the lock and the mode check below |
 | `-log FILE` | after readd holds the lock, move `FILE` to `FILE.1` when it is larger than 1 MiB, and append readd's output (stdout and stderr) to `FILE` |
 | `-build` | print the Flatpak instance's build, an empty line when there is none, and exit 0 |
+| `-version` | print readd's version, and exit 0, before anything else; the Flatpak's build reads it ([problem-records.md](problem-records.md#version-stamping)) |
 | `-mode` | with `-desktop`, print the mode in `app.json`, `local` or `lodge`, and exit 0, with no lock and no database; a file that does not parse is an error. The launcher reads it |
 | `--socket PATH` | the private socket, in either mode; it wins over the derived one |
 | `-debug` | log at debug level |
@@ -710,5 +711,6 @@ vets and tests both.
   [ADR-0007](../adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md),
   [ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
 - Context: [design/overview.md](../design/overview.md)
+- Related: [problem-records.md](problem-records.md), readd's problem records
 - Built in: [roadmap](../plans/0001-roadmap.md), and the desktop in
   [plan 0002](../plans/0002-the-standalone-desktop-flatpak.md)

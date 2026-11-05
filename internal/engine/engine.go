@@ -15,6 +15,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/frostyard/std/problems"
+
 	"github.com/frostyard/frostread/internal/blobs"
 	"github.com/frostyard/frostread/internal/config"
 	"github.com/frostyard/frostread/internal/content"
@@ -68,7 +70,23 @@ type Options struct {
 	// math/rand/v2's when nil.
 	Rand func() float64
 	Log  *slog.Logger
+	// Problems records the engine's internal faults in the local journal
+	// (docs/specs/problem-records.md); nil records nothing.
+	Problems *problems.Recorder
 }
+
+// The codes of the problem records the engine writes
+// (docs/specs/problem-records.md). Each is an internal fault: a network, an
+// authentication or a data fault records nothing.
+const (
+	// CodeExtractFailed: the extractor or the blob store failed in an
+	// extraction, for a reason other than the page itself.
+	CodeExtractFailed = "extract.failed"
+	// CodeRenderTooLarge: items.render answered content.ErrTooLarge.
+	CodeRenderTooLarge = "render.too_large"
+	// CodeSweepFailed: the scheduled blob sweep failed.
+	CodeSweepFailed = "blobs.sweep_failed"
+)
 
 // Engine is readd's logic.
 type Engine struct {
@@ -631,7 +649,11 @@ func (e *Engine) Render(ctx context.Context, id int64, scheme string) (Rendered,
 	if err != nil {
 		return Rendered{}, err
 	}
-	return e.page.Render(ctx, it, scheme)
+	r, err := e.page.Render(ctx, it, scheme)
+	if errors.Is(err, content.ErrTooLarge) {
+		e.o.Problems.Error(CodeRenderTooLarge, fmt.Errorf("render item %d: %w", id, err))
+	}
+	return r, err
 }
 
 // ExportMarkdown returns an item as the Markdown file a desktop user saves:

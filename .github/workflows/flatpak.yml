@@ -49,6 +49,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # A release tag at HEAD stamps readd and the shell with its version;
+      # any other commit gives an empty file, and the build stays "dev"
+      # (docs/specs/problem-records.md, Version stamping).
+      - name: Write the release version
+        run: sh scripts/release-version.sh > packaging/flatpak/release-version
       - name: Build and test
         uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
