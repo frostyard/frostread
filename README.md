@@ -182,7 +182,8 @@ host. `LODGE` below is lodge's address, `lodge.<tailnet>.ts.net`.
 An update installs a release's `.deb`,
 `frostyard-readd_X.Y.Z_amd64.deb` (see [Release](#release)). lodge's host
 has no apt source and no sysext for it (2026-11-03), so it goes in by hand
-with `dpkg -i`, as v0.3.0 (2026-10-30) and v0.4.0 (2026-11-03) did. The
+with `dpkg -i`, as v0.3.0 (2026-10-30), v0.4.0 (2026-11-03) and v0.5.0
+(2026-11-05) did. The
 package has no maintainer scripts: it starts, stops and reloads nothing,
 so the steps below do that. While frostread is stopped, the Read tab does
 not work, the poller does not run, and lodge shows the app as down.
@@ -210,14 +211,15 @@ not work, the poller does not run, and lodge shows the app as down.
 3. **Take a rollback archive.** Keep it root-only: the notes token is a
    secret. Name it with the old version and a UTC time. The binaries are
    in `/usr/bin` (builds from frostread#20 on) or in `/usr/local/bin`
-   (earlier builds), so the script lists only the paths that exist. Every
+   (earlier builds), so the script lists only the paths that exist (`ls`
+   exits 2 for the others, so a shell with `-e` needs the `|| true`). Every
    other path must exist, or `tar` fails.
 
    ```sh
    sudo sh -c 'umask 077
      a=/root/frostread-rollback-OLDVERSION-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
      bins=$(ls -d /usr/bin/readd /usr/bin/readctl \
-       /usr/local/bin/readd /usr/local/bin/readctl 2>/dev/null)
+       /usr/local/bin/readd /usr/local/bin/readctl 2>/dev/null || true)
      tar -czpf "$a" /var/lib/frostread /etc/frostread \
        /usr/share/lodge/apps/read $bins \
        /usr/lib/systemd/system/frostread.socket \

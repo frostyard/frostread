@@ -32,8 +32,8 @@ Phases 1 to 6 of the [roadmap](docs/plans/0001-roadmap.md) are done.
 Phases 7 (save from the phone, frostread#10) and 8 (the blob sweep,
 frostread#12) are built and merged (2026-10-21); Phase 7's Done when waits
 for the owner's check in iOS Safari. frostread runs on lodge's host for the
-owner's daily use (2026-10-21), at v0.4.0 from its release `.deb` since
-2026-11-03 (README, Update). The founding ADRs, 0001 to
+owner's daily use (2026-10-21), at v0.5.0 from its release `.deb` since
+2026-11-05 (README, Update). The founding ADRs, 0001 to
 0005, are Accepted (Brian, 2026-10-21), and ADR-0006, the bookmarklet, and
 ADR-0007, the blob sweep, are Accepted (Brian, 2026-10-22).
 ADR-0008, the standalone desktop Flatpak, is Accepted (Brian, 2026-10-28);
