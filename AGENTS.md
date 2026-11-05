@@ -284,6 +284,10 @@ live check on loopback; its evidence is in the
 - Never commit `build/`, `node_modules`, tokens, provider credentials, a
   note's text, an article's text, or private host names. Tests and docs use
   made-up data: `alice@example.com`, `example.com`, `example.org`.
+- A test machine's or lab VM's name is a private host name too. A record
+  of a run names the machine by its owner, OS and versions ("Duncan's
+  Snow desktop VM, Snow 20261028172907"), never by its name, host or
+  address.
 - No non-documentation IP address outside loopback in code or docs, except
   the development-only loopback example above.
 - Use conventional commit subjects.

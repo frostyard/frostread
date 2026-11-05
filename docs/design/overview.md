@@ -114,9 +114,11 @@ checked it on a Snow VM:
   at the next login, gnome-session starts readd alone, with no window.
 - **Files.** OPML import is the web view's file input: GTK opens the
   FileChooser portal, so the user can pick a file in any folder, such
-  as `~/Downloads`, with no file system permission. OPML export and
-  Export as Markdown go through `save_file` and `SaveFile`, which
-  offers `frostread.opml` with an OPML filter.
+  as `~/Downloads`, with no file system permission. OPML export goes
+  through `save_file` and `SaveFile`, which offers `frostread.opml` with
+  an OPML filter. The reader's "Export as Markdown…" will take the same
+  path; it is not built yet
+  ([plan 0002, Phase 7](../plans/0002-the-standalone-desktop-flatpak.md#phase-7--notes-on-the-desktop-planner-small)).
 - **Links.** `on_new_window` gives `http`, `https` and `mailto` links to
   the opener, which uses OpenURI: the article's open button and a link
   in the reader's frame open in the default browser.

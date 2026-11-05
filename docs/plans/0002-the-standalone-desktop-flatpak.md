@@ -570,8 +570,8 @@ Each part of the Done when, and the test that shows it:
 
 ### Phase 5's record
 
-Phase 5's Done when holds (2026-11-04), on Duncan's Snow desktop VM
-`frostmail-desktop` (its README is in Duncan's home): Snow
+Phase 5's Done when holds (2026-11-04), on Duncan's disposable Snow
+desktop VM: Snow
 `20261028172907` (Debian 13), GNOME Shell 48.7 on Wayland,
 xdg-desktop-portal 1.20.3 with xdg-desktop-portal-gnome 48.0, and
 Flatpak 1.16.6, as the user `tester` in a real GDM login. The browser is

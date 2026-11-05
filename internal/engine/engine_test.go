@@ -52,8 +52,9 @@ func (n *net) Get(_ context.Context, rawurl string, o fetch.Options) (*fetch.Res
 	if p.status == 0 {
 		p.status = 200
 	}
-	if p.status == 200 && ((p.etag != "" && o.ETag == p.etag) ||
-		(p.lastMod != "" && o.LastModified == p.lastMod)) {
+	// A server answers 304 as RFC 9110 says: If-None-Match decides when the
+	// request has it, and If-Modified-Since only when it has none.
+	if p.status == 200 && notModified(p, o) {
 		p.status = http.StatusNotModified
 	}
 	res := &fetch.Response{Status: p.status, URL: rawurl, Header: http.Header{}, RetryAfter: p.retryAf}
@@ -71,6 +72,48 @@ func (n *net) Get(_ context.Context, rawurl string, o fetch.Options) (*fetch.Res
 	}
 	res.Body = []byte(p.body)
 	return res, nil
+}
+
+// notModified reports whether a conditional request matches the page.
+func notModified(p answer, o fetch.Options) bool {
+	if o.ETag != "" {
+		return p.etag != "" && o.ETag == p.etag
+	}
+	return o.LastModified != "" && p.lastMod != "" && o.LastModified == p.lastMod
+}
+
+// The fake answers conditional requests as a server does, so the tests
+// that rely on a 304 see a real one.
+func TestFakeNetConditionalRequests(t *testing.T) {
+	const (
+		etag    = `"v1"`
+		lastMod = "Tue, 20 Oct 2026 10:00:00 GMT"
+	)
+	page := answer{body: "body", etag: etag, lastMod: lastMod}
+	for _, tc := range []struct {
+		name string
+		o    fetch.Options
+		want int
+	}{
+		{"no validators", fetch.Options{}, http.StatusOK},
+		{"matching ETag", fetch.Options{ETag: etag}, http.StatusNotModified},
+		{"matching Last-Modified", fetch.Options{LastModified: lastMod}, http.StatusNotModified},
+		{"changed ETag, same Last-Modified", fetch.Options{ETag: `"v0"`, LastModified: lastMod}, http.StatusOK},
+		{"matching ETag, old Last-Modified", fetch.Options{ETag: etag, LastModified: "Mon, 19 Oct 2026 10:00:00 GMT"}, http.StatusNotModified},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := &net{pages: map[string]answer{"https://example.com/feed.xml": page}}
+			o := tc.o
+			o.MaxBytes = 1 << 20
+			res, err := n.Get(t.Context(), "https://example.com/feed.xml", o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Status != tc.want {
+				t.Fatalf("status = %d; want %d", res.Status, tc.want)
+			}
+		})
+	}
 }
 
 func (n *net) requests() []string {
