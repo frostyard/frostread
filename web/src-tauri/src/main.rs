@@ -9,6 +9,7 @@ mod files;
 mod paths;
 mod portal;
 mod problems;
+mod remote;
 
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};

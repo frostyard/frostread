@@ -650,6 +650,23 @@ Found and left open:
   leaves no readd in `flatpak ps`, and a login with the autostart still
   registered starts none.
 
+Phase 6 lands in 2 parts (Brian, T909a, 2026-11-05):
+
+- **Part 1, the connection (in review, 2026-11-05).** `bridge.rs`'s
+  lodge mode and `remote.rs`, with Rust tests: `app.json` read as readd
+  reads it, and lodge's address checked; on every connect in lodge mode,
+  `daemon.shutdown` and the wait for the data lock (steps 2 and 3), with
+  no connection while the lock stays held; `wss://LODGE/app/read/api`
+  with lodge's `Origin`; one text frame per line; and
+  `{"jsonrpc":"2.0","method":"rpc.ping"}` every 30 s, since lodge's
+  relay counts only data frames ([specs/api.md](../specs/api.md#desktop-mode)).
+  The shell and readd share 2 tables of cases,
+  `internal/config/testdata/desktop-mode.json` and `desktop-dirs.json`.
+  Nothing writes `app.json` yet.
+- **Part 2, the rest.** The Server sheet and its ordered stop, saving
+  local, the unreachable state's texts, save as note and "Open in Notes"
+  in lodge mode, and the e2e test; then the Done when above.
+
 ## Phase 7 — Notes on the desktop (planner, small)
 
 Brian chose ADR-0008's proposal for open question 3 (2026-10-27).

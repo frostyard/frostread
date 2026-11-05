@@ -85,6 +85,75 @@ func TestReadMode(t *testing.T) {
 	}
 }
 
+// The mode file's table is shared with the shell: it covers missing and
+// malformed files, unknown members and duplicate lodge members.
+func TestReadModeTable(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "desktop-mode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Name  string  `json:"name"`
+		File  *string `json:"file"`
+		Lodge string  `json:"lodge"`
+		Error bool    `json:"error"`
+	}
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatalf("testdata/desktop-mode.json: %v", err)
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "app.json")
+		if c.File != nil {
+			if err := os.WriteFile(path, []byte(*c.File), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := ReadMode(path)
+		if c.Error {
+			if err == nil {
+				t.Errorf("%s: ReadMode = %+v; want an error", c.Name, got)
+			}
+			continue
+		}
+		if err != nil || got.Lodge != c.Lodge {
+			t.Errorf("%s: ReadMode = %+v, %v; want lodge %q", c.Name, got, err, c.Lodge)
+		}
+	}
+}
+
+// The desktop directory table is shared with the shell: an absolute XDG
+// value wins, and an invalid XDG value falls back to an absolute HOME.
+func TestDesktopDirsTable(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "desktop-dirs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Name  string            `json:"name"`
+		Env   map[string]string `json:"env"`
+		State string            `json:"state"`
+		Mode  string            `json:"mode"`
+		Error bool              `json:"error"`
+	}
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatalf("testdata/desktop-dirs.json: %v", err)
+	}
+	for _, c := range cases {
+		gotState, errState := DesktopStateDir(env(c.Env))
+		gotMode, errMode := ModePath(env(c.Env))
+		if c.Error {
+			if errState == nil && errMode == nil {
+				t.Errorf("%s: DesktopStateDir and ModePath = %q, %q; want an error", c.Name, gotState, gotMode)
+			}
+			continue
+		}
+		if errState != nil || gotState != c.State || errMode != nil || gotMode != c.Mode {
+			t.Errorf("%s: dirs = %q, %v, %q, %v; want %q, %q", c.Name, gotState, errState, gotMode, errMode, c.State, c.Mode)
+		}
+	}
+}
+
 // The socket: READ_SOCKET wins, the Flatpak's own directory is one all of
 // its sandboxes share, and a missing runtime directory says what to do.
 func TestDesktopSocket(t *testing.T) {

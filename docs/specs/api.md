@@ -561,6 +561,34 @@ waits for them, and only then closes the database and releases the lock.
 readd then exits 0, as it does after a signal. On lodge's host systemd
 owns readd, so the same call answers `unavailable`.
 
+**The window in lodge mode** (plan 0002, Phase 6). The shell reads
+`app.json` each time a window connects, as readd does, and a file that
+does not parse is an error, never local mode. In lodge mode
+`web/src-tauri/src/bridge.rs`:
+
+1. checks lodge's address: `https`, or `http` on a loopback host for
+   lodge's development build; a scheme and a host, with an optional
+   port, and no path, query, fragment or credentials;
+2. stops this computer's readd (ADR-0008, steps 2 and 3): while another
+   process holds `<state>/readd.lock`, it calls `rpc.hello` and
+   `daemon.shutdown` on readd's socket, once a second, for up to 30 s.
+   A lock file that is not there means no readd. A lock still held after
+   30 s fails the connection with "This computer's reader did not
+   stop", and the window does not connect to lodge;
+3. opens `wss://LODGE/app/read/api` (`ws://` on loopback) with
+   `Origin: LODGE` and no `Sec-Fetch-*` header, as lodge's native
+   clients do, over rustls with the web's roots, as caller `session`;
+4. moves each line as one text frame, both ways, and never parses one. A
+   binary frame, a text frame with a newline inside, or one over the
+   line bound ends the connection;
+5. sends `{"jsonrpc":"2.0","method":"rpc.ping"}` every 30 s. lodge
+   closes a session that sends no data frame for 90 s, and does not count
+   a WebSocket ping; the kit ignores a client notification, so readd
+   answers nothing and the page's ids are untouched.
+
+A connection that fails is an error to the window, which retries with its
+next call. The shell never falls back to the local readd in lodge mode.
+
 ### Installation on lodge's host
 
 The daemon installs as lodge's `read` app, beside lodge and notes, with

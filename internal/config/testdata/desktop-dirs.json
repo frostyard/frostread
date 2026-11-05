@@ -1,0 +1,9 @@
+[
+  {"name":"absolute XDG directories","env":{"XDG_DATA_HOME":"/data","XDG_CONFIG_HOME":"/config","HOME":"/home/user"},"state":"/data/frostread","mode":"/config/frostread/app.json","error":false},
+  {"name":"trailing slash","env":{"XDG_DATA_HOME":"/data/","XDG_CONFIG_HOME":"/config/","HOME":"/home/user"},"state":"/data/frostread","mode":"/config/frostread/app.json","error":false},
+  {"name":"dot dot element","env":{"XDG_DATA_HOME":"/data/x/..","XDG_CONFIG_HOME":"/config/x/..","HOME":"/home/user"},"state":"/data/frostread","mode":"/config/frostread/app.json","error":false},
+  {"name":"doubled slash","env":{"XDG_DATA_HOME":"/data//cache","XDG_CONFIG_HOME":"/config//frostread","HOME":"/home/user"},"state":"/data/cache/frostread","mode":"/config/frostread/frostread/app.json","error":false},
+  {"name":"XDG directories are relative","env":{"XDG_DATA_HOME":"data","XDG_CONFIG_HOME":"config","HOME":"/home/user"},"state":"/home/user/.local/share/frostread","mode":"/home/user/.config/frostread/app.json","error":false},
+  {"name":"XDG directories are unset","env":{"HOME":"/home/user"},"state":"/home/user/.local/share/frostread","mode":"/home/user/.config/frostread/app.json","error":false},
+  {"name":"HOME is unset","env":{},"state":"","mode":"","error":true}
+]

@@ -35,7 +35,8 @@ document changes with each phase.
    readctl ──unix──▶ readd private socket ──▶ engine
    notes ◀──agent socket◀── internal/notes ◀── engine (save as note)
    desktop window ──Tauri IPC──▶ shell (bridge.rs) ──unix──▶ readd -desktop
-                                                       private socket ──▶ engine
+                                       │               private socket ──▶ engine
+                                       └─lodge mode: wss──▶ lodge /app/read/api
 ```
 
 ## Design
@@ -67,7 +68,13 @@ the web project's desktop entry ([ADR-0008](../adr/0008-the-desktop-flatpak-carr
 [plan 0002's Phase 3 steps](../plans/0002-the-standalone-desktop-flatpak.md#phase-3s-steps)).
 `bridge.rs` moves newline-delimited lines to readd's private socket and
 back. It never parses a line. A closed socket sends a `Closed` event to
-the window, and the next call connects again. `paths.rs` derives the socket as
+the window, and the next call connects again. When `app.json` names
+lodge, `remote.rs` reads it and checks lodge's address, and the bridge
+first stops this computer's readd and waits for its lock, then opens
+lodge's `/app/read/api` as a native client, one text frame per line, and
+sends a JSON-RPC notification every 30 s to keep lodge's session
+([specs/api.md](../specs/api.md#desktop-mode), plan 0002, Phase 6). It
+never falls back to the local readd. `paths.rs` derives the socket as
 `internal/config` does. `tauri.conf.json` holds ADR-0008's CSP exactly:
 `default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; frame-src 'self'; form-action 'none'; object-src 'none'`.
 `on_navigation` admits only the app frame. `on_new_window` opens `http`,
