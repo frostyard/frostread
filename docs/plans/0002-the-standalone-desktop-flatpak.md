@@ -21,8 +21,7 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-04): **Phase 3 is done; Phase 4's first part is merged;
-Phase 4's second part is in review.**
+Status (2026-11-04): **Phases 3 and 4 are done; Phase 5 is in review.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
@@ -44,10 +43,14 @@ Phase 4's second part is in review.**
   and `make flatpak-sources`, the desktop file, the metainfo with 3
   screenshots that `make screenshots` takes and its Go test, and
   `flatpak.yml`'s 2 jobs, whose build installs the bundle and runs
-  `readctl --help`. The second part is in review (2026-11-04): it adds the
-  launcher of ADR-0008, `frostread-request-background`, `make flatpak-smoke`
-  and the smoke test.
-- **Phases 5 to 11** have not started. Nothing of the lodge connection or
+  `readctl --help`. The second part, the launcher of ADR-0008,
+  `frostread-request-background`, `make flatpak-smoke` and the smoke
+  test, is merged in frostread#50 (2026-11-04).
+- **Phase 5,** the local reader on a real desktop, is in review in
+  frostread#51 (2026-11-04): every part of its Done when held on
+  Duncan's Snow VM, and the PR fixes the 3 defects the check found
+  ([Phase 5's record](#phase-5s-record)).
+- **Phases 6 to 11** have not started. Nothing of the lodge connection or
   the release candidate is built, and the clean-install gate (Phase 10)
   has no run yet.
 
@@ -565,6 +568,66 @@ Each part of the Done when, and the test that shows it:
   exports to `~/Documents`; a link opens in the browser; and at the next
   login readd starts when the Background portal allowed it.
 
+### Phase 5's record
+
+Phase 5's Done when holds (2026-11-04), on Duncan's disposable Snow
+desktop VM: Snow
+`20261028172907` (Debian 13), GNOME Shell 48.7 on Wayland,
+xdg-desktop-portal 1.20.3 with xdg-desktop-portal-gnome 48.0, and
+Flatpak 1.16.6, as the user `tester` in a real GDM login. The browser is
+GNOME Web (`org.gnome.Epiphany`, from Flathub), set as the default for
+`http`, `https` and `text/html`.
+
+2 CI bundles ran, each installed with `flatpak install --user --bundle`:
+
+- **Run 1:** `main` 7463b66, after frostread#49 and frostread#50
+  ([run 41901577399](https://github.com/frostyard/frostread/actions/runs/41901577399),
+  Flatpak commit `f26aa022…`). It found the 3 defects below.
+- **Run 2:** frostread#51, with the 3 fixes
+  ([run 41943155026](https://github.com/frostyard/frostread/actions/runs/41943155026),
+  Flatpak commit `9033663f…`), installed over run 1's while run 1's readd
+  ran.
+
+| Done when | Run | What the VM showed |
+| --- | --- | --- |
+| The window and readd run in 2 instances, readd under `flatpak-portal` | 1, 2 | Started from the GNOME overview. `flatpak ps`: 2 instances of `org.frostyard.Frostread`; readd's process tree is `flatpak-portal` → `bwrap` → `readd -desktop -log …`, in its own `app-flatpak-org.frostyard.Frostread-….scope`; the window's is `bwrap` → `frostread-app`. A third instance, GTK's glycin SVG loader, lived for a few seconds. Run 2's start found run 1's readd at an old build: the launcher stopped it (`readd stops`, `readd stopped`) and started run 2's |
+| A public feed added in the window polls, and its article shows with images | 2 | `https://xkcd.com/rss.xml`, added in the window: 4 items at once, and the article shows its images, inlined. In run 1 the same kind of feed (`https://xkcd.com/atom.xml`) got 0 items: defect 1 |
+| readd keeps polling with the window closed | 1 | The window closed at 00:18Z; `flatpak ps` showed readd alone; at 00:34Z it polled `xkcd.com` and `nasa.gov` (`polled_at`), with no window |
+| An OPML file imports from `~/Downloads` and exports to `~/Documents` | 1, 2 | Import: GNOME's FileChooser portal ("Select File") opened from the file input, `~/Downloads/feeds.opml` added its 2 feeds, one in its folder `Tech`, and The Go Blog's 10 items came at the next poll. Export: the `SaveFile` portal ("Save file", filter OPML, name `frostread.opml`) wrote `~/Documents/frostread.opml`; run 2's export is OPML 2.0 with a head |
+| A link opens in the browser | 1 | The article's open button opened `go.dev` in GNOME Web, and a link in the reader's frame opened `microsoft.github.io` in a new tab, both through OpenURI |
+| At the next login, readd starts when the Background portal allowed it | 1, 2 | The helper's `background.json`: response 0, `background` and `autostart` true, with no dialog. `~/.config/autostart/org.frostyard.Frostread.desktop` runs `flatpak run --command=frostread org.frostyard.Frostread --background`. After `gnome-session-quit --logout`, no readd ran; after a GDM password login (`fm-input login`), gnome-session started readd alone, at the new build, with no window |
+
+The defects, each fixed in frostread#51 with a test that fails without
+the fix:
+
+1. **A new source got no items from a server that honours conditional
+   requests.** `subscribe` kept the `ETag` and `Last-Modified` of the
+   fetch that found the feed, so the first poll got 304. An OPML import
+   had the same fault (`nasa.gov`'s feed). The source kept no items until
+   its feed changed; then the poll took the items in the feed. The fix
+   keeps no validators until a poll; `internal/engine`'s fake network now
+   answers 304 as a server does, and 2 tests cover an added source (a
+   feed and a page that names one) and an import.
+2. **The Background helper stayed a zombie for the window's life.** The
+   launcher started it in the background and `exec`d the app, so it was
+   the app's child, and the app does not reap it. The helper now starts
+   from a subshell; the smoke test fails when the app starts with a
+   child.
+3. **The OPML export had no version and no head,** which OPML 2.0
+   requires. It now writes `<opml version="2.0">` with a head;
+   `internal/opml`'s tests check both.
+
+Found and left open:
+
+- The import chooser's filter has no name, so GNOME's chooser shows
+  `[Invalid UTF-8]` and GTK logs a `g_variant_new_string` assertion: the
+  web view's file input gives GTK a filter with no name. The filter
+  works. A fix needs the shell to name the filter in WebKitGTK's
+  `run-file-chooser` signal.
+- Readability takes the wrong block on some pages: xkcd's page gives its
+  footer, and some `nasa.gov` Image of the Day pages lose their image
+  (17 of 45 extractions had no image). This is the extraction, not the
+  desktop, and the lodge app has it too.
 ## Phase 6 — The lodge connection (planner, medium)
 
 - `bridge.rs`'s remote mode: `wss://LODGE/app/read/api`, `Origin:

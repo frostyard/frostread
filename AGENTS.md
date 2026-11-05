@@ -47,7 +47,9 @@ merged (3.1 frostread#30, 2026-10-29; 3.2 frostread#35, 2026-11-01;
 Phase 4's first part, the Flatpak's manifest, offline sources, desktop
 file, metainfo and CI build, is merged (frostread#49, 2026-11-04). Phase
 4's second part, the launcher, the Background helper and the smoke test,
-is in review (2026-11-04). The clean-install gate is not built yet.
+is merged (frostread#50, 2026-11-04). Phase 5, the check on a real Snow
+desktop with real portals, is in review (frostread#51, 2026-11-04); its
+record is in plan 0002. The clean-install gate is not built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -282,6 +284,10 @@ live check on loopback; its evidence is in the
 - Never commit `build/`, `node_modules`, tokens, provider credentials, a
   note's text, an article's text, or private host names. Tests and docs use
   made-up data: `alice@example.com`, `example.com`, `example.org`.
+- A test machine's or lab VM's name is a private host name too. A record
+  of a run names the machine by its owner, OS and versions ("Duncan's
+  Snow desktop VM, Snow 20261028172907"), never by its name, host or
+  address.
 - No non-documentation IP address outside loopback in code or docs, except
   the development-only loopback example above.
 - Use conventional commit subjects.

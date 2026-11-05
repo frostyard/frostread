@@ -105,11 +105,26 @@ export SMOKE_REAL_READCTL
 
 cat >"$work/libexec/frostread-app" <<'EOF'
 #!/bin/sh
+# The app must start with no child: the launcher's Background helper
+# (which lives 2 s here) must not be one, or it stays a zombie for the
+# window's life. read is a builtin, so the check itself forks nothing.
+# The file has no newline, so read returns 1 but still sets kids. With no
+# such file, the record says so, and the smoke test fails: no observation
+# is no pass.
+children=/proc/$$/task/$$/children
+if [ -r "$children" ]; then
+    kids=
+    read -r kids <"$children" || true
+    printf 'children:%s\n' "$kids" >"$SMOKE_APP_CHILDREN"
+else
+    printf 'unreadable:%s\n' "$children" >"$SMOKE_APP_CHILDREN"
+fi
 exit 0
 EOF
 cat >"$work/bin/frostread-request-background" <<'EOF'
 #!/bin/sh
 printf 'args:%s\n' "$*" >>"$SMOKE_REQUEST_ARGS"
+sleep 2
 EOF
 chmod +x "$work/libexec/frostread-app" "$work/bin/frostread-request-background"
 
@@ -118,7 +133,8 @@ SMOKE_CHILD_PID="$work/readd.pid"
 SMOKE_SPAWN_FAULT="$work/spawn.fault"
 SMOKE_DETACHED_PID="$work/detached.pid"
 SMOKE_REQUEST_ARGS="$work/request.args"
-export SMOKE_SPAWN_PID SMOKE_CHILD_PID SMOKE_SPAWN_FAULT SMOKE_DETACHED_PID SMOKE_REQUEST_ARGS
+SMOKE_APP_CHILDREN="$work/app.children"
+export SMOKE_SPAWN_PID SMOKE_CHILD_PID SMOKE_SPAWN_FAULT SMOKE_DETACHED_PID SMOKE_REQUEST_ARGS SMOKE_APP_CHILDREN
 
 info() {
     printf '[Application]\napp-commit=not-the-build\n\n[Instance]\napp-commit=%s\n' "$2" >"$1"
@@ -202,6 +218,24 @@ if [ ! -s "$SMOKE_REQUEST_ARGS" ]; then
     print_logs
     exit 1
 fi
+seen=
+if [ -r "$SMOKE_APP_CHILDREN" ]; then
+    IFS= read -r seen <"$SMOKE_APP_CHILDREN" || true
+fi
+case "$seen" in
+children:)
+    ;;
+children:*)
+    echo "smoke test: the Background helper is a child of the app (${seen#children:})" >&2
+    print_logs
+    exit 1
+    ;;
+*)
+    echo "smoke test: the app's children were not observed (${seen:-no record}); the check needs /proc/PID/task/TID/children" >&2
+    print_logs
+    exit 1
+    ;;
+esac
 
 # A second --background reaches readd's lock and exits non-zero.
 dd if=/dev/zero bs=1024 count=1025 2>/dev/null >>"$state/readd.log"

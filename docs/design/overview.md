@@ -18,9 +18,11 @@ every listener, and the browser loads nothing remote.
 shell over this web bundle, with its own readd in a desktop mode, local by
 default, and lodge as a connection the user chooses.
 [Plan 0002](../plans/0002-the-standalone-desktop-flatpak.md) builds it.
-Built: readd's desktop mode (Phase 2) and the shell (Phase 3, done
-2026-11-03). Not built yet: the Flatpak, the lodge connection and the
-release (Phases 4 to 11). This document changes with each phase.
+Built: readd's desktop mode (Phase 2), the shell (Phase 3, done
+2026-11-03), the Flatpak in CI (Phase 4, 2026-11-04), and the local
+reader checked on a real Snow desktop (Phase 5, 2026-11-04). Not built
+yet: the lodge connection and the release (Phases 6 to 11). This
+document changes with each phase.
 
 ```
  feeds, pages, images ──▶ internal/fetch (kit/netguard) ──▶ poller, extract
@@ -82,7 +84,52 @@ below WebKit's limit. It has no save page and no bookmarklet. OPML
 export goes through `save_file`; the lodge entry keeps its download.
 `make app-e2e` drives the built app in WebKitGTK, with the hostile
 corpus ([plan 0002, Phase 3's record](../plans/0002-the-standalone-desktop-flatpak.md#phase-3s-record)).
-Phase 5 adds what the real desktop shows: the real portals, on a VM.
+
+**The Flatpak.** `org.frostyard.Frostread`, on `org.gnome.Platform//51`,
+is built from `packaging/flatpak/` offline
+([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
+[plan 0002, Phase 4](../plans/0002-the-standalone-desktop-flatpak.md#phase-4--the-flatpak-in-ci-planner-medium)).
+`/app/bin/frostread` is the launcher (`frostread.sh`), beside `readd`,
+`readctl` and `frostread-request-background`; the Tauri binary is
+`/app/libexec/frostread-app`. The `finish-args` are Wayland, X11 as a
+fallback, IPC, DRI and the network: no file system, no Secret Service
+and no notifications. This is how it runs on a real GNOME desktop, as
+[Phase 5's record](../plans/0002-the-standalone-desktop-flatpak.md#phase-5s-record)
+checked it on a Snow VM:
+
+- **Two instances.** The window's launcher has the Flatpak portal start
+  `frostread --background` (`flatpak-spawn --latest-version`), then ends
+  `flatpak-spawn` and `exec`s the app. `flatpak ps` shows 2 instances:
+  the window, and readd with `flatpak-portal` as its parent, in a
+  systemd scope of its own. GTK's image loaders (glycin) run as short
+  sandboxes of the app too, so a third instance can show for a few
+  seconds.
+- **Background.** The launcher starts the Background helper detached,
+  so it is no child of the window. It asks `RequestBackground` for
+  `background` and `autostart` with `frostread --background`, and writes
+  the answer to `background.json`. GNOME grants it with no dialog and
+  writes `~/.config/autostart/org.frostyard.Frostread.desktop`, whose
+  `Exec` is `flatpak run --command=frostread org.frostyard.Frostread
+  --background`. readd polls on after the window closes, until logout;
+  at the next login, gnome-session starts readd alone, with no window.
+- **Files.** OPML import is the web view's file input: GTK opens the
+  FileChooser portal, so the user can pick a file in any folder, such
+  as `~/Downloads`, with no file system permission. OPML export goes
+  through `save_file` and `SaveFile`, which offers `frostread.opml` with
+  an OPML filter. The reader's "Export as Markdown…" will take the same
+  path; it is not built yet
+  ([plan 0002, Phase 7](../plans/0002-the-standalone-desktop-flatpak.md#phase-7--notes-on-the-desktop-planner-small)).
+- **Links.** `on_new_window` gives `http`, `https` and `mailto` links to
+  the opener, which uses OpenURI: the article's open button and a link
+  in the reader's frame open in the default browser.
+- **Paths.** The data is in `~/.var/app/org.frostyard.Frostread/data/frostread`,
+  the logs (`readd.log`, `background.log`, `background.json`) in
+  `~/.var/app/org.frostyard.Frostread/.local/state/frostread`, and the
+  socket is `$XDG_RUNTIME_DIR/app/org.frostyard.Frostread/frostread/readd.sock`.
+- **Known.** The import chooser's filter has no name, so GNOME's
+  chooser shows `[Invalid UTF-8]` for it and GTK logs a
+  `g_variant_new_string` assertion: WebKitGTK gives the file input's
+  filter no name. The filter itself works.
 
 **The store.** SQLite on local disk, WAL, foreign keys on, migrations by
 `user_version`:
@@ -110,6 +157,11 @@ fetches each with its `ETag` and `Last-Modified`, parses it with
 schedules the next poll: the configured interval with ±10% jitter after a
 success, and a doubling backoff after an error, up to 24 hours, with a
 `Retry-After` honoured. The error is stored on the source and shown on it.
+A new source, added or imported, keeps no validators from the fetch that
+found its feed: its first poll fetches the whole feed, and only a poll
+stores the `ETag` and `Last-Modified` the next one sends (else a server
+that honours them answers 304, and the source gets no items until its
+feed changes).
 
 **Extraction.** Every new item is queued for extraction. An item whose feed
 text is under 600 characters is fetched from its page; one with more is

@@ -52,6 +52,11 @@ func (n *net) Get(_ context.Context, rawurl string, o fetch.Options) (*fetch.Res
 	if p.status == 0 {
 		p.status = 200
 	}
+	// A server answers 304 as RFC 9110 says: If-None-Match decides when the
+	// request has it, and If-Modified-Since only when it has none.
+	if p.status == 200 && notModified(p, o) {
+		p.status = http.StatusNotModified
+	}
 	res := &fetch.Response{Status: p.status, URL: rawurl, Header: http.Header{}, RetryAfter: p.retryAf}
 	if p.etag != "" {
 		res.Header.Set("ETag", p.etag)
@@ -67,6 +72,48 @@ func (n *net) Get(_ context.Context, rawurl string, o fetch.Options) (*fetch.Res
 	}
 	res.Body = []byte(p.body)
 	return res, nil
+}
+
+// notModified reports whether a conditional request matches the page.
+func notModified(p answer, o fetch.Options) bool {
+	if o.ETag != "" {
+		return p.etag != "" && o.ETag == p.etag
+	}
+	return o.LastModified != "" && p.lastMod != "" && o.LastModified == p.lastMod
+}
+
+// The fake answers conditional requests as a server does, so the tests
+// that rely on a 304 see a real one.
+func TestFakeNetConditionalRequests(t *testing.T) {
+	const (
+		etag    = `"v1"`
+		lastMod = "Tue, 20 Oct 2026 10:00:00 GMT"
+	)
+	page := answer{body: "body", etag: etag, lastMod: lastMod}
+	for _, tc := range []struct {
+		name string
+		o    fetch.Options
+		want int
+	}{
+		{"no validators", fetch.Options{}, http.StatusOK},
+		{"matching ETag", fetch.Options{ETag: etag}, http.StatusNotModified},
+		{"matching Last-Modified", fetch.Options{LastModified: lastMod}, http.StatusNotModified},
+		{"changed ETag, same Last-Modified", fetch.Options{ETag: `"v0"`, LastModified: lastMod}, http.StatusOK},
+		{"matching ETag, old Last-Modified", fetch.Options{ETag: etag, LastModified: "Mon, 19 Oct 2026 10:00:00 GMT"}, http.StatusNotModified},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := &net{pages: map[string]answer{"https://example.com/feed.xml": page}}
+			o := tc.o
+			o.MaxBytes = 1 << 20
+			res, err := n.Get(t.Context(), "https://example.com/feed.xml", o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Status != tc.want {
+				t.Fatalf("status = %d; want %d", res.Status, tc.want)
+			}
+		})
+	}
 }
 
 func (n *net) requests() []string {
@@ -215,6 +262,81 @@ func TestAddSourceDiscoversAndPolls(t *testing.T) {
 	}
 }
 
+// A discovery response is not a feed poll. Its validators must not be kept,
+// or AddSource can answer 304 on the first poll and store no items.
+func TestAddSourceConditionalDiscoveryGetsFirstItems(t *testing.T) {
+	const (
+		etag    = `"feed-v1"`
+		lastMod = "Tue, 20 Oct 2026 10:00:00 GMT"
+	)
+	for _, tc := range []struct {
+		name string
+		url  string
+		set  func(*net)
+	}{
+		{
+			name: "direct feed",
+			url:  "https://example.com/feed.xml",
+			set: func(n *net) {
+				n.pages["https://example.com/feed.xml"] = answer{body: feedXML(), etag: etag, lastMod: lastMod}
+			},
+		},
+		{
+			name: "page names feed",
+			url:  "https://example.com/conditional-page",
+			set: func(n *net) {
+				n.pages["https://example.com/conditional-page"] = answer{
+					body: `<html><head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head></html>`,
+					etag: etag, lastMod: lastMod,
+				}
+				n.pages["https://example.com/feed.xml"] = answer{body: feedXML(), etag: etag, lastMod: lastMod}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, n, _, _ := setup(t)
+			tc.set(n)
+			src, err := e.AddSource(t.Context(), tc.url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if src.ETag != etag || src.LastModified != lastMod {
+				t.Fatalf("source validators = %q, %q; want the feed's %q, %q", src.ETag, src.LastModified, etag, lastMod)
+			}
+			items, _, err := e.ListItems(t.Context(), store.ListOptions{View: store.ViewUnread, Limit: 50})
+			if err != nil || len(items) != 2 {
+				t.Fatalf("items = %+v, %v; want 2 first-poll items", items, err)
+			}
+		})
+	}
+}
+
+func TestImportOPMLConditionalDiscoveryGetsFirstItems(t *testing.T) {
+	const (
+		etag    = `"import-v1"`
+		lastMod = "Wed, 21 Oct 2026 10:00:00 GMT"
+	)
+	e, n, _, _ := setup(t)
+	n.pages["https://example.com/feed.xml"] = answer{body: feedXML(), etag: etag, lastMod: lastMod}
+	doc := `<?xml version="1.0"?><opml version="2.0"><body>
+		<outline text="Example" title="Example" xmlUrl="https://example.com/feed.xml"/>
+	</body></opml>`
+	added, skipped, err := e.ImportOPML(t.Context(), doc)
+	if err != nil || added != 1 || skipped != 0 {
+		t.Fatalf("import = %d added, %d skipped, %v", added, skipped, err)
+	}
+	// PollDue is the poller's synchronous pass over sources due at once;
+	// it has no timer or sleep in this test.
+	polled, err := e.PollDue(t.Context())
+	if err != nil || polled != 1 {
+		t.Fatalf("background poll = %d, %v", polled, err)
+	}
+	items, _, err := e.ListItems(t.Context(), store.ListOptions{View: store.ViewUnread, Limit: 50})
+	if err != nil || len(items) != 2 {
+		t.Fatalf("items after import = %+v, %v; want 2 first-poll items", items, err)
+	}
+}
+
 func TestExtraction(t *testing.T) {
 	e, n, _, _ := setup(t)
 	if _, err := e.AddSource(t.Context(), "https://example.com/"); err != nil {
@@ -350,7 +472,10 @@ func TestFeedItemsKeepTheirOriginal(t *testing.T) {
 // A re-poll stores the original of an item polled before originals were
 // stored, when the feed still sends the bytes its row names, and only then.
 func TestPollRestoresAMissingOriginal(t *testing.T) {
-	e, _, _, _ := setup(t)
+	e, n, _, _ := setup(t)
+	// This recovery test needs full feed bytes on the refresh. Give it no
+	// validators, instead of relying on the old fake that ignored them.
+	n.pages["https://example.com/feed.xml"] = answer{body: feedXML()}
 	src, err := e.AddSource(t.Context(), "https://example.com/")
 	if err != nil {
 		t.Fatal(err)
