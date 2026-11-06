@@ -229,7 +229,9 @@ verify` when one of these files breaks:
   `web/package.json`, `web/src-tauri/Cargo.toml`). A new manifest gets an
   entry. A cargo git dependency on a frostyard repository
   (`frostyard-problems`) gets an `ignore` entry: Dependabot cannot resolve
-  it, and it is bumped by hand.
+  it, and it is bumped by hand. The test reads these crates from the
+  `Cargo.lock` beside each `Cargo.toml`, so each `Cargo.toml` keeps its
+  lock file.
 
 `.github/pull_request_template.md` (B7) holds the risk tier.
 Vulnerabilities are reported privately ([SECURITY.md](SECURITY.md), B14).
