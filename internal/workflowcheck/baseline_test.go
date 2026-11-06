@@ -2,6 +2,7 @@ package workflowcheck
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1061,43 +1063,275 @@ func readDependabot(t *testing.T) dependabotFile {
 	return cfg
 }
 
-// inlineGitCrate is a dependency line of a Cargo.toml whose inline table
-// names a git source in the frostyard organization, such as
-// `frostyard-problems = { git = "https://github.com/frostyard/std", tag = "v0.5.0" }`.
-var inlineGitCrate = regexp.MustCompile(`^([A-Za-z0-9_-]+)\s*=\s*\{[^}]*\bgit\s*=\s*"https://github\.com/frostyard/`)
+// cargoDependency is 1 dependency of a Cargo.toml: its key, the package
+// it renames (the package field, or ""), and its git source.
+type cargoDependency struct {
+	key, pkg, git string
+}
 
-// tableGitCrate is the header of a dependency's own table, such as
-// `[dependencies.frostyard-problems]`; gitSourceLine is that table's line
-// `git = "https://github.com/frostyard/..."`.
-var (
-	tableGitCrate = regexp.MustCompile(`^\[(?:target\.[^\]]+\.)?(?:dev-|build-)?dependencies\.([A-Za-z0-9_-]+)\]$`)
-	gitSourceLine = regexp.MustCompile(`^git\s*=\s*"https://github\.com/frostyard/`)
-)
+// name is the crate name Dependabot uses: the package of a renamed
+// dependency, else the key.
+func (d cargoDependency) name() string {
+	if d.pkg != "" {
+		return d.pkg
+	}
+	return d.key
+}
 
-// internalGitCrates returns the name of each dependency of the Cargo.toml
-// text data that comes from a frostyard git repository, in either the inline
-// or the table form, in the order of the file.
-func internalGitCrates(data string) []string {
-	var crates []string
-	table := ""
-	for line := range strings.Lines(data) {
-		line = strings.TrimSpace(line)
+// internalGitCrates returns the crate name of each dependency of the
+// Cargo.toml text data whose git source is a frostyard repository, in the
+// order of the file. It reads the TOML forms Cargo.toml dependencies take:
+// the dependency sections ([dependencies], [dev-dependencies],
+// [build-dependencies], [workspace.dependencies] and their
+// [target.<cfg>.…] forms), an inline table, a dependency's own table and
+// dotted keys, with quoted keys, both string quotes and comments. Other
+// sections, such as [package.metadata.…], are not dependencies. A form it
+// cannot read (a multi-line string or inline table) is an error, so a
+// dependency is never missed in silence.
+func internalGitCrates(data string) ([]string, error) {
+	deps := map[string]*cargoDependency{}
+	var order []string
+	dep := func(key string) *cargoDependency {
+		d, ok := deps[key]
+		if !ok {
+			d = &cargoDependency{key: key}
+			deps[key] = d
+			order = append(order, key)
+		}
+		return d
+	}
+	set := func(d *cargoDependency, field, value string) {
+		switch field {
+		case "git":
+			d.git = value
+		case "package":
+			d.pkg = value
+		}
+	}
+
+	inSection, table := false, ""
+	n := 0
+	for raw := range strings.Lines(data) {
+		n++
+		line, err := stripTOMLComment(raw)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", n, err)
+		}
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "[[") {
+			inSection, table = false, ""
+			continue
+		}
 		if strings.HasPrefix(line, "[") {
-			table = ""
-			if m := tableGitCrate.FindStringSubmatch(line); m != nil {
-				table = m[1]
+			if !strings.HasSuffix(line, "]") {
+				return nil, fmt.Errorf("line %d: a table header with no ]", n)
+			}
+			keys, err := splitTOMLKey(line[1 : len(line)-1])
+			if err != nil {
+				return nil, fmt.Errorf("line %d: %w", n, err)
+			}
+			inSection, table = dependencySection(keys)
+			continue
+		}
+		if !inSection && table == "" {
+			continue
+		}
+		eq := indexOutsideQuotes(line, '=')
+		if eq < 0 {
+			return nil, fmt.Errorf("line %d: a line that is no key = value", n)
+		}
+		keys, err := splitTOMLKey(line[:eq])
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", n, err)
+		}
+		value := strings.TrimSpace(line[eq+1:])
+		if table != "" {
+			if len(keys) == 1 {
+				if str, ok := tomlString(value); ok {
+					set(dep(table), keys[0], str)
+				}
 			}
 			continue
 		}
-		if m := inlineGitCrate.FindStringSubmatch(line); m != nil {
-			crates = append(crates, m[1])
-			continue
-		}
-		if table != "" && gitSourceLine.MatchString(line) {
-			crates = append(crates, table)
+		switch {
+		case len(keys) == 1 && strings.HasPrefix(value, "{"):
+			pairs, err := inlineTable(value)
+			if err != nil {
+				return nil, fmt.Errorf("line %d: %w", n, err)
+			}
+			d := dep(keys[0])
+			for field, str := range pairs {
+				set(d, field, str)
+			}
+		case len(keys) == 2:
+			if str, ok := tomlString(value); ok {
+				set(dep(keys[0]), keys[1], str)
+			}
 		}
 	}
-	return crates
+
+	var crates []string
+	for _, key := range order {
+		if d := deps[key]; frostyardGit(d.git) {
+			crates = append(crates, d.name())
+		}
+	}
+	return crates, nil
+}
+
+// frostyardGit reports whether a git source URL names a repository of the
+// frostyard organization on GitHub.
+func frostyardGit(url string) bool {
+	return strings.Contains(url, "github.com/frostyard/") || strings.Contains(url, "github.com:frostyard/")
+}
+
+// dependencySection reports whether the table keys name a dependency
+// section, or, as table, the dependency whose own table they name.
+func dependencySection(keys []string) (section bool, table string) {
+	if len(keys) >= 3 && keys[0] == "target" {
+		keys = keys[2:]
+	} else if len(keys) >= 2 && keys[0] == "workspace" && keys[1] == "dependencies" {
+		keys = keys[1:]
+	}
+	if len(keys) == 0 {
+		return false, ""
+	}
+	switch keys[0] {
+	case "dependencies", "dev-dependencies", "build-dependencies":
+	default:
+		return false, ""
+	}
+	switch len(keys) {
+	case 1:
+		return true, ""
+	case 2:
+		return false, keys[1]
+	}
+	return false, ""
+}
+
+// stripTOMLComment trims a line and drops its comment, outside strings. A
+// multi-line string is an error.
+func stripTOMLComment(line string) (string, error) {
+	if strings.Contains(line, `"""`) || strings.Contains(line, "'''") {
+		return "", errors.New("a multi-line string")
+	}
+	if i := indexOutsideQuotes(line, '#'); i >= 0 {
+		line = line[:i]
+	}
+	return strings.TrimSpace(line), nil
+}
+
+// indexOutsideQuotes returns the index of the first c of s that is outside
+// a basic ("…", with backslash escapes) or literal ('…') string, or -1.
+func indexOutsideQuotes(s string, c byte) int {
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		switch {
+		case quote == '"' && s[i] == '\\':
+			i++
+		case quote != 0:
+			if s[i] == quote {
+				quote = 0
+			}
+		case s[i] == '"' || s[i] == '\'':
+			quote = s[i]
+		case s[i] == c:
+			return i
+		}
+	}
+	return -1
+}
+
+// splitOutsideQuotes splits s at each sep outside strings and outside [ ]
+// and { } nesting.
+func splitOutsideQuotes(s string, sep byte) []string {
+	var parts []string
+	var quote byte
+	depth, start := 0, 0
+	for i := 0; i < len(s); i++ {
+		switch {
+		case quote == '"' && s[i] == '\\':
+			i++
+		case quote != 0:
+			if s[i] == quote {
+				quote = 0
+			}
+		case s[i] == '"' || s[i] == '\'':
+			quote = s[i]
+		case s[i] == '[' || s[i] == '{':
+			depth++
+		case s[i] == ']' || s[i] == '}':
+			depth--
+		case s[i] == sep && depth == 0:
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	return append(parts, s[start:])
+}
+
+// splitTOMLKey splits a dotted key into its parts, each bare or quoted.
+func splitTOMLKey(s string) ([]string, error) {
+	var keys []string
+	for _, part := range splitOutsideQuotes(s, '.') {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, fmt.Errorf("an empty key part in %q", s)
+		}
+		if str, ok := tomlString(part); ok {
+			keys = append(keys, str)
+			continue
+		}
+		if strings.ContainsAny(part, "\"' =[]{}") {
+			return nil, fmt.Errorf("a key part %q that is neither bare nor quoted", part)
+		}
+		keys = append(keys, part)
+	}
+	return keys, nil
+}
+
+// tomlString returns the text of a single-line basic or literal string.
+func tomlString(s string) (string, bool) {
+	if len(s) < 2 {
+		return "", false
+	}
+	switch {
+	case s[0] == '\'' && s[len(s)-1] == '\'':
+		return s[1 : len(s)-1], true
+	case s[0] == '"' && s[len(s)-1] == '"':
+		str, err := strconv.Unquote(s)
+		return str, err == nil
+	}
+	return "", false
+}
+
+// inlineTable returns the string members of a one-line inline table; a
+// table that does not end on its line is an error.
+func inlineTable(value string) (map[string]string, error) {
+	if !strings.HasSuffix(value, "}") {
+		return nil, errors.New("an inline table that does not end on its line")
+	}
+	pairs := map[string]string{}
+	for _, member := range splitOutsideQuotes(value[1:len(value)-1], ',') {
+		if strings.TrimSpace(member) == "" {
+			continue
+		}
+		eq := indexOutsideQuotes(member, '=')
+		if eq < 0 {
+			return nil, fmt.Errorf("an inline table member %q with no =", member)
+		}
+		keys, err := splitTOMLKey(member[:eq])
+		if err != nil {
+			return nil, err
+		}
+		if str, ok := tomlString(strings.TrimSpace(member[eq+1:])); ok && len(keys) == 1 {
+			pairs[keys[0]] = str
+		}
+	}
+	return pairs, nil
 }
 
 // cargoIgnores returns the (directory, crate) pairs that the cargo entries
@@ -1138,7 +1372,11 @@ func TestDependabotLeavesInternalGitCratesAlone(t *testing.T) {
 		if path.Dir(f) == "." {
 			dir = "/"
 		}
-		for _, name := range internalGitCrates(string(data)) {
+		names, err := internalGitCrates(string(data))
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		for _, name := range names {
 			crates++
 			if !ignored[[2]string{dir, name}] {
 				t.Errorf("%s: the frostyard git crate %s has no ignore entry in the cargo entry for %s", f, name, dir)
@@ -1152,23 +1390,50 @@ func TestDependabotLeavesInternalGitCratesAlone(t *testing.T) {
 }
 
 // TestInternalGitCrates checks the Cargo.toml forms of a frostyard git
-// crate, and the forms that are not one.
+// crate, the forms that are not one, and the forms it refuses.
 func TestInternalGitCrates(t *testing.T) {
+	const std = "https://github.com/frostyard/std"
 	for _, tc := range []struct {
 		name string
 		data string
 		want []string
 	}{
-		{"inline", "[dependencies]\nfrostyard-problems = { git = \"https://github.com/frostyard/std\", tag = \"v0.5.0\" }\n", []string{"frostyard-problems"}},
-		{"inline, tag first", "[dependencies]\nfoo = { tag = \"v1.0.0\", git = \"https://github.com/frostyard/foo\" }\n", []string{"foo"}},
-		{"table", "[dependencies.frostyard-problems]\ngit = \"https://github.com/frostyard/std\"\ntag = \"v0.5.0\"\n", []string{"frostyard-problems"}},
+		{"inline", "[dependencies]\nfrostyard-problems = { git = \"" + std + "\", tag = \"v0.5.0\" }\n", []string{"frostyard-problems"}},
+		{"inline, tag first, comment", "[dependencies] # deps\nfoo = { tag = \"v1.0.0\", git = \"https://github.com/frostyard/foo\" } # pinned\n", []string{"foo"}},
+		{"inline, literal string", "[dependencies]\nextra = { git = 'https://github.com/frostyard/extra' }\n", []string{"extra"}},
+		{"inline, quoted key", "[dependencies]\n\"another\" = { git = \"https://github.com/frostyard/another\" }\n", []string{"another"}},
+		{"inline, features array", "[dependencies]\nfoo = { git = \"https://github.com/frostyard/foo\", features = [\"a\", \"b\"] }\n", []string{"foo"}},
+		{"inline, renamed", "[dependencies]\nproblems = { package = \"frostyard-problems\", git = \"" + std + "\" }\n", []string{"frostyard-problems"}},
+		{"dotted keys", "[dependencies]\nfoo.git = \"https://github.com/frostyard/foo\"\nfoo.package = \"frostyard-foo\"\n", []string{"frostyard-foo"}},
+		{"table", "[dependencies.frostyard-problems]\ngit = \"" + std + "\"\ntag = \"v0.5.0\"\n", []string{"frostyard-problems"}},
+		{"table, comment, renamed", "[dev-dependencies.extra] # helper\npackage = 'frostyard-extra'\ngit = \"https://github.com/frostyard/extra\"\n", []string{"frostyard-extra"}},
 		{"build table", "[build-dependencies.bar]\ngit = \"https://github.com/frostyard/bar\"\n", []string{"bar"}},
+		{"target section", "[target.'cfg(target_os = \"linux\")'.dependencies]\nfoo = { git = \"https://github.com/frostyard/foo\" }\n", []string{"foo"}},
+		{"target table", "[target.\"cfg(unix)\".dev-dependencies.foo]\ngit = \"https://github.com/frostyard/foo\"\n", []string{"foo"}},
+		{"workspace", "[workspace.dependencies]\nfoo = { git = \"ssh://git@github.com/frostyard/foo\" }\n", []string{"foo"}},
 		{"another organization", "[dependencies]\nbaz = { git = \"https://github.com/example/baz\" }\n", nil},
 		{"crates.io", "[dependencies]\nserde = { version = \"1\", features = [\"derive\"] }\ntauri = \"2\"\n", nil},
-		{"git line outside a dependency table", "[package]\ngit = \"https://github.com/frostyard/std\"\n", nil},
+		{"package section", "[package]\ngit = \"" + std + "\"\n", nil},
+		{"metadata", "[package.metadata.example]\nhelper = { git = \"https://github.com/frostyard/helper\" }\n", nil},
+		{"a # in a string", "[dependencies]\nfoo = { git = \"https://github.com/frostyard/foo#x\" }\n", []string{"foo"}},
+		{"array of tables", "[[bin]]\nname = \"x\"\n[dependencies]\nfoo = { git = \"https://github.com/frostyard/foo\" }\n", []string{"foo"}},
 	} {
-		if got := internalGitCrates(tc.data); !slices.Equal(got, tc.want) {
+		got, err := internalGitCrates(tc.data)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		if !slices.Equal(got, tc.want) {
 			t.Errorf("%s: internalGitCrates = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	for _, tc := range []struct{ name, data string }{
+		{"multi-line inline table", "[dependencies]\nfoo = {\n  git = \"https://github.com/frostyard/foo\" }\n"},
+		{"multi-line string", "[dependencies.foo]\ngit = \"\"\"\nhttps://github.com/frostyard/foo\"\"\"\n"},
+		{"header with no ]", "[dependencies\n"},
+	} {
+		if _, err := internalGitCrates(tc.data); err == nil {
+			t.Errorf("%s: internalGitCrates gave no error", tc.name)
 		}
 	}
 }
