@@ -192,9 +192,11 @@ interface Running {
  * start starts a child and collects its output. readd's own log is what
  * the seed waits on, so its output is kept as well as shown.
  */
-function start(command: string, args: string[], env: NodeJS.ProcessEnv, what: string): Running {
+function start(command: string, args: string[], env: NodeJS.ProcessEnv, what: string, group = false): Running {
   let text = "";
-  const proc = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+  // group makes the child the leader of a process group of its own, which
+  // every process under it joins unless it leaves on purpose.
+  const proc = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"], detached: group });
   for (const stream of [proc.stdout, proc.stderr]) {
     stream?.on("data", (chunk: Buffer) => {
       text += chunk.toString();
@@ -257,36 +259,6 @@ export function pidAlive(pid: number): boolean {
   }
 }
 
-/** endPids ends stand-in readd processes with a bounded SIGTERM wait. */
-export async function endPids(pids: number[], termWaitMs = 10_000, killWaitMs = 5_000): Promise<string[]> {
-  const problems: string[] = [];
-  const unique = [...new Set(pids)].filter(pidAlive);
-  for (const pid of unique) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch (err) {
-      problems.push(`could not stop readd ${pid}: ${String(err)}`);
-    }
-  }
-  const deadline = Date.now() + termWaitMs;
-  while (unique.some(pidAlive) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  for (const pid of unique) {
-    if (!pidAlive(pid)) continue;
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch (err) {
-      problems.push(`could not kill readd ${pid}: ${String(err)}`);
-    }
-  }
-  const killDeadline = Date.now() + killWaitMs;
-  while (unique.some(pidAlive) && Date.now() < killDeadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return problems;
-}
-
 /** readPids reads positive integer pids recorded in a harness pid file. */
 export function readPids(path: string): number[] {
   if (!existsSync(path)) return [];
@@ -301,55 +273,46 @@ export function readPids(path: string): number[] {
   ];
 }
 
-/** killPids sends SIGKILL to recorded pids and waits for each to be gone. */
-export async function killPids(pids: number[], waitMs = 5_000): Promise<string[]> {
-  const problems: string[] = [];
-  const unique = [...new Set(pids)].filter(pidAlive);
-  for (const pid of unique) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch (err) {
-      problems.push(`could not SIGKILL pid ${pid}: ${String(err)}`);
-    }
+/** groupAlive says whether any process of the group pgid is left. */
+function groupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
   }
-  const deadline = Date.now() + waitMs;
-  while (unique.some(pidAlive) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  for (const pid of unique) {
-    if (pidAlive(pid)) problems.push(`pid ${pid} is still alive after SIGKILL`);
-  }
-  return problems;
 }
 
-/** cleanupRecordedProcesses kills launchers, then reads and ends readd pids. */
-export async function cleanupRecordedProcesses(
-  launcherPidsFile: string,
-  readdPidsFile: string,
-  readdPidsStarted: Iterable<number> = [],
-  termWaitMs = 10_000,
-  killWaitMs = 5_000,
-): Promise<string[]> {
-  const problems: string[] = [];
-  const launched = readPids(launcherPidsFile);
-  problems.push(...(await killPids(launched, killWaitMs)));
-
-  const started = new Set([...readdPidsStarted].filter((pid) => Number.isInteger(pid) && pid > 0));
-  const ended = new Set<number>(started);
-  const first = [...new Set([...started, ...readPids(readdPidsFile)])];
-  for (const pid of first) ended.add(pid);
-  problems.push(...(await endPids(first, termWaitMs, killWaitMs)));
-
-  const second = readPids(readdPidsFile);
-  for (const pid of second) ended.add(pid);
-  problems.push(...(await endPids(second, termWaitMs, killWaitMs)));
-
-  const final = [...new Set([...started, ...readPids(readdPidsFile)])];
-  for (const pid of final) {
-    if (!ended.has(pid)) problems.push(`readd ${pid} was recorded but was not ended`);
-    if (pidAlive(pid)) problems.push(`readd ${pid} is still alive after cleanup`);
+/** waitGroup waits until the group pgid is empty, for at most ms: true when it is. */
+async function waitGroup(pgid: number, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (groupAlive(pgid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  return problems;
+  return !groupAlive(pgid);
+}
+
+/**
+ * endGroup ends every process of the group pgid: SIGTERM, a bounded wait,
+ * then SIGKILL and another. It needs no record of the processes, so a
+ * process that started just before, and was never written down, ends too.
+ * It answers the problems, empty when the group is gone.
+ */
+export async function endGroup(pgid: number, termWaitMs = 10_000, killWaitMs = 5_000): Promise<string[]> {
+  if (!groupAlive(pgid)) return [];
+  try {
+    process.kill(-pgid, "SIGTERM");
+  } catch {
+    // The group ended on its own.
+  }
+  if (await waitGroup(pgid, termWaitMs)) return [];
+  try {
+    process.kill(-pgid, "SIGKILL");
+  } catch {
+    // The group ended on its own.
+  }
+  if (await waitGroup(pgid, killWaitMs)) return [];
+  return [`process group ${pgid} still runs after SIGTERM and SIGKILL`];
 }
 
 /** App is the app under test: its session, the stand-in opener's record, and how to end it all. */
@@ -421,7 +384,6 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
   for (const sub of ["data", "config", "cache", "run"]) mkdirSync(join(dir, sub), { mode: 0o700, recursive: true });
   const opener = fakeOpener(dir);
   const pidFile = join(dir, "readd-pids");
-  const launcherPidFile = join(dir, "launcher-pids");
   const readdPidsStarted = new Set<number>();
   if (opts.launcher) {
     const stand = join(dir, "bin");
@@ -429,15 +391,15 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
     writeFileSync(
       join(stand, "frostread"),
       `#!/bin/sh
-printf '%s\n' "$$" >> '${launcherPidFile}'
 set -eu
 readctl='${join(E2E, "readctl")}'
 readd='${join(E2E, "readd")}'
 status() { "$readctl" status >/dev/null 2>&1; }
 if status; then exit 0; fi
-setsid "$readd" -desktop >> '${log}' 2>&1 &
-pid=$!
-printf '%s\n' "$pid" >> '${pidFile}'
+# readd stays in the driver's process group, which the harness ends as a
+# whole; the pid file only tells the tests which readd to look at.
+"$readd" -desktop >> '${log}' 2>&1 &
+printf '%s\n' "$!" >> '${pidFile}'
 i=0
 while [ "$i" -lt 100 ]; do
   if status; then exit 0; fi
@@ -451,7 +413,7 @@ exit 1
   }
   const base = { ...process.env };
   const procs: { what: string; proc: ChildProcess }[] = [];
-  let readdProcess: ChildProcess | undefined;
+  let driverGroup: number | undefined;
   let session: Session | undefined;
   let stopped = false;
 
@@ -471,19 +433,19 @@ exit 1
       });
     } finally {
       // In a finally, so the children end even when the quit failed.
-      // End the session and every non-readd child before the readd cleanup:
-      // a stand-in launcher can otherwise start another readd after the pid
-      // file is read and the run directory is deleted.
+      // The driver leads a process group of its own, and everything under it
+      // stays there: the app, a stand-in launcher and every readd that the
+      // launcher starts. Ending that whole group first leaves nothing that
+      // can start another process, and needs no record of who started what.
+      if (driverGroup !== undefined) problems.push(...(await endGroup(driverGroup)));
       for (const { what, proc } of [...procs].reverse()) {
-        if (proc === readdProcess) continue;
         await end(what, proc).catch((err: unknown) => {
           problems.push(err instanceof Error ? err.message : String(err));
         });
       }
-
-      // KILL every stand-in launcher before reading readd-pids. A launcher
-      // cannot append or start another readd after this point.
-      problems.push(...(await cleanupRecordedProcesses(launcherPidFile, pidFile, readdPidsStarted)));
+      for (const pid of [...readdPidsStarted, ...readPids(pidFile)]) {
+        if (pidAlive(pid)) problems.push(`readd ${pid} is still alive after cleanup`);
+      }
 
       rmSync(dir, { force: true, maxRetries: 10, recursive: true });
     }
@@ -531,7 +493,6 @@ exit 1
     };
     const allow = opts.server?.allow ?? addr;
     const readd = start(join(E2E, "readd"), ["-desktop"], { ...appEnv, READ_DEV_ALLOW: allow }, "readd");
-    readdProcess = readd.proc;
     procs.push({ proc: readd.proc, what: "readd" });
     if (readd.proc.pid !== undefined) readdPidsStarted.add(readd.proc.pid);
     await until("readd's desktop socket", () => existsSync(socket), 30_000);
@@ -570,24 +531,17 @@ exit 1
       [`--port=${driverPort}`],
       { ...appEnv, ...opener.env, TAURI_WEBVIEW_AUTOMATION: "true" },
       "WebKitWebDriver",
+      true,
     );
     procs.push({ proc: driver.proc, what: "WebKitWebDriver" });
+    driverGroup = driver.proc.pid;
     await until("the WebDriver server", () => reachable(`${driverURL}/status`), 45_000);
     const capabilities = {
       "webkitgtk:browserOptions": { args: ["--automation"], binary: APP },
     };
     session = await Session.start(driverURL, capabilities);
     const appEnvWithStandIns = { ...appEnv, ...opener.env, TAURI_WEBVIEW_AUTOMATION: "true" };
-    const readdPids = (): number[] => {
-      const started = existsSync(pidFile)
-        ? readFileSync(pidFile, "utf8")
-            .split(/\r?\n/)
-            .filter(Boolean)
-            .map((pid) => Number(pid))
-            .filter((pid) => Number.isInteger(pid) && pid > 0)
-        : [];
-      return [...new Set([...readdPidsStarted, ...started])];
-    };
+    const readdPids = (): number[] => [...new Set([...readdPidsStarted, ...readPids(pidFile)])];
     const app: App = {
       dir,
       env: appEnvWithStandIns,

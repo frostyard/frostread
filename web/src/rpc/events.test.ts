@@ -93,6 +93,24 @@ describe("watchChanges", () => {
     expect(reconnected).toBe(1);
   });
 
+  it("calls the reconnected callback when a subscribe takes after a failed first one", async () => {
+    vi.useFakeTimers();
+    const f = fake();
+    f.answers.push("down", "ok");
+    let reconnected = 0;
+    watchChanges(
+      f.transport,
+      () => {},
+      10_000,
+      () => reconnected++,
+    );
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(f.calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.calls).toHaveLength(2);
+    expect(reconnected).toBe(1);
+  });
+
   it("subscribes again after a drop, retrying until the socket is up", async () => {
     vi.useFakeTimers();
     const f = fake();

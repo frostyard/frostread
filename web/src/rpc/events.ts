@@ -16,8 +16,9 @@ export const RETRY_MS = 1_000;
  * watchChanges calls onChange for each items.changed, and subscribes to
  * them now and after every reconnect. A connection that is not up yet
  * refuses the call; it asks again, with a delay, until one takes.
- * onReconnected, when given, runs when a subscribe succeeds after a drop
- * (not after the first subscribe): the desktop refreshes what it missed.
+ * onReconnected, when given, runs when a subscribe takes after a drop or
+ * a failed subscribe (not after a first subscribe that takes): the desktop
+ * refreshes what it missed.
  */
 export function watchChanges(
   transport: Transport,
@@ -27,7 +28,14 @@ export function watchChanges(
 ): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
-  let dropped = false;
+  // missed says a subscribe failed, or the connection dropped, since the
+  // last one that took: the next one that takes is a reconnect, and
+  // onReconnected refreshes what the window missed meanwhile.
+  let missed = false;
+  // generation rises at each drop: an answer to a subscribe sent before
+  // the latest drop belongs to a connection that is gone, and counts for
+  // nothing.
+  let generation = 0;
 
   const stopRetrying = () => {
     if (timer !== undefined) {
@@ -35,29 +43,27 @@ export function watchChanges(
       timer = undefined;
     }
   };
-  const subscribe = (afterDrop = false) => {
+  // One timer at most: a new retry replaces the one that waits.
+  const retry = () => {
+    stopRetrying();
+    timer = setTimeout(subscribe, retryMs);
+  };
+  const subscribe = () => {
     if (stopped) return;
+    const mine = generation;
     transport.call("events.subscribe", {}).then(
       () => {
-        if (afterDrop) {
-          stopRetrying();
-          if (dropped) {
-            dropped = false;
-            onReconnected?.();
-          }
+        if (stopped || mine !== generation) return;
+        stopRetrying();
+        if (missed) {
+          missed = false;
+          onReconnected?.();
         }
       },
       () => {
-        if (stopped) return;
-        if (dropped) {
-          if (afterDrop) {
-            stopRetrying();
-            timer = setTimeout(() => subscribe(true), retryMs);
-          }
-          return;
-        }
-        stopRetrying();
-        timer = setTimeout(() => subscribe(false), retryMs);
+        if (stopped || mine !== generation) return;
+        missed = true;
+        retry();
       },
     );
   };
@@ -67,13 +73,18 @@ export function watchChanges(
   });
   const offClose = transport.onClose(() => {
     if (stopped) return;
-    dropped = true;
-    stopRetrying();
+    generation++;
+    missed = true;
     // Without onReconnected (lodge's frame), the first try after a drop
-    // is at once, as it always was. The desktop waits retryMs first, as
-    // its banner says.
-    if (onReconnected === undefined) subscribe(true);
-    else timer = setTimeout(() => subscribe(true), retryMs);
+    // is at once, as it always was. With it (the desktop), this watcher is
+    // the window's only retry schedule, and its first try waits retryMs,
+    // as the desktop's banner says.
+    if (onReconnected === undefined) {
+      stopRetrying();
+      subscribe();
+    } else {
+      retry();
+    }
   });
   subscribe();
 

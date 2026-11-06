@@ -105,8 +105,9 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   const unwatch =
     options.server === undefined
       ? watchChanges(transport, () => void store.getState().changed())
-      : // A subscribe that succeeds after a drop reloads everything the
-        // window missed; reconnect's status call clears the banner.
+      : // The watcher is the window's only retry schedule, every 10 s: a
+        // subscribe that takes after a drop or a failure reloads everything
+        // the window missed, and reconnect's status call clears the banner.
         watchChanges(
           transport,
           () => void store.getState().changed(),
@@ -116,17 +117,9 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   await store.getState().connect(readAPI(transport));
   await store.getState().setRoute(store.getState().route);
 
-  let retry: number | undefined;
-  if (options.server !== undefined) {
-    retry = win.setInterval(() => {
-      if (store.getState().offline !== null) void store.getState().reconnect();
-    }, DESKTOP_RETRY_MS);
-  }
-
   return {
     store,
     stop() {
-      if (retry !== undefined) win.clearInterval(retry);
       win.removeEventListener("popstate", onPop);
       query.removeEventListener("change", onScheme);
       unwatch();

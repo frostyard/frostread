@@ -122,15 +122,16 @@ describe("the connection banner", () => {
     expect(screen.getByRole("alert").textContent).toContain("Frostread cannot reach this computer's reader.");
   });
 
-  it("retries reconnect every 10 seconds while offline", async () => {
+  it("retries every 10 seconds from a failed start, and clears the banner when one takes", async () => {
     vi.useFakeTimers();
+    let up = false;
     let statusCalls = 0;
     const down = new RPCError(CodeNotConnected, "lodge refused");
     const transport: Transport = {
       call: async <T,>(method: string): Promise<T> => {
+        if (!up) throw down;
         if (method === "status") {
           statusCalls++;
-          if (statusCalls === 1) throw down;
           return { version: "1", notes: { configured: false, vaultId: 0, folder: "" } } as T;
         }
         if (method === "counts")
@@ -148,8 +149,51 @@ describe("the connection banner", () => {
     desktop = started;
     expect(started.store.getState().offline).toBe("lodge refused");
 
-    await vi.advanceTimersByTimeAsync(10_000);
+    up = true;
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(statusCalls).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(statusCalls).toBe(1);
     expect(started.store.getState().offline).toBeNull();
-    expect(statusCalls).toBeGreaterThanOrEqual(2);
+  });
+
+  it("spaces its connection attempts 10 seconds apart after a close in the middle of an interval", async () => {
+    vi.useFakeTimers();
+    const closes = new Set<(reason: string) => void>();
+    let up = true;
+    const attempts: number[] = [];
+    const transport: Transport = {
+      call: async <T,>(method: string): Promise<T> => {
+        if (!up) {
+          attempts.push(Date.now());
+          throw new RPCError(CodeNotConnected, "lodge closed");
+        }
+        if (method === "status") return { version: "1", notes: { configured: false, vaultId: 0, folder: "" } } as T;
+        if (method === "counts")
+          return { views: { unread: 0, starred: 0, later: 0, archive: 0, all: 0 }, sources: [] } as T;
+        if (method === "sources.list") return { sources: [] } as T;
+        if (method === "items.list") return { items: [] } as T;
+        if (method === "events.subscribe") return { subscribed: true } as T;
+        throw new Error(`unexpected ${method}`);
+      },
+      onEvent: () => () => {},
+      onClose: (handler) => {
+        closes.add(handler);
+        return () => closes.delete(handler);
+      },
+    };
+
+    desktop = await startDesktop({ root, transport, server: control("https://lodge.example.ts.net") });
+    const start = Date.now();
+    await vi.advanceTimersByTimeAsync(5_000);
+    up = false;
+    act(() => {
+      for (const close of closes) close("the connection through lodge closed (1006)");
+    });
+    await vi.advanceTimersByTimeAsync(40_000);
+
+    // Every attempt after the close is one subscribe, 10 s after the one
+    // before it: no second timer runs on the start's own schedule.
+    expect(attempts.map((t) => t - start)).toEqual([15_000, 25_000, 35_000, 45_000]);
   });
 });

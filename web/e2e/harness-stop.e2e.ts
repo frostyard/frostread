@@ -1,17 +1,25 @@
-// Targeted cleanup tests for the e2e harness (no app or display). Run with:
-// pnpm exec vitest run -c vitest.e2e.config.ts e2e/harness-stop.e2e.ts
-import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+// Targeted tests of the e2e harness's cleanup (no app and no display), run
+// by make app-e2e with the suites.
+import { type ChildProcess, spawn } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { cleanupRecordedProcesses, end, pidAlive, readPids } from "./harness";
+import { end, endGroup, pidAlive, until } from "./harness";
 
 const dirs: string[] = [];
+const left: number[] = [];
 
 afterEach(() => {
+  for (const pid of left.splice(0)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  }
   for (const dir of dirs.splice(0)) rmSync(dir, { force: true, maxRetries: 10, recursive: true });
 });
 
@@ -21,57 +29,46 @@ function tempDir(): string {
   return dir;
 }
 
-describe("the e2e harness cleanup", () => {
-  it("end SIGKILLs a child that ignores SIGTERM", async () => {
-    // Revert check: without SIGKILL in end(), this process stays alive and
-    // end() rejects after the short term wait.
-    const proc = spawn("sh", ["-c", 'trap "" TERM; while :; do :; done'], { stdio: "ignore" });
-    expect(proc.pid).toBeGreaterThan(0);
+/** spawnReady starts sh -c script, and waits until the script has written ready. */
+async function spawnReady(script: string, ready: string, detached = false): Promise<ChildProcess> {
+  const proc = spawn("sh", ["-c", script], { stdio: "ignore", detached });
+  if (proc.pid !== undefined) left.push(proc.pid);
+  await until("the child to say it is ready", () => existsSync(ready), 5_000);
+  return proc;
+}
 
-    try {
-      await end("TERM-ignoring child", proc, 100, 500);
-      expect(proc.pid === undefined || !pidAlive(proc.pid)).toBe(true);
-    } finally {
-      if (proc.pid !== undefined && pidAlive(proc.pid)) process.kill(proc.pid, "SIGKILL");
-    }
+describe("the e2e harness cleanup", () => {
+  it("end kills a child that ignores SIGTERM", async () => {
+    const dir = tempDir();
+    const ready = join(dir, "ready");
+    // The child writes ready only after its trap is set, so SIGTERM cannot
+    // arrive first and end it the ordinary way.
+    const proc = await spawnReady(`trap "" TERM; : > '${ready}'; while :; do sleep 1; done`, ready);
+    await end("a child that ignores SIGTERM", proc, 200, 2_000);
+    expect(proc.pid !== undefined && pidAlive(proc.pid)).toBe(false);
   });
 
-  it("kills a late launcher before reading readd pids", async () => {
-    // Revert check: if stop() reads readd-pids before it SIGKILLs launchers,
-    // a launcher can append/start another readd after that read.
+  it("endGroup ends a process that the group started and nobody recorded", async () => {
     const dir = tempDir();
-    const launcherFile = join(dir, "launcher-pids");
-    const readdFile = join(dir, "readd-pids");
-
-    const readd = spawn("sh", ["-c", 'trap "" TERM; while :; do :; done'], { stdio: "ignore" });
-    expect(readd.pid).toBeGreaterThan(0);
-    const readdPid = readd.pid as number;
-    writeFileSync(readdFile, `${readdPid}\n`);
-
-    const launcher = spawn(
-      "sh",
-      [
-        "-c",
-        `printf '%s\\n' "$$" >> '${launcherFile}'; trap "" TERM; (sleep 0.2; printf '%s\\n' '${readdPid}' >> '${readdFile}') & while :; do :; done`,
-      ],
-      { stdio: "ignore" },
+    const ready = join(dir, "ready");
+    const grandchild = join(dir, "grandchild");
+    // The leader stands for the driver, and its child for a readd that a
+    // stand-in launcher started just before the cleanup, with no record
+    // anywhere. Both ignore SIGTERM. The grandchild's pid goes to a file for
+    // this test's own check only: endGroup never reads it.
+    const leader = await spawnReady(
+      `trap "" TERM; sh -c 'trap "" TERM; echo $$ > "${grandchild}"; while :; do sleep 1; done' & ` +
+        `until [ -s '${grandchild}' ]; do sleep 0.05; done; : > '${ready}'; while :; do sleep 1; done`,
+      ready,
+      true,
     );
+    const child = Number(readFileSync(grandchild, "utf8").trim());
+    left.push(child);
+    expect(pidAlive(child)).toBe(true);
 
-    const deadline = Date.now() + 2_000;
-    while (!existsSync(launcherFile) && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    expect(readPids(launcherFile)).toContain(launcher.pid);
-
-    try {
-      const problems = await cleanupRecordedProcesses(launcherFile, readdFile, [], 100, 500);
-      expect(problems).toEqual([]);
-      expect(launcher.pid === undefined || !pidAlive(launcher.pid)).toBe(true);
-      expect(!pidAlive(readdPid)).toBe(true);
-    } finally {
-      if (launcher.pid !== undefined && pidAlive(launcher.pid)) process.kill(launcher.pid, "SIGKILL");
-      if (pidAlive(readdPid)) process.kill(readdPid, "SIGKILL");
-      rmSync(dir, { force: true, maxRetries: 10, recursive: true });
-    }
+    const problems = await endGroup(leader.pid as number, 200, 2_000);
+    expect(problems).toEqual([]);
+    expect(pidAlive(child)).toBe(false);
+    expect(pidAlive(leader.pid as number)).toBe(false);
   });
 });
