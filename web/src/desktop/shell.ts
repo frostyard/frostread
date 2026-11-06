@@ -1,7 +1,7 @@
 // The desktop's Shell (ADR-0008): the window's own address and history, with
 // the route in the URL fragment, and none of lodge's pages.
 import { parseRoute, type Route, UNREAD } from "../lib/routes.js";
-import type { Shell } from "../shell.js";
+import type { ServerControl, Shell } from "../shell.js";
 
 /**
  * COALESCE_MS is how soon after a push a later report replaces instead of
@@ -52,6 +52,7 @@ export function createDesktopShell(
   win: Window = window,
   now: () => number = () => win.performance.now(),
   saveFile: SaveFile = noSaveFile,
+  server?: ServerControl,
 ): Shell {
   // The first report is the start route, which is already the window's
   // address: it replaces, so a start adds no history entry.
@@ -139,7 +140,12 @@ export function createDesktopShell(
     }
   }
 
+  const openOutside = (url: string) => {
+    win.open(url, "_blank", "noopener");
+  };
+
   return {
+    ...(server === undefined ? {} : { server }),
     savePages: false,
     reportRoute(path, title, replace) {
       // The title needs no history entry, so it is set even when the
@@ -178,13 +184,14 @@ export function createDesktopShell(
       dropHeld();
       write(hash, push, t);
     },
-    // The desktop has no lodge and no Notes (ADR-0008, "Notes is optional"),
-    // so there is no route to open.
-    openRoute() {},
-    // Step 3.2's shell opens this with the opener plugin.
-    openOutside(url) {
-      win.open(url, "_blank", "noopener");
+    openRoute(route) {
+      if (server?.lodge === undefined || server.lodge === "") return;
+      if (!route.startsWith("/") || route.startsWith("//")) return;
+      const origin = server.lodge.replace(/\/$/, "");
+      openOutside(`${origin}${route}`);
     },
+    // Step 3.2's shell opens this with the opener plugin.
+    openOutside,
     saveFile,
     // The desktop has no content route (ADR-0008): the reader shows the
     // article from items.render in a sandboxed srcdoc frame instead.

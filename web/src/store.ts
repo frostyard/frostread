@@ -1,6 +1,7 @@
 // The app's state, as one zustand store (createReadStore): the list, the
 // open item, the counts, the query, and every action the panes and the keys
 // ask for. It holds no DOM, so the tests drive it directly.
+import { CodeNotConnected, RPCError } from "@frostyard/lodge-client/rpc";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { type Route, noteRoute as routeOfNote, UNREAD } from "./lib/routes.js";
 import type { Counts, ItemDetail, ItemSummary, NoteStatus, ReadAPI, Source, Status, View } from "./rpc/api.js";
@@ -13,6 +14,8 @@ export interface ReadState {
   status: Status | null;
   /** error is the last failure, which a Sheet shows. */
   error: string | null;
+  /** offline is a quiet desktop connection failure shown in the banner. */
+  offline: string | null;
   /** route is what the frame shows; listRoute is the view or source behind it. */
   route: Route;
   listRoute: Route;
@@ -39,6 +42,7 @@ export interface ReadState {
 
 export interface ReadActions {
   connect(api: ReadAPI): Promise<void>;
+  reconnect(): Promise<void>;
   setRoute(route: Route): Promise<void>;
   open(id: number): Promise<void>;
   closeItem(): void;
@@ -130,7 +134,18 @@ function message(err: unknown): string {
 }
 
 /** createReadStore returns a store with no connection; connect() starts it. */
-export function createReadStore(): StoreApi<ReadStore> {
+export function createReadStore(options?: { quietDisconnects?: boolean }): StoreApi<ReadStore> {
+  const quietDisconnects = options?.quietDisconnects === true;
+  /**
+   * failure is the state a failed load sets. With quietDisconnects (the
+   * desktop), a lost connection goes to the banner as offline, so a retry
+   * every 10 s does not open the error sheet again; any other failure, and
+   * every failure in lodge's frame, is the error sheet's.
+   */
+  const failure = (err: unknown): { offline: string } | { error: string } =>
+    quietDisconnects && err instanceof RPCError && err.code === CodeNotConnected
+      ? { offline: message(err) }
+      : { error: message(err) };
   // generation rises with every list request. An answer writes the list only
   // while its number is still the latest one, so a slow answer never
   // overwrites a newer one, and a loadMore that finishes after a reload
@@ -140,6 +155,7 @@ export function createReadStore(): StoreApi<ReadStore> {
     api: null,
     status: null,
     error: null,
+    offline: null,
     route: UNREAD,
     listRoute: UNREAD,
     counts: EMPTY_COUNTS,
@@ -161,6 +177,10 @@ export function createReadStore(): StoreApi<ReadStore> {
       // Live updates are main.tsx's watchChanges: it subscribes to
       // items.changed now, and again after each reconnect.
       set({ api });
+      await Promise.all([get().loadStatus(), get().loadCounts(), get().loadSources(), get().load()]);
+    },
+
+    async reconnect() {
       await Promise.all([get().loadStatus(), get().loadCounts(), get().loadSources(), get().load()]);
     },
 
@@ -206,7 +226,7 @@ export function createReadStore(): StoreApi<ReadStore> {
       } catch (err) {
         // Only the selected item's failure belongs to the reader. A stale one
         // is dropped; its own newer answer already set itemLoading.
-        if (get().selectedId === id) set({ itemLoading: false, error: message(err) });
+        if (get().selectedId === id) set({ itemLoading: false, ...failure(err) });
       }
     },
 
@@ -225,7 +245,7 @@ export function createReadStore(): StoreApi<ReadStore> {
         set({ items: page.items, next: page.next ?? null, loading: false, error: null });
       } catch (err) {
         if (mine !== generation) return;
-        set({ loading: false, error: message(err) });
+        set({ loading: false, ...failure(err) });
       }
     },
 
@@ -259,7 +279,7 @@ export function createReadStore(): StoreApi<ReadStore> {
         set({ items: rows, next, loading: false, error: null });
       } catch (err) {
         if (mine !== generation) return;
-        set({ loading: false, error: message(err) });
+        set({ loading: false, ...failure(err) });
       }
     },
 
@@ -274,7 +294,7 @@ export function createReadStore(): StoreApi<ReadStore> {
         set((state) => ({ items: [...state.items, ...page.items], next: page.next ?? null, loading: false }));
       } catch (err) {
         if (mine !== generation) return;
-        set({ loading: false, error: message(err) });
+        set({ loading: false, ...failure(err) });
       }
     },
 
@@ -295,7 +315,7 @@ export function createReadStore(): StoreApi<ReadStore> {
         set({ items, next: null, loading: false, error: null });
       } catch (err) {
         if (mine !== generation) return;
-        set({ loading: false, error: message(err) });
+        set({ loading: false, ...failure(err) });
       }
     },
 
@@ -544,9 +564,9 @@ export function createReadStore(): StoreApi<ReadStore> {
       const { api } = get();
       if (api === null) return;
       try {
-        set({ status: await api.status() });
+        set({ status: await api.status(), offline: null });
       } catch (err) {
-        set({ error: message(err) });
+        set(failure(err));
       }
     },
 
@@ -556,7 +576,7 @@ export function createReadStore(): StoreApi<ReadStore> {
       try {
         set({ counts: await api.counts() });
       } catch (err) {
-        set({ error: message(err) });
+        set(failure(err));
       }
     },
 
@@ -566,7 +586,7 @@ export function createReadStore(): StoreApi<ReadStore> {
       try {
         set({ sources: await api.listSources() });
       } catch (err) {
-        set({ error: message(err) });
+        set(failure(err));
       }
     },
   }));

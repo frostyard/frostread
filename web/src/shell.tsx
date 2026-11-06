@@ -4,8 +4,24 @@
 import { createContext, type ReactNode, useContext } from "react";
 import { lodgeShell } from "./lodge.js";
 
+/** ServerInfo is the computer's and lodge's server facts the Server sheet reads. */
+export interface ServerInfo {
+  lodge: string;
+  localData: boolean;
+}
+
+/** ServerControl changes the desktop's connection and reloads the window. */
+export interface ServerControl {
+  readonly lodge: string;
+  get(): Promise<ServerInfo>;
+  save(lodge: string): Promise<void>;
+  reload(): void;
+}
+
 /** Shell is what the app asks of the window it runs in. */
 export interface Shell {
+  /** server is present only in the desktop shell's window. */
+  server?: ServerControl;
   /** savePages: the save page, the bookmarklet page and their sidebar entry exist. */
   readonly savePages: boolean;
   /** reportRoute tells the shell the app's route, for its address and history. */

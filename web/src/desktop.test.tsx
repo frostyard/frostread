@@ -7,6 +7,7 @@ import { tauriSaveFile } from "./desktop/save.js";
 import { BUDGET, BUDGET_WINDOW_MS, createDesktopShell, desktopRoute, type SaveFile } from "./desktop/shell.js";
 import { type Desktop, startDesktop } from "./desktop/start.js";
 import { createMockTransport } from "./rpc/mock.js";
+import type { ServerControl } from "./shell.js";
 
 let started: Desktop | null = null;
 let root: HTMLElement;
@@ -57,6 +58,39 @@ function fakeScheme(dark: boolean): (next: boolean) => void {
 }
 
 describe("the desktop entry", () => {
+  it("opens only safe in-window routes outside lodge", () => {
+    const open = vi.fn();
+    const fakeWin = { open } as unknown as Window;
+    const lodge: ServerControl = {
+      lodge: "https://lodge.example.ts.net/",
+      get: async () => ({ lodge: "https://lodge.example.ts.net/", localData: true }),
+      save: async () => {},
+      reload: () => {},
+    };
+    const shell = createDesktopShell(
+      fakeWin,
+      () => 0,
+      async () => true,
+      lodge,
+    );
+    shell.openRoute("/notes/1/Reading/Note.md");
+    expect(open).toHaveBeenCalledWith("https://lodge.example.ts.net/notes/1/Reading/Note.md", "_blank", "noopener");
+
+    open.mockClear();
+    shell.openRoute("//evil.example");
+    shell.openRoute("https://evil.example");
+    expect(open).not.toHaveBeenCalled();
+
+    const local = createDesktopShell(
+      fakeWin,
+      () => 0,
+      async () => true,
+      { ...lodge, lodge: "" },
+    );
+    local.openRoute("/notes/1");
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("lists the mock's sources in the sidebar", async () => {
     const desktop = await start();
     await waitFor(() => expect(desktop.store.getState().sources.length).toBeGreaterThan(0));

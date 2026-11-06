@@ -10,8 +10,10 @@ import { StoreProvider } from "../components/context.js";
 import { ErrorBoundary } from "../components/ErrorBoundary.js";
 import { readAPI } from "../rpc/api.js";
 import { watchChanges } from "../rpc/events.js";
+import type { ServerControl } from "../shell.js";
 import { ShellProvider } from "../shell.js";
 import { createReadStore } from "../store.js";
+import { ConnectionBanner } from "./ConnectionBanner.js";
 import { createDesktopShell, desktopRoute, type SaveFile } from "./shell.js";
 
 /** DesktopOptions say where the app starts: root is required, the rest default for the real window. */
@@ -20,6 +22,7 @@ export interface DesktopOptions {
   win?: Window;
   transport?: Transport;
   saveFile?: SaveFile;
+  server?: ServerControl;
 }
 
 /** Desktop is a started desktop app: its store, and the call that stops it. */
@@ -31,7 +34,7 @@ export interface Desktop {
 /** startDesktop renders the app into root and connects it. stop unmounts it and removes every listener. */
 export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   const win = options.win ?? window;
-  const store = createReadStore();
+  const store = createReadStore({ quietDisconnects: options.server !== undefined });
 
   // The system's scheme is the theme source.
   const query = win.matchMedia("(prefers-color-scheme: dark)");
@@ -65,12 +68,22 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   void store.getState().setRoute(startRoute);
 
   const root = createRoot(options.root);
+  const shell = createDesktopShell(win, () => win.performance.now(), options.saveFile, options.server);
   root.render(
     <StrictMode>
-      <ShellProvider shell={createDesktopShell(win, () => win.performance.now(), options.saveFile)}>
+      <ShellProvider shell={shell}>
         <StoreProvider store={store}>
           <ErrorBoundary>
-            <App />
+            {options.server === undefined ? (
+              <App />
+            ) : (
+              <div className="flex h-full flex-col">
+                <ConnectionBanner server={options.server} />
+                <div className="min-h-0 flex-1">
+                  <App />
+                </div>
+              </div>
+            )}
           </ErrorBoundary>
         </StoreProvider>
       </ShellProvider>
@@ -88,9 +101,17 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   await store.getState().connect(readAPI(transport));
   await store.getState().setRoute(store.getState().route);
 
+  let retry: number | undefined;
+  if (options.server !== undefined) {
+    retry = win.setInterval(() => {
+      if (store.getState().offline !== null) void store.getState().reconnect();
+    }, 10_000);
+  }
+
   return {
     store,
     stop() {
+      if (retry !== undefined) win.clearInterval(retry);
       win.removeEventListener("popstate", onPop);
       query.removeEventListener("change", onScheme);
       unwatch();
