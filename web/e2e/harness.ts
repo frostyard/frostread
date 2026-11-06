@@ -218,14 +218,56 @@ function end(what: string, proc: ChildProcess): Promise<void> {
   });
 }
 
+/** pidAlive reports whether pid names a live process. */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** endPids ends stand-in readd processes with a bounded SIGTERM wait. */
+async function endPids(pids: number[]): Promise<string[]> {
+  const problems: string[] = [];
+  const unique = [...new Set(pids)].filter(pidAlive);
+  for (const pid of unique) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch (err) {
+      problems.push(`could not stop readd ${pid}: ${String(err)}`);
+    }
+  }
+  const deadline = Date.now() + 10_000;
+  while (unique.some(pidAlive) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  for (const pid of unique) {
+    if (!pidAlive(pid)) continue;
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch (err) {
+      problems.push(`could not kill readd ${pid}: ${String(err)}`);
+    }
+  }
+  return problems;
+}
+
 /** App is the app under test: its session, the stand-in opener's record, and how to end it all. */
 export interface App {
   /** session is the WebDriver session on the app's window. */
   session: Session;
+  /** env is the environment of the app and its stand-ins. */
+  env: NodeJS.ProcessEnv;
   /** opened returns the URLs the app asked the system to open, oldest first. */
   opened: () => string[];
+  /** readdPids returns the harness readd and every readd the stand-in launcher started. */
+  readdPids: () => number[];
   /** dir is the run's temporary directory; stop deletes it. */
   dir: string;
+  /** restart quits the WebDriver session and starts a new one on the same driver. */
+  restart: () => Promise<void>;
   /** stop quits the session, ends every process of the run, and deletes dir. */
   stop: () => Promise<void>;
 }
@@ -235,6 +277,8 @@ export interface App {
  * feeds alone, as step 3.6 made it.
  */
 export interface LaunchOptions {
+  /** launcher puts a stand-in frostread on the app's PATH and starts readd from it. */
+  launcher?: boolean;
   /**
    * hostile starts readdev with the corpus as a sixth feed, Dev Hostile: its
    * pages are written into the run's directory with their canary URLs pointed
@@ -277,6 +321,33 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
   const socket = join(dir, "run", "readd.sock");
   for (const sub of ["data", "config", "cache", "run"]) mkdirSync(join(dir, sub), { mode: 0o700, recursive: true });
   const opener = fakeOpener(dir);
+  const pidFile = join(dir, "readd-pids");
+  const readdPidsStarted = new Set<number>();
+  if (opts.launcher) {
+    const stand = join(dir, "bin");
+    const log = join(dir, "readd.log");
+    writeFileSync(
+      join(stand, "frostread"),
+      `#!/bin/sh
+set -eu
+readctl='${join(E2E, "readctl")}'
+readd='${join(E2E, "readd")}'
+status() { "$readctl" status >/dev/null 2>&1; }
+if status; then exit 0; fi
+setsid "$readd" -desktop >> '${log}' 2>&1 &
+pid=$!
+printf '%s\n' "$pid" >> '${pidFile}'
+i=0
+while [ "$i" -lt 100 ]; do
+  if status; then exit 0; fi
+  i=$((i + 1))
+  sleep 0.1
+done
+exit 1
+`,
+      { mode: 0o755 },
+    );
+  }
   const base = { ...process.env };
   const procs: { what: string; proc: ChildProcess }[] = [];
   let session: Session | undefined;
@@ -299,6 +370,14 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
     } finally {
       // In a finally, so the processes end even when the quit failed.
       // The driver goes first, so it cannot start another app after readd.
+      const started = existsSync(pidFile)
+        ? readFileSync(pidFile, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((pid) => Number(pid))
+            .filter((pid) => Number.isInteger(pid) && pid > 0)
+        : [];
+      problems.push(...(await endPids([...readdPidsStarted, ...started])));
       for (const { what, proc } of [...procs].reverse()) {
         await end(what, proc).catch((err: unknown) => {
           problems.push(err instanceof Error ? err.message : String(err));
@@ -351,6 +430,7 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
     const allow = opts.server?.allow ?? addr;
     const readd = start(join(E2E, "readd"), ["-desktop"], { ...appEnv, READ_DEV_ALLOW: allow }, "readd");
     procs.push({ proc: readd.proc, what: "readd" });
+    if (readd.proc.pid !== undefined) readdPidsStarted.add(readd.proc.pid);
     await until("readd's desktop socket", () => existsSync(socket), 30_000);
 
     // The seed: readctl import subscribes readdev's five feeds, and readctl
@@ -390,10 +470,35 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
     );
     procs.push({ proc: driver.proc, what: "WebKitWebDriver" });
     await until("the WebDriver server", () => reachable(`${driverURL}/status`), 45_000);
-    session = await Session.start(driverURL, {
+    const capabilities = {
       "webkitgtk:browserOptions": { args: ["--automation"], binary: APP },
-    });
-    return { dir, opened: opener.opened, session, stop };
+    };
+    session = await Session.start(driverURL, capabilities);
+    const appEnvWithStandIns = { ...appEnv, ...opener.env, TAURI_WEBVIEW_AUTOMATION: "true" };
+    const readdPids = (): number[] => {
+      const started = existsSync(pidFile)
+        ? readFileSync(pidFile, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((pid) => Number(pid))
+            .filter((pid) => Number.isInteger(pid) && pid > 0)
+        : [];
+      return [...new Set([...readdPidsStarted, ...started])];
+    };
+    const app: App = {
+      dir,
+      env: appEnvWithStandIns,
+      opened: opener.opened,
+      readdPids,
+      session,
+      async restart() {
+        await app.session.quit();
+        session = await Session.start(driverURL, capabilities);
+        app.session = session;
+      },
+      stop,
+    };
+    return app;
   } catch (err) {
     await stop().catch(() => {});
     throw err;

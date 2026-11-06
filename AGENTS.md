@@ -186,6 +186,11 @@ counterpart of something those repositories do, read their file.
   machine `frostnotes` (`make web-build`), as lodge's apps do.
 - `make flatpak-smoke` builds host readd and readctl, then runs the Flatpak
   launcher and portal smoke test on the host.
+- `make app-e2e-lodge` starts lodge's development build and runs the
+  desktop lodge connection suite, including local, lodge, notes, stopped
+  lodge, stop failure and crash restart. It needs the lodge and frostnotes
+  sibling builds passed as `LODGE_DIR` and `NOTES_DIR`, frostread's
+  `build/web` from `make web-build`, and the nsl machine.
 - `make app-e2e` drives the built desktop app in WebKitGTK, headless in
   the nsl machine: `web/e2e/harness.ts` starts readdev and `readd
   -desktop` (the dev tags) on a temporary XDG tree, imports readdev's

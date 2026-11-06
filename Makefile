@@ -1,4 +1,4 @@
-.PHONY: help build fmt vet lint lint-version-check test race cross vulncheck tidy-check verify check ci contract-update web-build web-check web-fmt app-check app-test app-build app-e2e flatpak-smoke lodge-package dev-seed dev-lodge svu-version-check bump deb deb-check clean
+.PHONY: help build fmt vet lint lint-version-check test race cross vulncheck tidy-check verify check ci contract-update web-build web-check web-fmt app-check app-test app-build app-e2e app-e2e-lodge flatpak-smoke lodge-package dev-seed dev-lodge svu-version-check bump deb deb-check clean
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -134,6 +134,16 @@ flatpak-smoke: ## Run the Flatpak's smoke test on the host with host-built readd
 app-e2e: app-build ## Drive the built app in WebKitGTK against readd and readdev, headless (nsl); F= picks tests
 	CGO_ENABLED=0 go build -tags 'devfetch devfeeds' $(GOFLAGS) -o build/e2e/ ./cmd/readd ./cmd/readctl ./cmd/readdev
 	$(IN_APP_NSL) 'cd web && pnpm install $(FROZEN) --silent && env -u WAYLAND_DISPLAY GDK_BACKEND=x11 xvfb-run -a -s "-screen 0 1280x800x24" pnpm exec vitest run -c vitest.e2e.config.ts $(F); rc=$$?; if pgrep -af -r D,I,R,S,T,t "[b]uild/e2e/|[f]rostread-app|[W]ebKitWebDriver"; then echo "app-e2e: a process of the run is left" >&2; rc=1; fi; exit $$rc'
+
+# app-e2e-lodge drives the desktop app's lodge connection (plan 0002,
+# Phase 6) against lodge's development build: scripts/app-e2e-lodge.sh
+# starts scripts/dev-lodge.sh and runs web/e2e/lodge.e2e.ts, all in the nsl
+# machine, which has its own loopback. LODGE_DIR and NOTES_DIR (default
+# ../lodge and ../frostnotes, relative to the repository) need lodge's
+# e2e-build and shell-build and notes' web-build; Read needs make web-build.
+app-e2e-lodge: app-build ## Drive the desktop app's lodge connection against make dev-lodge, headless (nsl)
+	CGO_ENABLED=0 go build -tags 'devfetch devfeeds' $(GOFLAGS) -o build/e2e/ ./cmd/readd ./cmd/readctl ./cmd/readdev
+	$(IN_APP_NSL) '$(if $(LODGE_DIR),LODGE_DIR="$(LODGE_DIR)") $(if $(NOTES_DIR),NOTES_DIR="$(NOTES_DIR)") sh scripts/app-e2e-lodge.sh'
 
 .PHONY: screenshots
 screenshots: app-build ## Take the 1280x800 Flatpak metainfo screenshots with made-up feeds (nsl)
