@@ -96,8 +96,9 @@ below WebKit's limit. It has no save page and no bookmarklet. OPML
 export goes through `save_file`; the lodge entry keeps its download.
 The sidebar's `Connect to lodge…` (or `Lodge: HOST`) opens the Server
 sheet, which says what a change does from local facts only. A lost
-connection shows a banner that retries every 10 s, and never local data
-in lodge mode. In lodge mode, "Open in Notes" opens lodge's note route
+connection, from a failed call or the connection's close, shows a banner
+that retries every 10 s, and never local data in lodge mode; when the
+connection comes back, the window reloads its lists. In lodge mode, "Open in Notes" opens lodge's note route
 in the browser.
 `make app-e2e` drives the built app in WebKitGTK, with the hostile
 corpus ([plan 0002, Phase 3's record](../plans/0002-the-standalone-desktop-flatpak.md#phase-3s-record)).

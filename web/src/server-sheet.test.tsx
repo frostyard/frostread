@@ -138,6 +138,46 @@ describe("the Server sheet", () => {
     await waitFor(() => expect(toLodge.save).toHaveBeenCalledWith("https://lodge.example.ts.net"));
   });
 
+  it("ignores Cancel, Escape and Close while saving, then reloads after the failure's local mode", async () => {
+    let rejectSave: (err: Error) => void = () => {};
+    const pending = new Promise<void>((_resolve, reject) => {
+      rejectSave = reject;
+    });
+    let reads = 0;
+    const control: ServerControl = {
+      lodge: "https://lodge.example.ts.net",
+      get: vi.fn(async () => {
+        reads++;
+        return reads === 1
+          ? { lodge: "https://lodge.example.ts.net", localData: true }
+          : { lodge: "", localData: true };
+      }),
+      save: vi.fn(() => pending),
+      reload: vi.fn(),
+    };
+    const onClose = vi.fn();
+    renderSheet(control, onClose);
+    await screen.findByRole("radiogroup", { name: "Reader" });
+    fireEvent.click(screen.getByLabelText("This computer"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const cancel = screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+    expect(cancel.disabled).toBe(true);
+    fireEvent.click(cancel);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(control.reload).not.toHaveBeenCalled();
+
+    rejectSave(new Error("This computer's reader did not start"));
+    expect((await screen.findByRole("alert")).textContent).toContain("This computer's reader did not start");
+    await waitFor(() => expect(control.get).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(control.reload).toHaveBeenCalledOnce();
+  });
+
   it("shows a save failure, calls get again, and reloads only if closing sees a changed mode", async () => {
     let reads = 0;
     const control: ServerControl = {

@@ -43,6 +43,7 @@ export interface ReadState {
 export interface ReadActions {
   connect(api: ReadAPI): Promise<void>;
   reconnect(): Promise<void>;
+  setOffline(reason: string | null): void;
   setRoute(route: Route): Promise<void>;
   open(id: number): Promise<void>;
   closeItem(): void;
@@ -182,6 +183,10 @@ export function createReadStore(options?: { quietDisconnects?: boolean }): Store
 
     async reconnect() {
       await Promise.all([get().loadStatus(), get().loadCounts(), get().loadSources(), get().load()]);
+    },
+
+    setOffline(reason) {
+      set({ offline: reason });
     },
 
     async setRoute(route) {

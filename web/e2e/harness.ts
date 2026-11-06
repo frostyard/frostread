@@ -218,8 +218,22 @@ function end(what: string, proc: ChildProcess): Promise<void> {
   });
 }
 
-/** pidAlive reports whether pid names a live process. */
+/** pidAlive reports whether pid names a live, non-zombie process. */
 function pidAlive(pid: number): boolean {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const close = stat.lastIndexOf(")");
+    const state =
+      close >= 0
+        ? stat
+            .slice(close + 2)
+            .trim()
+            .split(/\s+/)[0]
+        : "";
+    if (state === "Z") return false;
+  } catch {
+    // A process outside Linux, or one that has exited, has no stat entry.
+  }
   try {
     process.kill(pid, 0);
     return true;
@@ -251,7 +265,25 @@ async function endPids(pids: number[]): Promise<string[]> {
       problems.push(`could not kill readd ${pid}: ${String(err)}`);
     }
   }
+  const killDeadline = Date.now() + 10_000;
+  while (unique.some(pidAlive) && Date.now() < killDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   return problems;
+}
+
+/** readPids reads positive integer pids recorded in a harness pid file. */
+function readPids(path: string): number[] {
+  if (!existsSync(path)) return [];
+  return [
+    ...new Set(
+      readFileSync(path, "utf8")
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((pid) => Number(pid))
+        .filter((pid) => Number.isInteger(pid) && pid > 0),
+    ),
+  ];
 }
 
 /** App is the app under test: its session, the stand-in opener's record, and how to end it all. */
@@ -350,6 +382,7 @@ exit 1
   }
   const base = { ...process.env };
   const procs: { what: string; proc: ChildProcess }[] = [];
+  let readdProcess: ChildProcess | undefined;
   let session: Session | undefined;
   let stopped = false;
 
@@ -368,21 +401,35 @@ exit 1
         problems.push(`the session did not quit: ${String(err)}`);
       });
     } finally {
-      // In a finally, so the processes end even when the quit failed.
-      // The driver goes first, so it cannot start another app after readd.
-      const started = existsSync(pidFile)
-        ? readFileSync(pidFile, "utf8")
-            .split(/\r?\n/)
-            .filter(Boolean)
-            .map((pid) => Number(pid))
-            .filter((pid) => Number.isInteger(pid) && pid > 0)
-        : [];
-      problems.push(...(await endPids([...readdPidsStarted, ...started])));
+      // In a finally, so the children end even when the quit failed.
+      // End the session and every non-readd child before the readd cleanup:
+      // a stand-in launcher can otherwise start another readd after the pid
+      // file is read and the run directory is deleted.
       for (const { what, proc } of [...procs].reverse()) {
+        if (proc === readdProcess) continue;
         await end(what, proc).catch((err: unknown) => {
           problems.push(err instanceof Error ? err.message : String(err));
         });
       }
+
+      const ended = new Set<number>(readdPidsStarted);
+      const first = [...new Set([...readdPidsStarted, ...readPids(pidFile)])];
+      for (const pid of first) ended.add(pid);
+      problems.push(...(await endPids(first)));
+
+      // A launcher that was already running can append and start a readd
+      // after the first pass. Read the file again, stop every pid it names,
+      // wait for each one to exit, and read it once more before cleanup.
+      const second = readPids(pidFile);
+      for (const pid of second) ended.add(pid);
+      problems.push(...(await endPids(second)));
+
+      const final = [...new Set([...readdPidsStarted, ...readPids(pidFile)])];
+      for (const pid of final) {
+        if (!ended.has(pid)) problems.push(`readd ${pid} was recorded but was not ended`);
+        if (pidAlive(pid)) problems.push(`readd ${pid} is still alive after cleanup`);
+      }
+
       rmSync(dir, { force: true, maxRetries: 10, recursive: true });
     }
     if (problems.length > 0) throw new Error(problems.join("; "));
@@ -429,6 +476,7 @@ exit 1
     };
     const allow = opts.server?.allow ?? addr;
     const readd = start(join(E2E, "readd"), ["-desktop"], { ...appEnv, READ_DEV_ALLOW: allow }, "readd");
+    readdProcess = readd.proc;
     procs.push({ proc: readd.proc, what: "readd" });
     if (readd.proc.pid !== undefined) readdPidsStarted.add(readd.proc.pid);
     await until("readd's desktop socket", () => existsSync(socket), 30_000);

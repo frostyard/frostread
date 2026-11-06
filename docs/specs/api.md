@@ -608,7 +608,13 @@ the shell, `web/src-tauri/src/server.rs`:
   --start` for up to 30 s. A start that fails keeps local mode and fails
   with `Frostread now uses this computer's reader, but it did not start.
   See readd.log in ~/.var/app/org.frostyard.Frostread/.local/state/frostread.`
-- One save runs at a time. Other members of `app.json` are kept.
+- One mode gate orders the shell's reads and writes of the mode: a save
+  holds it for writing from its first step to its last, and a window's
+  connect and `server_get` hold it for reading. So a connect that starts
+  during a save reads the mode the save settles, never a provisional one.
+- A save keeps every other member of `app.json` as its raw JSON text. A
+  file that does not parse, is not an object or repeats a name is an
+  error, and the save leaves it unchanged.
 
 `frostread --start` is the launcher's local start without the window: in
 local mode it replaces an old readd, starts readd through the portal and

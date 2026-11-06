@@ -1,6 +1,6 @@
 // The desktop's unreachable banner and its quiet 10 second retry.
 import { CodeNotConnected, RPCError, type Transport } from "@frostyard/lodge-client/rpc";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreProvider } from "./components/context.js";
 import { ConnectionBanner } from "./desktop/ConnectionBanner.js";
@@ -43,6 +43,50 @@ function control(lodge: string): ServerControl {
 }
 
 describe("the connection banner", () => {
+  it("shows an idle close, reconnects after resubscribe, refreshes and hides", async () => {
+    vi.useFakeTimers();
+    const closes = new Set<(reason: string) => void>();
+    const subscribeAnswers: ("ok" | "down")[] = ["ok", "down", "ok"];
+    let countsCalls = 0;
+    const transport: Transport = {
+      call: async <T,>(method: string): Promise<T> => {
+        if (method === "events.subscribe") {
+          const answer = subscribeAnswers.shift() ?? "ok";
+          if (answer === "down") throw new Error("not connected");
+          return { subscribed: true } as T;
+        }
+        if (method === "status") return { version: "1", notes: { configured: false, vaultId: 0, folder: "" } } as T;
+        if (method === "counts") {
+          countsCalls++;
+          return { views: { unread: 0, starred: 0, later: 0, archive: 0, all: 0 }, sources: [] } as T;
+        }
+        if (method === "sources.list") return { sources: [] } as T;
+        if (method === "items.list") return { items: [] } as T;
+        throw new Error(`unexpected ${method}`);
+      },
+      onEvent: () => () => {},
+      onClose: (handler) => {
+        closes.add(handler);
+        return () => closes.delete(handler);
+      },
+    };
+
+    const started = await startDesktop({ root, transport, server: control("https://lodge.example.ts.net") });
+    desktop = started;
+    const before = countsCalls;
+
+    act(() => {
+      for (const close of closes) close("the connection through lodge closed (1006)");
+    });
+    expect(started.store.getState().offline).toBe("the connection through lodge closed (1006)");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(countsCalls).toBeGreaterThan(before);
+    expect(started.store.getState().offline).toBeNull();
+  });
+
   it("shows the Lodge and local texts and Try again reconnects", () => {
     const reconnect = vi.fn(async () => {});
     const store = createReadStore({ quietDisconnects: true });

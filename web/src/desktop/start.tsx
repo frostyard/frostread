@@ -9,7 +9,7 @@ import { App } from "../components/App.js";
 import { StoreProvider } from "../components/context.js";
 import { ErrorBoundary } from "../components/ErrorBoundary.js";
 import { readAPI } from "../rpc/api.js";
-import { watchChanges } from "../rpc/events.js";
+import { RETRY_MS, watchChanges } from "../rpc/events.js";
 import type { ServerControl } from "../shell.js";
 import { ShellProvider } from "../shell.js";
 import { createReadStore } from "../store.js";
@@ -97,7 +97,19 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   // Vite's development server. desktop.tsx passes the shell's bridge when
   // it runs in Tauri. The import is lazy either way.
   const transport = options.transport ?? (await import("../rpc/mock.js")).createMockTransport();
-  const unwatch = watchChanges(transport, () => void store.getState().changed());
+  const unclose =
+    options.server === undefined ? () => {} : transport.onClose((reason) => store.getState().setOffline(reason));
+  const unwatch =
+    options.server === undefined
+      ? watchChanges(transport, () => void store.getState().changed())
+      : // A subscribe that succeeds after a drop reloads everything the
+        // window missed; reconnect's status call clears the banner.
+        watchChanges(
+          transport,
+          () => void store.getState().changed(),
+          RETRY_MS,
+          () => void store.getState().reconnect(),
+        );
   await store.getState().connect(readAPI(transport));
   await store.getState().setRoute(store.getState().route);
 
@@ -115,6 +127,7 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
       win.removeEventListener("popstate", onPop);
       query.removeEventListener("change", onScheme);
       unwatch();
+      unclose();
       unscheme();
       unfollow();
       root.unmount();

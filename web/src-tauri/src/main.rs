@@ -46,7 +46,6 @@ fn main() {
         )
         .plugin(tauri_plugin_dialog::init())
         .manage(bridge::Bridge::default())
-        .manage(server::SaveState::default())
         .invoke_handler(tauri::generate_handler![
             bridge::readd_connect,
             bridge::readd_send,

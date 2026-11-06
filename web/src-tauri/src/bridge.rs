@@ -17,7 +17,7 @@ use tokio::io::{
 };
 use tokio::net::UnixStream;
 use tokio::net::unix::OwnedWriteHalf;
-use tokio::sync::{Mutex, mpsc, oneshot, watch};
+use tokio::sync::{Mutex, RwLock, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::{Message, WebSocketConfig};
@@ -93,6 +93,7 @@ pub struct Bridge {
     connections: Mutex<HashMap<String, Connection>>,
     attempts: std::sync::Mutex<HashMap<String, u64>>,
     next_attempt: AtomicU64,
+    pub(crate) mode_gate: RwLock<()>,
 }
 
 impl Bridge {
@@ -159,6 +160,7 @@ pub async fn readd_connect(
     let label = window.label().to_string();
     let attempt = bridge.begin(&label);
     readd_connect_inner(
+        &bridge.inner().mode_gate,
         |key| std::env::var_os(key),
         |lock, socket| async move {
             stop_local_readd_inner(Instant::now() + Duration::from_secs(30), &lock, &socket).await
@@ -181,7 +183,8 @@ pub async fn readd_connect(
 
 /// Choose local or lodge, and make the caller provide only the two connects.
 /// This keeps the mode decision testable without a Tauri Window.
-async fn readd_connect_inner<FStop, S, FLocal, L, FRemote, R>(
+pub(crate) async fn readd_connect_inner<FStop, S, FLocal, L, FRemote, R>(
+    mode_gate: &RwLock<()>,
     getenv: impl Fn(&str) -> Option<std::ffi::OsString>,
     stop_local: FStop,
     local: FLocal,
@@ -195,6 +198,7 @@ where
     FRemote: FnOnce(remote::Lodge) -> R,
     R: Future<Output = Result<(), String>>,
 {
+    let _mode_read = mode_gate.read().await;
     let mode = remote::load_from(&getenv)?;
     if mode.lodge.is_empty() {
         let socket = paths::socket_from(&getenv)?;
@@ -1328,6 +1332,7 @@ mod tests {
         };
 
         let result = readd_connect_inner(
+            &RwLock::new(()),
             env,
             |_lock, _socket| async { Ok(()) },
             move |_path| {
@@ -1371,6 +1376,7 @@ mod tests {
         let remote_called_inner = remote_called.clone();
 
         let result = readd_connect_inner(
+            &RwLock::new(()),
             env,
             |_lock, _socket| async {
                 Err("This computer's reader did not stop. Frostread does not connect to lodge while it runs.".to_string())

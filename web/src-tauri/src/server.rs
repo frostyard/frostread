@@ -1,6 +1,7 @@
 //! The Server sheet's mode commands (ADR-0008, plan 0002 Phase 6).
 //! These commands write app.json and move readd into lodge or local mode.
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::future::Future;
 use std::io::Write;
@@ -10,19 +11,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant as StdInstant};
 
 use serde::Serialize;
+use serde_json::value::RawValue;
 use tauri::{State, Window};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::{bridge, paths, remote};
 
 const STOP_ERROR: &str = "This computer's reader did not stop. Frostread still uses it.";
 const LOCAL_START_ERROR: &str = "Frostread now uses this computer's reader, but it did not start. See readd.log in ~/.var/app/org.frostyard.Frostread/.local/state/frostread.";
-
-#[derive(Default)]
-pub struct SaveState {
-    save: Mutex<()>,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,11 +30,15 @@ pub struct ServerInfo {
 
 /// Read the Server sheet's local facts.
 #[tauri::command]
-pub fn server_get() -> Result<ServerInfo, String> {
-    server_get_inner(|key| std::env::var_os(key))
+pub async fn server_get(bridge: State<'_, bridge::Bridge>) -> Result<ServerInfo, String> {
+    server_get_inner(|key| std::env::var_os(key), &bridge.inner().mode_gate).await
 }
 
-fn server_get_inner(getenv: impl Fn(&str) -> Option<OsString>) -> Result<ServerInfo, String> {
+pub(crate) async fn server_get_inner(
+    getenv: impl Fn(&str) -> Option<OsString>,
+    mode_gate: &RwLock<()>,
+) -> Result<ServerInfo, String> {
+    let _mode_read = mode_gate.read().await;
     let mode = remote::load_from(&getenv)?;
     let lodge = if mode.lodge.is_empty() {
         String::new()
@@ -59,14 +60,13 @@ fn server_get_inner(getenv: impl Fn(&str) -> Option<OsString>) -> Result<ServerI
 pub async fn server_save(
     window: Window,
     bridge: State<'_, bridge::Bridge>,
-    save: State<'_, SaveState>,
     lodge: String,
 ) -> Result<(), String> {
-    let _save = save.save.lock().await;
     let label = window.label().to_string();
     let bridge_ref = bridge.inner();
 
     server_save_inner(
+        &bridge.inner().mode_gate,
         |key| std::env::var_os(key),
         Instant::now() + Duration::from_secs(30),
         lodge,
@@ -83,7 +83,8 @@ pub async fn server_save(
 
 /// One Server sheet save, with the environment and process actions provided.
 /// It has no Tauri Window, so each mode order is testable by itself.
-async fn server_save_inner<FStop, S, FStart, T, FForget, F>(
+pub(crate) async fn server_save_inner<FStop, S, FStart, T, FForget, F>(
+    mode_gate: &RwLock<()>,
     getenv: impl Fn(&str) -> Option<OsString>,
     deadline: Instant,
     lodge: String,
@@ -99,6 +100,7 @@ where
     FForget: FnOnce() -> F,
     F: Future<Output = ()>,
 {
+    let _mode_write = mode_gate.write().await;
     let mode_path = remote::mode_path_from(&getenv)?;
     let requested = lodge.trim();
 
@@ -168,6 +170,35 @@ pub(crate) fn write_mode(path: &Path, lodge: Option<&str>) -> Result<(), String>
         .parent()
         .ok_or_else(|| format!("mode path {} has no directory", path.display()))?;
 
+    let mut object = match std::fs::read(path) {
+        Ok(data) => {
+            remote::reject_duplicate_names(&data)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let object: BTreeMap<String, Box<RawValue>> =
+                serde_json::from_slice(&data).map_err(|e| format!("{}: {e}", path.display()))?;
+            object
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
+        Err(e) => return Err(format!("read {}: {e}", path.display())),
+    };
+
+    match lodge {
+        Some(lodge) => {
+            let raw = RawValue::from_string(
+                serde_json::to_string(lodge)
+                    .map_err(|e| format!("encode lodge for {}: {e}", path.display()))?,
+            )
+            .map_err(|e| format!("encode lodge for {}: {e}", path.display()))?;
+            object.insert("lodge".to_string(), raw);
+        }
+        None => {
+            object.remove("lodge");
+        }
+    }
+
+    let bytes =
+        serde_json::to_vec(&object).map_err(|e| format!("encode {}: {e}", path.display()))?;
+
     if !dir.is_dir() {
         let mut builder = std::fs::DirBuilder::new();
         builder.recursive(true);
@@ -180,30 +211,6 @@ pub(crate) fn write_mode(path: &Path, lodge: Option<&str>) -> Result<(), String>
             .create(dir)
             .map_err(|e| format!("create {}: {e}", dir.display()))?;
     }
-
-    let mut object = match std::fs::read(path) {
-        Ok(data) => match serde_json::from_slice::<serde_json::Value>(&data) {
-            Ok(serde_json::Value::Object(object)) => object,
-            _ => serde_json::Map::new(),
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::Map::new(),
-        Err(e) => return Err(format!("read {}: {e}", path.display())),
-    };
-
-    match lodge {
-        Some(lodge) => {
-            object.insert(
-                "lodge".to_string(),
-                serde_json::Value::String(lodge.to_string()),
-            );
-        }
-        None => {
-            object.remove("lodge");
-        }
-    }
-
-    let bytes = serde_json::to_vec(&serde_json::Value::Object(object))
-        .map_err(|e| format!("encode {}: {e}", path.display()))?;
 
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let temp = dir.join(format!(
@@ -256,7 +263,10 @@ pub(crate) fn write_mode(path: &Path, lodge: Option<&str>) -> Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
     use std::os::unix::fs::PermissionsExt;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct TempGuard(std::path::PathBuf);
@@ -364,6 +374,7 @@ mod tests {
         let getenv = env(dir);
 
         block_on(server_save_inner(
+            &RwLock::new(()),
             getenv,
             Instant::now() + Duration::from_secs(30),
             "https://lodge.example.ts.net".to_string(),
@@ -392,6 +403,7 @@ mod tests {
         let getenv = env(dir);
 
         let error = block_on(server_save_inner(
+            &RwLock::new(()),
             getenv,
             Instant::now() + Duration::from_secs(30),
             "https://lodge.example.ts.net".to_string(),
@@ -423,6 +435,7 @@ mod tests {
 
         let mode = remote::mode_path_from(&getenv).unwrap();
         let error = block_on(server_save_inner(
+            &RwLock::new(()),
             &getenv,
             Instant::now() + Duration::from_millis(50),
             "https://lodge.example.ts.net".to_string(),
@@ -450,6 +463,7 @@ mod tests {
         let mode_for_start = mode.clone();
 
         let error = block_on(server_save_inner(
+            &RwLock::new(()),
             getenv,
             Instant::now() + Duration::from_secs(30),
             "".to_string(),
@@ -482,6 +496,7 @@ mod tests {
         let before = std::fs::read(&mode).unwrap();
 
         let result = block_on(server_save_inner(
+            &RwLock::new(()),
             env(dir),
             Instant::now() + Duration::from_secs(30),
             "http://lodge.example.ts.net".to_string(),
@@ -502,7 +517,7 @@ mod tests {
 
         std::fs::create_dir_all(mode.parent().unwrap()).unwrap();
         std::fs::write(&mode, r#"{"lodge":"https://lodge.example.ts.net"}"#).unwrap();
-        let info = server_get_inner(&getenv).unwrap();
+        let info = block_on(server_get_inner(&getenv, &RwLock::new(()))).unwrap();
         assert_eq!(info.lodge, "https://lodge.example.ts.net");
         assert!(!info.local_data);
         let json = serde_json::to_value(&info).unwrap();
@@ -512,15 +527,229 @@ mod tests {
         let state = remote::desktop_state_dir_from(&getenv).unwrap();
         std::fs::create_dir_all(&state).unwrap();
         std::fs::write(state.join("frostread.db"), []).unwrap();
-        let info = server_get_inner(&getenv).unwrap();
+        let info = block_on(server_get_inner(&getenv, &RwLock::new(()))).unwrap();
         assert!(info.local_data);
 
         std::fs::write(&mode, r#"{"lodge":"lodge.example.ts.net"}"#).unwrap();
-        let info = server_get_inner(&getenv).unwrap();
+        let info = block_on(server_get_inner(&getenv, &RwLock::new(()))).unwrap();
         assert_eq!(info.lodge, "lodge.example.ts.net");
 
         std::fs::write(&mode, r#"{"bad""#).unwrap();
-        assert!(server_get_inner(&getenv).is_err());
+        assert!(block_on(server_get_inner(&getenv, &RwLock::new(()))).is_err());
+    }
+
+    #[derive(Deserialize)]
+    struct ModeCase {
+        name: String,
+        #[serde(default)]
+        file: Option<String>,
+    }
+
+    fn raw_members(bytes: &[u8]) -> BTreeMap<String, String> {
+        let object: BTreeMap<String, Box<RawValue>> =
+            serde_json::from_slice(bytes).expect("raw JSON object");
+        object
+            .into_iter()
+            .map(|(name, value)| (name, value.get().to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn shared_mode_table_saves_keep_raw_unknown_members() {
+        let json = include_str!("../../../internal/config/testdata/desktop-mode.json");
+        let cases: Vec<ModeCase> = serde_json::from_str(json).unwrap();
+
+        for case in cases {
+            let guard = TempGuard::new(&format!("raw-mode-{}", case.name.replace(' ', "-")));
+            let dir = guard.path();
+            let config = dir.join("config/frostread");
+            std::fs::create_dir_all(&config).unwrap();
+            let path = config.join("app.json");
+
+            if let Some(file) = &case.file {
+                std::fs::write(&path, file).unwrap();
+            }
+
+            if let Some(file) = &case.file {
+                let parsed: Result<BTreeMap<String, Box<RawValue>>, _> =
+                    serde_json::from_slice(file.as_bytes());
+                let duplicate_free = remote::reject_duplicate_names(file.as_bytes()).is_ok();
+                if let Ok(object) = parsed
+                    && duplicate_free
+                {
+                    let mut original: BTreeMap<String, String> = object
+                        .into_iter()
+                        .map(|(name, value)| (name, value.get().to_string()))
+                        .collect();
+                    original.remove("lodge");
+
+                    write_mode(&path, Some("https://lodge.example.ts.net")).unwrap();
+                    let mut lodge_members = raw_members(&std::fs::read(&path).unwrap());
+                    lodge_members.remove("lodge");
+                    assert_eq!(lodge_members, original, "{}: lodge save", case.name);
+
+                    write_mode(&path, None).unwrap();
+                    let mut local_members = raw_members(&std::fs::read(&path).unwrap());
+                    local_members.remove("lodge");
+                    assert_eq!(local_members, original, "{}: local save", case.name);
+                } else {
+                    let before = std::fs::read(&path).unwrap();
+                    assert!(
+                        write_mode(&path, Some("https://lodge.example.ts.net")).is_err(),
+                        "{}",
+                        case.name
+                    );
+                    assert_eq!(std::fs::read(&path).unwrap(), before, "{}", case.name);
+                }
+            } else {
+                write_mode(&path, Some("https://lodge.example.ts.net")).unwrap();
+                write_mode(&path, None).unwrap();
+                assert!(read_lodge(&path).get("lodge").is_none(), "{}", case.name);
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_mode_stays_unchanged() {
+        for (name, file) in [
+            ("empty", ""),
+            ("malformed", r#"{"lodge":"#),
+            ("array", "[]"),
+            ("string", r#""https://lodge.example.ts.net""#),
+            ("null", "null"),
+            (
+                "duplicate",
+                r#"{"lodge":"https://one.example.ts.net","lodge":"https://two.example.ts.net"}"#,
+            ),
+        ] {
+            let guard = TempGuard::new(&format!("malformed-{name}"));
+            let path = guard.path().join("config/frostread/app.json");
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, file).unwrap();
+            let before = std::fs::read(&path).unwrap();
+
+            assert!(
+                write_mode(&path, Some("https://lodge.example.ts.net")).is_err(),
+                "{name}"
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), before, "{name}");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn save_gate_blocks_connect_until_stop_fails() {
+        let guard = TempGuard::new("race-save-connect");
+        let dir = guard.path().to_path_buf();
+        let mode = dir.join("config/frostread/app.json");
+        std::fs::create_dir_all(mode.parent().unwrap()).unwrap();
+        std::fs::write(&mode, "{}").unwrap();
+
+        let gate = Arc::new(RwLock::new(()));
+        let (stop_started_tx, stop_started_rx) = tokio::sync::oneshot::channel();
+        let (stop_fail_tx, stop_fail_rx) = tokio::sync::oneshot::channel();
+
+        let save_gate = gate.clone();
+        let save_dir = dir.clone();
+        let save_task = tokio::spawn(async move {
+            let env = move |key: &str| -> Option<OsString> {
+                match key {
+                    "XDG_CONFIG_HOME" => Some(OsString::from(save_dir.join("config"))),
+                    "XDG_DATA_HOME" => Some(OsString::from(save_dir.join("data"))),
+                    "XDG_RUNTIME_DIR" => Some(OsString::from(save_dir.join("run"))),
+                    "HOME" => Some(OsString::from(save_dir.join("home"))),
+                    _ => None,
+                }
+            };
+            server_save_inner(
+                save_gate.as_ref(),
+                env,
+                Instant::now() + Duration::from_secs(30),
+                "https://lodge.example.ts.net".to_string(),
+                move |_, _, _| async move {
+                    let _ = stop_started_tx.send(());
+                    let _ = stop_fail_rx.await;
+                    Err("stop failed".to_string())
+                },
+                || async { Ok(()) },
+                || async {},
+            )
+            .await
+        });
+
+        stop_started_rx.await.unwrap();
+
+        let local_called = Arc::new(AtomicBool::new(false));
+        let remote_called = Arc::new(AtomicBool::new(false));
+        let connect_gate = gate.clone();
+        let connect_dir = dir.clone();
+        let connect_local = local_called.clone();
+        let connect_remote = remote_called.clone();
+        let connect_task = tokio::spawn(async move {
+            let env = move |key: &str| -> Option<OsString> {
+                match key {
+                    "XDG_CONFIG_HOME" => Some(OsString::from(connect_dir.join("config"))),
+                    "XDG_DATA_HOME" => Some(OsString::from(connect_dir.join("data"))),
+                    "XDG_RUNTIME_DIR" => Some(OsString::from(connect_dir.join("run"))),
+                    "READ_SOCKET" => Some(OsString::from(connect_dir.join("readd.sock"))),
+                    _ => None,
+                }
+            };
+            bridge::readd_connect_inner(
+                connect_gate.as_ref(),
+                env,
+                |_lock, _socket| async { Ok(()) },
+                move |_path| {
+                    connect_local.store(true, Ordering::SeqCst);
+                    async { Ok(()) }
+                },
+                move |_lodge| {
+                    connect_remote.store(true, Ordering::SeqCst);
+                    async { Ok(()) }
+                },
+            )
+            .await
+        });
+
+        tokio::task::yield_now().await;
+        assert!(!local_called.load(Ordering::SeqCst));
+        assert!(!remote_called.load(Ordering::SeqCst));
+
+        stop_fail_tx.send(()).unwrap();
+        let save_result = save_task.await.unwrap();
+        assert_eq!(save_result.unwrap_err(), STOP_ERROR);
+        assert!(read_lodge(&mode).get("lodge").is_none());
+
+        connect_task.await.unwrap().unwrap();
+        assert!(local_called.load(Ordering::SeqCst));
+        assert!(!remote_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn server_get_waits_for_save() {
+        let guard = TempGuard::new("get-waits-save");
+        let dir = guard.path().to_path_buf();
+        let gate = Arc::new(RwLock::new(()));
+        let write_gate = gate.write().await;
+
+        let get_gate = gate.clone();
+        let get_dir = dir.clone();
+        let get_task = tokio::spawn(async move {
+            let env = move |key: &str| -> Option<OsString> {
+                match key {
+                    "XDG_CONFIG_HOME" => Some(OsString::from(get_dir.join("config"))),
+                    "XDG_DATA_HOME" => Some(OsString::from(get_dir.join("data"))),
+                    "XDG_RUNTIME_DIR" => Some(OsString::from(get_dir.join("run"))),
+                    "HOME" => Some(OsString::from(get_dir.join("home"))),
+                    _ => None,
+                }
+            };
+            server_get_inner(env, get_gate.as_ref()).await
+        });
+
+        tokio::task::yield_now().await;
+        assert!(!get_task.is_finished());
+        drop(write_gate);
+        assert!(get_task.await.unwrap().is_ok());
     }
 
     #[test]

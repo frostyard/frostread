@@ -1,7 +1,7 @@
 // The desktop's server choice (ADR-0008): local facts explain a mode change,
 // and a save changes app.json through Tauri instead of reaching lodge.
 import { Sheet } from "@frostyard/lodge-ui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ServerControl, ServerInfo } from "../shell.js";
 
 /** normalizeAddress trims the address and removes one trailing slash. */
@@ -36,6 +36,7 @@ export function ServerSheet(props: { server: ServerControl; onClose: () => void 
   const [saving, setSaving] = useState(false);
   const [saveFailure, setSaveFailure] = useState<string | null>(null);
   const [reloadOnClose, setReloadOnClose] = useState(false);
+  const closingLocked = useRef(false);
 
   useEffect(() => {
     let live = true;
@@ -59,6 +60,7 @@ export function ServerSheet(props: { server: ServerControl; onClose: () => void 
   }, [props.server]);
 
   const close = () => {
+    if (closingLocked.current) return;
     props.onClose();
     if (reloadOnClose) props.server.reload();
   };
@@ -73,6 +75,7 @@ export function ServerSheet(props: { server: ServerControl; onClose: () => void 
 
   const save = async () => {
     if (disabled) return;
+    closingLocked.current = true;
     setSaving(true);
     setSaveFailure(null);
     try {
@@ -89,6 +92,7 @@ export function ServerSheet(props: { server: ServerControl; onClose: () => void 
         // The save error remains in place; get's own failure needs no
         // second error sheet.
       } finally {
+        closingLocked.current = false;
         setSaving(false);
       }
     }
@@ -148,7 +152,8 @@ export function ServerSheet(props: { server: ServerControl; onClose: () => void 
             <button
               type="button"
               onClick={close}
-              className="h-7 rounded-md border border-separator px-3 text-sidebar-row text-primary hover:bg-selection-inactive"
+              disabled={saving}
+              className="h-7 rounded-md border border-separator px-3 text-sidebar-row text-primary hover:bg-selection-inactive disabled:opacity-40"
             >
               Cancel
             </button>

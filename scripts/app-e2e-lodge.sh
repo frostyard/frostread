@@ -27,38 +27,28 @@ log=$root/dev-lodge.log
 dev_pid=
 
 end_processes() {
-  if [ -n "$dev_pid" ] && kill -0 "$dev_pid" 2>/dev/null; then
-    kill -TERM "$dev_pid" 2>/dev/null || true
+  if [ -n "$dev_pid" ]; then
+    # dev-lodge is a session leader: every lodge, Notes and readdev child
+    # stays in this process group, so only this run is ended.
+    kill -TERM "-$dev_pid" 2>/dev/null || true
     i=0
-    while kill -0 "$dev_pid" 2>/dev/null && [ "$i" -lt 100 ]; do
+    while kill -0 "-$dev_pid" 2>/dev/null && [ "$i" -lt 100 ]; do
       i=$((i + 1))
       sleep 0.1
     done
-    if kill -0 "$dev_pid" 2>/dev/null; then
-      kill -KILL "$dev_pid" 2>/dev/null || true
+    if kill -0 "-$dev_pid" 2>/dev/null; then
+      kill -KILL "-$dev_pid" 2>/dev/null || true
     fi
-  fi
-  if [ -n "$dev_pid" ]; then
     wait "$dev_pid" 2>/dev/null || true
   fi
-
-  known='[l]odge-e2e|[n]otesd|[r]eaddev|build/e2e/[r]eadd|[f]rostread-app|[W]ebKitWebDriver'
-  pids=$(pgrep -f "$known" 2>/dev/null || true)
-  if [ -n "$pids" ]; then
-    for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
-    i=0
-    while pgrep -af -r D,I,R,S,T,t "$known" >/dev/null 2>&1 && [ "$i" -lt 100 ]; do
-      i=$((i + 1))
-      sleep 0.1
-    done
-    pids=$(pgrep -af -r D,I,R,S,T,t "$known" 2>/dev/null | awk '{print $1}' || true)
-    for pid in $pids; do kill -KILL "$pid" 2>/dev/null || true; done
-  fi
+  dev_pid=
 }
-trap 'end_processes' EXIT INT TERM
+trap 'end_processes' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 LODGE_DIR="$lodge" NOTES_DIR="$notes" LODGE_PORT=8480 \
-  scripts/dev-lodge.sh "$root" >"$log" 2>&1 &
+  setsid scripts/dev-lodge.sh "$root" >"$log" 2>&1 &
 dev_pid=$!
 
 i=0

@@ -4,7 +4,7 @@
 
 import type { EventEnvelope, Transport } from "@frostyard/lodge-client/rpc";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ITEMS_CHANGED, watchChanges } from "./events.js";
+import { ITEMS_CHANGED, RETRY_MS, watchChanges } from "./events.js";
 
 /** fake is a Transport whose calls the test answers. */
 function fake() {
@@ -59,6 +59,36 @@ describe("watchChanges", () => {
     stop();
     f.emit({ event: ITEMS_CHANGED, data: {} });
     expect(changes).toBe(1);
+  });
+
+  it("calls no reconnected callback for the first subscribe", () => {
+    const f = fake();
+    let reconnected = 0;
+    watchChanges(
+      f.transport,
+      () => {},
+      RETRY_MS,
+      () => reconnected++,
+    );
+    expect(reconnected).toBe(0);
+  });
+
+  it("calls the reconnected callback only when a subscribe succeeds after a drop", async () => {
+    vi.useFakeTimers();
+    const f = fake();
+    let reconnected = 0;
+    watchChanges(
+      f.transport,
+      () => {},
+      RETRY_MS,
+      () => reconnected++,
+    );
+
+    f.answers.push("down", "ok");
+    f.close("the connection through lodge closed (1006)");
+    expect(reconnected).toBe(0);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(reconnected).toBe(1);
   });
 
   it("subscribes again after a drop, retrying until the socket is up", async () => {

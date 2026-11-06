@@ -16,10 +16,18 @@ export const RETRY_MS = 1_000;
  * watchChanges calls onChange for each items.changed, and subscribes to
  * them now and after every reconnect. A connection that is not up yet
  * refuses the call; it asks again, with a delay, until one takes.
+ * onReconnected, when given, runs when a subscribe succeeds after a drop
+ * (not after the first subscribe): the desktop refreshes what it missed.
  */
-export function watchChanges(transport: Transport, onChange: () => void, retryMs: number = RETRY_MS): () => void {
+export function watchChanges(
+  transport: Transport,
+  onChange: () => void,
+  retryMs: number = RETRY_MS,
+  onReconnected?: () => void,
+): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
+  let dropped = false;
 
   const stopRetrying = () => {
     if (timer !== undefined) {
@@ -29,11 +37,20 @@ export function watchChanges(transport: Transport, onChange: () => void, retryMs
   };
   const subscribe = () => {
     if (stopped) return;
-    transport.call("events.subscribe", {}).then(stopRetrying, () => {
-      if (stopped) return;
-      stopRetrying();
-      timer = setTimeout(subscribe, retryMs);
-    });
+    transport.call("events.subscribe", {}).then(
+      () => {
+        stopRetrying();
+        if (dropped) {
+          dropped = false;
+          onReconnected?.();
+        }
+      },
+      () => {
+        if (stopped) return;
+        stopRetrying();
+        timer = setTimeout(subscribe, retryMs);
+      },
+    );
   };
 
   const offEvent = transport.onEvent((event) => {
@@ -41,6 +58,7 @@ export function watchChanges(transport: Transport, onChange: () => void, retryMs
   });
   const offClose = transport.onClose(() => {
     if (stopped) return;
+    dropped = true;
     stopRetrying();
     subscribe();
   });

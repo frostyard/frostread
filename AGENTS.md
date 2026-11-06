@@ -191,6 +191,8 @@ counterpart of something those repositories do, read their file.
   lodge, stop failure and crash restart. It needs the lodge and frostnotes
   sibling builds passed as `LODGE_DIR` and `NOTES_DIR`, frostread's
   `build/web` from `make web-build`, and the nsl machine.
+- An e2e script ends only the processes it started (their process group
+  or recorded pids). It never kills processes found by name.
 - `make app-e2e` drives the built desktop app in WebKitGTK, headless in
   the nsl machine: `web/e2e/harness.ts` starts readdev and `readd
   -desktop` (the dev tags) on a temporary XDG tree, imports readdev's
