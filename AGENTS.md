@@ -48,11 +48,13 @@ Phase 4's first part, the Flatpak's manifest, offline sources, desktop
 file, metainfo and CI build, is merged (frostread#49, 2026-11-04). Phase
 4's second part, the launcher, the Background helper and the smoke test,
 is merged (frostread#50, 2026-11-04). Phase 5, the check on a real Snow
-desktop with real portals, is in review (frostread#51, 2026-11-04); its
+desktop with real portals, is merged (frostread#51, 2026-11-05); its
 record is in plan 0002. Phase 6's part 1, the shell's lodge
 connection, is merged (frostread#54, 2026-11-05), and part 2, the Server
-sheet, its ordered stop and the e2e test against `make dev-lodge`, is in
-review (2026-11-06). The clean-install gate is not built yet.
+sheet, its ordered stop and the e2e test against `make dev-lodge`, is
+merged (frostread#61, 2026-11-06). Phase 6's Done when holds
+(2026-11-06): the e2e test and the 2 VM checks; its record is in plan
+0002. The clean-install gate is not built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
