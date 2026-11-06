@@ -21,7 +21,7 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-04): **Phases 3 and 4 are done; Phase 5 is in review.**
+Status (2026-11-06): **Phases 3 to 6 are done.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
@@ -46,13 +46,16 @@ Status (2026-11-04): **Phases 3 and 4 are done; Phase 5 is in review.**
   `readctl --help`. The second part, the launcher of ADR-0008,
   `frostread-request-background`, `make flatpak-smoke` and the smoke
   test, is merged in frostread#50 (2026-11-04).
-- **Phase 5,** the local reader on a real desktop, is in review in
-  frostread#51 (2026-11-04): every part of its Done when held on
+- **Phase 5,** the local reader on a real desktop, is merged in
+  frostread#51 (2026-11-05): every part of its Done when held on
   Duncan's Snow VM, and the PR fixes the 3 defects the check found
   ([Phase 5's record](#phase-5s-record)).
-- **Phases 6 to 11** have not started. Nothing of the lodge connection or
-  the release candidate is built, and the clean-install gate (Phase 10)
-  has no run yet.
+- **Phase 6,** the lodge connection, is merged in frostread#54
+  (2026-11-05) and frostread#61 (2026-11-06). Its e2e test passed, and
+  both VM checks passed on Duncan's Snow VM
+  ([Phase 6's record](#phase-6s-record)).
+- **Phases 7 to 11** have not started. Nothing of the release candidate
+  is built, and the clean-install gate (Phase 10) has no run yet.
 
 ## Who helps
 
@@ -628,6 +631,7 @@ Found and left open:
   footer, and some `nasa.gov` Image of the Day pages lose their image
   (17 of 45 extractions had no image). This is the extraction, not the
   desktop, and the lodge app has it too.
+
 ## Phase 6 — The lodge connection (planner, medium)
 
 - `bridge.rs`'s remote mode: `wss://LODGE/app/read/api`, `Origin:
@@ -663,9 +667,32 @@ Phase 6 lands in 2 parts (Brian, T909a, 2026-11-05):
   The shell and readd share 2 tables of cases,
   `internal/config/testdata/desktop-mode.json` and `desktop-dirs.json`.
   Nothing writes `app.json` yet.
-- **Part 2, the rest (in review, 2026-11-06).** The Server sheet and
+- **Part 2, the rest (merged, frostread#61, 2026-11-06).** The Server sheet and
   its ordered stop, saving local, the unreachable state's texts, save as note and "Open in Notes"
   in lodge mode, and the e2e test; then the Done when above.
+
+### Phase 6's record
+
+Phase 6's Done when holds (2026-11-06).
+
+The e2e test: `make app-e2e-lodge` passed 7 of 7 in the nsl machine, on
+frostread#61 before its merge (`web/e2e/lodge.e2e.ts`).
+
+The 2 VM checks ran on Duncan's disposable Snow desktop VM: Snow
+`20261106012847` (Debian 13.7), GNOME Shell 48.7 on Wayland,
+xdg-desktop-portal 1.20.3 with xdg-desktop-portal-gnome 48.0, Flatpak
+1.16.6 and `org.gnome.Platform//51`, in a real GNOME session with GDM
+logins. The bundle is the Flatpak workflow's build of `main` cf3be44,
+after frostread#61
+([run 42268958552](https://github.com/frostyard/frostread/actions/runs/42268958552),
+Flatpak commit `de5873cb…`).
+
+| Done when | What the VM showed |
+| --- | --- |
+| A switch to lodge leaves no readd in `flatpak ps` | The Server sheet saved lodge at `https://lodge.example.ts.net`, with the VM not on the tailnet. `app.json` holds lodge; `flatpak ps` shows 1 instance of `org.frostyard.Frostread`, the window; `readd.log` logs `readd stopped` 1.5 s after Save; `frostread.db` stays |
+| A login with the autostart still registered starts none | A cold GDM login, with the autostart entry registered and Frostread not opened: `flatpak ps` shows no instance of `org.frostyard.Frostread`, and `readd.log` logs `this computer's reader is lodge's; readd stops here` |
+
+Duncan undid both checks' changes and cleaned up the VM after them.
 
 ## Phase 7 — Notes on the desktop (planner, small)
 
