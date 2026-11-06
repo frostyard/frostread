@@ -205,21 +205,36 @@ function start(command: string, args: string[], env: NodeJS.ProcessEnv, what: st
   return { proc, output: () => text };
 }
 
-/** end sends SIGTERM to a child and waits for it, failing after 10 s. */
-function end(what: string, proc: ChildProcess): Promise<void> {
-  return new Promise<void>((done, fail) => {
-    if (proc.exitCode !== null || proc.signalCode !== null) return done();
-    const timer = setTimeout(() => fail(new Error(`${what} still ran 10 s after SIGTERM`)), 10_000);
-    proc.once("exit", () => {
+/** waitExit waits for a child to exit, or until timeoutMs passes. */
+async function waitExit(proc: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (proc.exitCode !== null || proc.signalCode !== null) return true;
+  return new Promise<boolean>((done) => {
+    const onExit = () => {
       clearTimeout(timer);
-      done();
-    });
-    proc.kill("SIGTERM");
+      done(true);
+    };
+    const timer = setTimeout(() => {
+      proc.removeListener("exit", onExit);
+      done(false);
+    }, timeoutMs);
+    proc.once("exit", onExit);
   });
 }
 
+/** end sends SIGTERM, then SIGKILL, and waits for the child to exit. */
+export async function end(what: string, proc: ChildProcess, termWaitMs = 10_000, killWaitMs = 5_000): Promise<void> {
+  if (proc.exitCode !== null || proc.signalCode !== null) return;
+  proc.kill("SIGTERM");
+  if (await waitExit(proc, termWaitMs)) return;
+  if (proc.exitCode === null && proc.signalCode === null) {
+    proc.kill("SIGKILL");
+  }
+  if (await waitExit(proc, killWaitMs)) return;
+  throw new Error(`${what} still ran after SIGTERM and SIGKILL`);
+}
+
 /** pidAlive reports whether pid names a live, non-zombie process. */
-function pidAlive(pid: number): boolean {
+export function pidAlive(pid: number): boolean {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
     const close = stat.lastIndexOf(")");
@@ -243,7 +258,7 @@ function pidAlive(pid: number): boolean {
 }
 
 /** endPids ends stand-in readd processes with a bounded SIGTERM wait. */
-async function endPids(pids: number[]): Promise<string[]> {
+export async function endPids(pids: number[], termWaitMs = 10_000, killWaitMs = 5_000): Promise<string[]> {
   const problems: string[] = [];
   const unique = [...new Set(pids)].filter(pidAlive);
   for (const pid of unique) {
@@ -253,7 +268,7 @@ async function endPids(pids: number[]): Promise<string[]> {
       problems.push(`could not stop readd ${pid}: ${String(err)}`);
     }
   }
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + termWaitMs;
   while (unique.some(pidAlive) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -265,7 +280,7 @@ async function endPids(pids: number[]): Promise<string[]> {
       problems.push(`could not kill readd ${pid}: ${String(err)}`);
     }
   }
-  const killDeadline = Date.now() + 10_000;
+  const killDeadline = Date.now() + killWaitMs;
   while (unique.some(pidAlive) && Date.now() < killDeadline) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -273,7 +288,7 @@ async function endPids(pids: number[]): Promise<string[]> {
 }
 
 /** readPids reads positive integer pids recorded in a harness pid file. */
-function readPids(path: string): number[] {
+export function readPids(path: string): number[] {
   if (!existsSync(path)) return [];
   return [
     ...new Set(
@@ -284,6 +299,57 @@ function readPids(path: string): number[] {
         .filter((pid) => Number.isInteger(pid) && pid > 0),
     ),
   ];
+}
+
+/** killPids sends SIGKILL to recorded pids and waits for each to be gone. */
+export async function killPids(pids: number[], waitMs = 5_000): Promise<string[]> {
+  const problems: string[] = [];
+  const unique = [...new Set(pids)].filter(pidAlive);
+  for (const pid of unique) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch (err) {
+      problems.push(`could not SIGKILL pid ${pid}: ${String(err)}`);
+    }
+  }
+  const deadline = Date.now() + waitMs;
+  while (unique.some(pidAlive) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  for (const pid of unique) {
+    if (pidAlive(pid)) problems.push(`pid ${pid} is still alive after SIGKILL`);
+  }
+  return problems;
+}
+
+/** cleanupRecordedProcesses kills launchers, then reads and ends readd pids. */
+export async function cleanupRecordedProcesses(
+  launcherPidsFile: string,
+  readdPidsFile: string,
+  readdPidsStarted: Iterable<number> = [],
+  termWaitMs = 10_000,
+  killWaitMs = 5_000,
+): Promise<string[]> {
+  const problems: string[] = [];
+  const launched = readPids(launcherPidsFile);
+  problems.push(...(await killPids(launched, killWaitMs)));
+
+  const started = new Set([...readdPidsStarted].filter((pid) => Number.isInteger(pid) && pid > 0));
+  const ended = new Set<number>(started);
+  const first = [...new Set([...started, ...readPids(readdPidsFile)])];
+  for (const pid of first) ended.add(pid);
+  problems.push(...(await endPids(first, termWaitMs, killWaitMs)));
+
+  const second = readPids(readdPidsFile);
+  for (const pid of second) ended.add(pid);
+  problems.push(...(await endPids(second, termWaitMs, killWaitMs)));
+
+  const final = [...new Set([...started, ...readPids(readdPidsFile)])];
+  for (const pid of final) {
+    if (!ended.has(pid)) problems.push(`readd ${pid} was recorded but was not ended`);
+    if (pidAlive(pid)) problems.push(`readd ${pid} is still alive after cleanup`);
+  }
+  return problems;
 }
 
 /** App is the app under test: its session, the stand-in opener's record, and how to end it all. */
@@ -338,11 +404,12 @@ export interface LaunchOptions {
  * launch stops everything it started before it throws.
  *
  * Every wait of a launch is bounded, and the worst case of all of them, in
- * order, is 375 s without the hostile corpus and 495 s with it: readdev's
+ * order, is 405 s without the hostile corpus and 525 s with it: readdev's
  * answer 30, readd's socket 30, the seed's 3 calls 3 × 30, the extraction 30
  * (150 with the corpus), the driver's answer 45, and the session's start 120
  * (345 or 465 in all), plus the cleanup of a failed launch that has no
- * session yet: 3 processes at 10 s each, 30 more. That is below the 600 s
+ * session yet: 3 processes at 10 s and then 5 s after SIGKILL each, 45 more,
+ * and the stand-in readd processes, 15 more. That is below the 600 s
  * hookTimeout of vitest.e2e.config.ts, which leaves room for the polls'
  * small overruns, so a launch that stalls fails the hook in time and the
  * hook's own failure still stops the run. A change to a wait here must keep
@@ -354,6 +421,7 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
   for (const sub of ["data", "config", "cache", "run"]) mkdirSync(join(dir, sub), { mode: 0o700, recursive: true });
   const opener = fakeOpener(dir);
   const pidFile = join(dir, "readd-pids");
+  const launcherPidFile = join(dir, "launcher-pids");
   const readdPidsStarted = new Set<number>();
   if (opts.launcher) {
     const stand = join(dir, "bin");
@@ -361,6 +429,7 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
     writeFileSync(
       join(stand, "frostread"),
       `#!/bin/sh
+printf '%s\n' "$$" >> '${launcherPidFile}'
 set -eu
 readctl='${join(E2E, "readctl")}'
 readd='${join(E2E, "readd")}'
@@ -412,23 +481,9 @@ exit 1
         });
       }
 
-      const ended = new Set<number>(readdPidsStarted);
-      const first = [...new Set([...readdPidsStarted, ...readPids(pidFile)])];
-      for (const pid of first) ended.add(pid);
-      problems.push(...(await endPids(first)));
-
-      // A launcher that was already running can append and start a readd
-      // after the first pass. Read the file again, stop every pid it names,
-      // wait for each one to exit, and read it once more before cleanup.
-      const second = readPids(pidFile);
-      for (const pid of second) ended.add(pid);
-      problems.push(...(await endPids(second)));
-
-      const final = [...new Set([...readdPidsStarted, ...readPids(pidFile)])];
-      for (const pid of final) {
-        if (!ended.has(pid)) problems.push(`readd ${pid} was recorded but was not ended`);
-        if (pidAlive(pid)) problems.push(`readd ${pid} is still alive after cleanup`);
-      }
+      // KILL every stand-in launcher before reading readd-pids. A launcher
+      // cannot append or start another readd after this point.
+      problems.push(...(await cleanupRecordedProcesses(launcherPidFile, pidFile, readdPidsStarted)));
 
       rmSync(dir, { force: true, maxRetries: 10, recursive: true });
     }

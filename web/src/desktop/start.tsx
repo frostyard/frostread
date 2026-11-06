@@ -9,12 +9,15 @@ import { App } from "../components/App.js";
 import { StoreProvider } from "../components/context.js";
 import { ErrorBoundary } from "../components/ErrorBoundary.js";
 import { readAPI } from "../rpc/api.js";
-import { RETRY_MS, watchChanges } from "../rpc/events.js";
+import { watchChanges } from "../rpc/events.js";
 import type { ServerControl } from "../shell.js";
 import { ShellProvider } from "../shell.js";
 import { createReadStore } from "../store.js";
 import { ConnectionBanner } from "./ConnectionBanner.js";
 import { createDesktopShell, desktopRoute, type SaveFile } from "./shell.js";
+
+/** DESKTOP_RETRY_MS is the desktop's 10 second connection retry. */
+export const DESKTOP_RETRY_MS = 10_000;
 
 /** DesktopOptions say where the app starts: root is required, the rest default for the real window. */
 export interface DesktopOptions {
@@ -107,7 +110,7 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
         watchChanges(
           transport,
           () => void store.getState().changed(),
-          RETRY_MS,
+          DESKTOP_RETRY_MS,
           () => void store.getState().reconnect(),
         );
   await store.getState().connect(readAPI(transport));
@@ -117,7 +120,7 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   if (options.server !== undefined) {
     retry = win.setInterval(() => {
       if (store.getState().offline !== null) void store.getState().reconnect();
-    }, 10_000);
+    }, DESKTOP_RETRY_MS);
   }
 
   return {

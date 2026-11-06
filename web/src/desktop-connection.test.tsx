@@ -46,11 +46,13 @@ describe("the connection banner", () => {
   it("shows an idle close, reconnects after resubscribe, refreshes and hides", async () => {
     vi.useFakeTimers();
     const closes = new Set<(reason: string) => void>();
-    const subscribeAnswers: ("ok" | "down")[] = ["ok", "down", "ok"];
+    const subscribeAnswers: ("ok" | "down")[] = ["ok", "ok"];
+    let subscribeCalls = 0;
     let countsCalls = 0;
     const transport: Transport = {
       call: async <T,>(method: string): Promise<T> => {
         if (method === "events.subscribe") {
+          subscribeCalls++;
           const answer = subscribeAnswers.shift() ?? "ok";
           if (answer === "down") throw new Error("not connected");
           return { subscribed: true } as T;
@@ -80,9 +82,17 @@ describe("the connection banner", () => {
     });
     expect(started.store.getState().offline).toBe("the connection through lodge closed (1006)");
 
+    expect(subscribeCalls).toBe(1);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(9_999);
     });
+    expect(subscribeCalls).toBe(1);
+    expect(countsCalls).toBe(before);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(subscribeCalls).toBe(2);
     expect(countsCalls).toBeGreaterThan(before);
     expect(started.store.getState().offline).toBeNull();
   });

@@ -68,7 +68,7 @@ pub async fn server_save(
     server_save_inner(
         &bridge.inner().mode_gate,
         |key| std::env::var_os(key),
-        Instant::now() + Duration::from_secs(30),
+        Duration::from_secs(30),
         lodge,
         |deadline, lock, socket| async move {
             bridge::stop_local_readd_inner(deadline, &lock, &socket).await
@@ -86,7 +86,7 @@ pub async fn server_save(
 pub(crate) async fn server_save_inner<FStop, S, FStart, T, FForget, F>(
     mode_gate: &RwLock<()>,
     getenv: impl Fn(&str) -> Option<OsString>,
-    deadline: Instant,
+    stop_duration: Duration,
     lodge: String,
     stop_local: FStop,
     start_local: FStart,
@@ -120,6 +120,7 @@ where
     write_mode(&mode_path, Some(lodge.origin()))?;
 
     let lock = state.join("readd.lock");
+    let deadline = Instant::now() + stop_duration;
     if let Err(_stop_error) = stop_local(deadline, lock, socket).await {
         if let Err(write_error) = write_mode(&mode_path, None) {
             return Err(format!(
@@ -174,9 +175,13 @@ pub(crate) fn write_mode(path: &Path, lodge: Option<&str>) -> Result<(), String>
         Ok(data) => {
             remote::reject_duplicate_names(&data)
                 .map_err(|e| format!("{}: {e}", path.display()))?;
-            let object: BTreeMap<String, Box<RawValue>> =
-                serde_json::from_slice(&data).map_err(|e| format!("{}: {e}", path.display()))?;
-            object
+            if std::str::from_utf8(&data).is_ok_and(|text| text.trim() == "null") {
+                BTreeMap::new()
+            } else {
+                let object: BTreeMap<String, Box<RawValue>> = serde_json::from_slice(&data)
+                    .map_err(|e| format!("{}: {e}", path.display()))?;
+                object
+            }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
         Err(e) => return Err(format!("read {}: {e}", path.display())),
@@ -376,7 +381,7 @@ mod tests {
         block_on(server_save_inner(
             &RwLock::new(()),
             getenv,
-            Instant::now() + Duration::from_secs(30),
+            Duration::from_secs(30),
             "https://lodge.example.ts.net".to_string(),
             move |_, lock, socket| async move {
                 assert_eq!(read_lodge(&mode)["lodge"], "https://lodge.example.ts.net");
@@ -405,7 +410,7 @@ mod tests {
         let error = block_on(server_save_inner(
             &RwLock::new(()),
             getenv,
-            Instant::now() + Duration::from_secs(30),
+            Duration::from_secs(30),
             "https://lodge.example.ts.net".to_string(),
             |_, _, _| async { Err("stop failed".to_string()) },
             || async { panic!("start must not run for lodge") },
@@ -437,7 +442,7 @@ mod tests {
         let error = block_on(server_save_inner(
             &RwLock::new(()),
             &getenv,
-            Instant::now() + Duration::from_millis(50),
+            Duration::from_millis(50),
             "https://lodge.example.ts.net".to_string(),
             |deadline, lock, socket| async move {
                 bridge::stop_local_readd_inner(deadline, &lock, &socket).await
@@ -465,7 +470,7 @@ mod tests {
         let error = block_on(server_save_inner(
             &RwLock::new(()),
             getenv,
-            Instant::now() + Duration::from_secs(30),
+            Duration::from_secs(30),
             "".to_string(),
             |_, _, _| async { panic!("stop must not run for local") },
             move || {
@@ -498,7 +503,7 @@ mod tests {
         let result = block_on(server_save_inner(
             &RwLock::new(()),
             env(dir),
-            Instant::now() + Duration::from_secs(30),
+            Duration::from_secs(30),
             "http://lodge.example.ts.net".to_string(),
             |_, _, _| async { Ok(()) },
             || async { Ok(()) },
@@ -571,6 +576,20 @@ mod tests {
             }
 
             if let Some(file) = &case.file {
+                if file.trim() == "null" {
+                    let getenv = env(dir);
+                    assert_eq!(
+                        remote::load_from(&getenv).unwrap(),
+                        remote::Mode::default(),
+                        "{}",
+                        case.name
+                    );
+                    write_mode(&path, Some("https://lodge.example.ts.net")).unwrap();
+                    assert_eq!(read_lodge(&path)["lodge"], "https://lodge.example.ts.net");
+                    write_mode(&path, None).unwrap();
+                    assert!(read_lodge(&path).get("lodge").is_none(), "{}", case.name);
+                    continue;
+                }
                 let parsed: Result<BTreeMap<String, Box<RawValue>>, _> =
                     serde_json::from_slice(file.as_bytes());
                 let duplicate_free = remote::reject_duplicate_names(file.as_bytes()).is_ok();
@@ -616,7 +635,6 @@ mod tests {
             ("malformed", r#"{"lodge":"#),
             ("array", "[]"),
             ("string", r#""https://lodge.example.ts.net""#),
-            ("null", "null"),
             (
                 "duplicate",
                 r#"{"lodge":"https://one.example.ts.net","lodge":"https://two.example.ts.net"}"#,
@@ -634,6 +652,73 @@ mod tests {
             );
             assert_eq!(std::fs::read(&path).unwrap(), before, "{name}");
         }
+    }
+
+    #[test]
+    fn null_mode_loads_and_saves_as_empty_object() {
+        let guard = TempGuard::new("null-mode");
+        let dir = guard.path();
+        let config = dir.join("config/frostread");
+        std::fs::create_dir_all(&config).unwrap();
+        let path = config.join("app.json");
+        std::fs::write(&path, "null").unwrap();
+
+        let getenv = env(dir);
+        assert_eq!(remote::load_from(&getenv).unwrap(), remote::Mode::default());
+
+        write_mode(&path, Some("https://lodge.example.ts.net")).unwrap();
+        assert_eq!(read_lodge(&path)["lodge"], "https://lodge.example.ts.net");
+
+        write_mode(&path, None).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"{}");
+    }
+
+    #[tokio::test(start_paused = true, flavor = "current_thread")]
+    async fn save_deadline_starts_after_gate_wait() {
+        let guard = TempGuard::new("save-deadline-gate");
+        let dir = guard.path().to_path_buf();
+        let mode = dir.join("config/frostread/app.json");
+        std::fs::create_dir_all(mode.parent().unwrap()).unwrap();
+        std::fs::write(&mode, "{}").unwrap();
+
+        let gate = Arc::new(RwLock::new(()));
+        let gate_read = gate.read().await;
+        let save_gate = gate.clone();
+        let save_dir = dir.clone();
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel();
+        let save_task = tokio::spawn(async move {
+            let env = move |key: &str| -> Option<OsString> {
+                match key {
+                    "XDG_CONFIG_HOME" => Some(OsString::from(save_dir.join("config"))),
+                    "XDG_DATA_HOME" => Some(OsString::from(save_dir.join("data"))),
+                    "XDG_RUNTIME_DIR" => Some(OsString::from(save_dir.join("run"))),
+                    "HOME" => Some(OsString::from(save_dir.join("home"))),
+                    _ => None,
+                }
+            };
+            server_save_inner(
+                save_gate.as_ref(),
+                env,
+                Duration::from_millis(100),
+                "https://lodge.example.ts.net".to_string(),
+                move |deadline, _, _| async move {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    let _ = seen_tx.send(remaining);
+                    Err("stop failed".to_string())
+                },
+                || async { Ok(()) },
+                || async {},
+            )
+            .await
+        });
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(2)).await;
+        drop(gate_read);
+
+        let remaining = seen_rx.await.unwrap();
+        assert!(remaining >= Duration::from_millis(90));
+        assert_eq!(save_task.await.unwrap().unwrap_err(), STOP_ERROR);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -663,7 +748,7 @@ mod tests {
             server_save_inner(
                 save_gate.as_ref(),
                 env,
-                Instant::now() + Duration::from_secs(30),
+                Duration::from_secs(30),
                 "https://lodge.example.ts.net".to_string(),
                 move |_, _, _| async move {
                     let _ = stop_started_tx.send(());
@@ -696,13 +781,14 @@ mod tests {
             };
             bridge::readd_connect_inner(
                 connect_gate.as_ref(),
+                Duration::from_secs(10),
                 env,
                 |_lock, _socket| async { Ok(()) },
                 move |_path| {
                     connect_local.store(true, Ordering::SeqCst);
                     async { Ok(()) }
                 },
-                move |_lodge| {
+                move |_lodge, _timeout| {
                     connect_remote.store(true, Ordering::SeqCst);
                     async { Ok(()) }
                 },

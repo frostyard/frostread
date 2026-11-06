@@ -161,6 +161,7 @@ pub async fn readd_connect(
     let attempt = bridge.begin(&label);
     readd_connect_inner(
         &bridge.inner().mode_gate,
+        Duration::from_secs(10),
         |key| std::env::var_os(key),
         |lock, socket| async move {
             stop_local_readd_inner(Instant::now() + Duration::from_secs(30), &lock, &socket).await
@@ -171,11 +172,11 @@ pub async fn readd_connect(
             let label = label.clone();
             async move { connect_local(path, attempt, label, bridge, on_message).await }
         },
-        |lodge| {
+        |lodge, timeout| {
             let bridge = bridge.inner();
             let on_message = on_message.clone();
             let label = label.clone();
-            async move { connect_lodge_mode(lodge, attempt, label, bridge, on_message).await }
+            async move { connect_lodge_mode(lodge, attempt, label, bridge, on_message, timeout).await }
         },
     )
     .await
@@ -185,6 +186,7 @@ pub async fn readd_connect(
 /// This keeps the mode decision testable without a Tauri Window.
 pub(crate) async fn readd_connect_inner<FStop, S, FLocal, L, FRemote, R>(
     mode_gate: &RwLock<()>,
+    lodge_connect_timeout: Duration,
     getenv: impl Fn(&str) -> Option<std::ffi::OsString>,
     stop_local: FStop,
     local: FLocal,
@@ -195,7 +197,7 @@ where
     S: Future<Output = Result<(), String>>,
     FLocal: FnOnce(PathBuf) -> L,
     L: Future<Output = Result<(), String>>,
-    FRemote: FnOnce(remote::Lodge) -> R,
+    FRemote: FnOnce(remote::Lodge, Duration) -> R,
     R: Future<Output = Result<(), String>>,
 {
     let _mode_read = mode_gate.read().await;
@@ -209,7 +211,7 @@ where
     let state = remote::desktop_state_dir_from(&getenv)?;
     let socket = paths::socket_from(&getenv)?;
     stop_local(state.join("readd.lock"), socket).await?;
-    remote(lodge).await
+    remote(lodge, lodge_connect_timeout).await
 }
 
 /// Open one local Unix-socket connection and keep exactly one per window.
@@ -244,7 +246,12 @@ async fn connect_local(
 }
 
 /// Open lodge's /app/read/api with its ASCII origin.
+#[cfg(test)]
 async fn connect_lodge(lodge: &remote::Lodge) -> Result<Socket, String> {
+    connect_lodge_inner(lodge, Duration::from_secs(10)).await
+}
+
+async fn connect_lodge_inner(lodge: &remote::Lodge, bound: Duration) -> Result<Socket, String> {
     let mut req = lodge
         .api_url()
         .into_client_request()
@@ -256,10 +263,22 @@ async fn connect_lodge(lodge: &remote::Lodge) -> Result<Socket, String> {
     req.headers_mut().insert("Origin", origin);
 
     let config = lodge_websocket_config();
-    let (ws, _) = tokio_tungstenite::connect_async_with_config(req, Some(config), false)
-        .await
-        .map_err(|e| format!("connect to read through lodge at {}: {e}", lodge.origin()))?;
-    Ok(ws)
+    match tokio::time::timeout(
+        bound,
+        tokio_tungstenite::connect_async_with_config(req, Some(config), false),
+    )
+    .await
+    {
+        Err(_) => Err(format!(
+            "connect to read through lodge at {}: no answer in {bound:?}",
+            lodge.origin()
+        )),
+        Ok(Ok((ws, _))) => Ok(ws),
+        Ok(Err(e)) => Err(format!(
+            "connect to read through lodge at {}: {e}",
+            lodge.origin()
+        )),
+    }
 }
 
 /// Split lodge, keep one writer task, and stream text frames to the webview.
@@ -297,8 +316,9 @@ async fn connect_lodge_mode(
     label: String,
     bridge: &Bridge,
     on_message: Channel<BridgeMessage>,
+    timeout: Duration,
 ) -> Result<(), String> {
-    let ws = connect_lodge(&lodge).await?;
+    let ws = connect_lodge_inner(&lodge, timeout).await?;
     let (connection, _tasks) = spawn_lodge(ws, move |message| on_message.send(message).is_ok());
     let stop = connection.stop.clone();
     if !bridge
@@ -1047,6 +1067,30 @@ mod tests {
         }
     }
 
+    #[tokio::test(start_paused = true, flavor = "current_thread")]
+    async fn lodge_connect_timeout_bounds_accepting_silent_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.unwrap();
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        });
+
+        let lodge = remote::Lodge::parse(&format!("http://{addr}")).unwrap();
+        let error = connect_lodge_inner(&lodge, Duration::from_millis(50))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error,
+            format!(
+                "connect to read through lodge at {}: no answer in 50ms",
+                lodge.origin()
+            )
+        );
+
+        drop(server);
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn loopback_lodge_text_origin_and_line() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1333,13 +1377,14 @@ mod tests {
 
         let result = readd_connect_inner(
             &RwLock::new(()),
+            Duration::from_secs(10),
             env,
             |_lock, _socket| async { Ok(()) },
             move |_path| {
                 local_called_inner.store(true, Ordering::SeqCst);
                 async { Ok(()) }
             },
-            |lodge| async move { connect_lodge(&lodge).await.map(|_| ()) },
+            |lodge, timeout| async move { connect_lodge_inner(&lodge, timeout).await.map(|_| ()) },
         )
         .await;
 
@@ -1377,6 +1422,7 @@ mod tests {
 
         let result = readd_connect_inner(
             &RwLock::new(()),
+            Duration::from_secs(10),
             env,
             |_lock, _socket| async {
                 Err("This computer's reader did not stop. Frostread does not connect to lodge while it runs.".to_string())
@@ -1385,7 +1431,7 @@ mod tests {
                 local_called_inner.store(true, Ordering::SeqCst);
                 async { Ok(()) }
             },
-            move |_lodge| {
+            move |_lodge, _timeout| {
                 remote_called_inner.store(true, Ordering::SeqCst);
                 async { Ok(()) }
             },

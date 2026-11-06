@@ -88,6 +88,8 @@ describe("watchChanges", () => {
     f.close("the connection through lodge closed (1006)");
     expect(reconnected).toBe(0);
     await vi.advanceTimersByTimeAsync(1_000);
+    expect(reconnected).toBe(0);
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(reconnected).toBe(1);
   });
 

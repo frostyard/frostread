@@ -35,20 +35,29 @@ export function watchChanges(
       timer = undefined;
     }
   };
-  const subscribe = () => {
+  const subscribe = (afterDrop = false) => {
     if (stopped) return;
     transport.call("events.subscribe", {}).then(
       () => {
-        stopRetrying();
-        if (dropped) {
-          dropped = false;
-          onReconnected?.();
+        if (afterDrop) {
+          stopRetrying();
+          if (dropped) {
+            dropped = false;
+            onReconnected?.();
+          }
         }
       },
       () => {
         if (stopped) return;
+        if (dropped) {
+          if (afterDrop) {
+            stopRetrying();
+            timer = setTimeout(() => subscribe(true), retryMs);
+          }
+          return;
+        }
         stopRetrying();
-        timer = setTimeout(subscribe, retryMs);
+        timer = setTimeout(() => subscribe(false), retryMs);
       },
     );
   };
@@ -60,7 +69,11 @@ export function watchChanges(
     if (stopped) return;
     dropped = true;
     stopRetrying();
-    subscribe();
+    // Without onReconnected (lodge's frame), the first try after a drop
+    // is at once, as it always was. The desktop waits retryMs first, as
+    // its banner says.
+    if (onReconnected === undefined) subscribe(true);
+    else timer = setTimeout(() => subscribe(true), retryMs);
   });
   subscribe();
 
