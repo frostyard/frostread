@@ -104,7 +104,7 @@ counterpart of something those repositories do, read their file.
 - `web/src-tauri/`: the Tauri v2 shell for identifier
   `org.frostyard.Frostread`; `bridge.rs` moves lines between the window
   and readd's private socket, or lodge's `/app/read/api` in lodge mode,
-  and never parses them; `remote.rs` reads `app.json` and lodge's
+  and never parses them; `server.rs` handles the Server sheet and `remote.rs` reads `app.json` and lodge's
   address, and stops a local readd before a lodge connection, from 2
   tables of cases it shares with `internal/config`
   (`testdata/desktop-mode.json`, `testdata/desktop-dirs.json`); `paths.rs` derives
@@ -114,7 +114,7 @@ counterpart of something those repositories do, read their file.
   `main.rs` admits only the app in the main frame, opens `http`, `https`
   and `mailto` links with the opener and denies every new window, and
   keeps a single instance; `capabilities/default.json` grants only the
-  bridge and `save_file`.
+  bridge, `save_file` and the two Server sheet commands.
 - `web/src/desktop.tsx` and `web/src/desktop/`: the desktop entry,
   `web/desktop.html`, built into `build/desktop`: the desktop `Shell`
   and the saver; the Tauri transport is

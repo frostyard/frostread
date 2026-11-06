@@ -1,13 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window's bridge commands (readd_connect and readd_send) and the save_file command: the page reaches readd and asks the shell to save a named text file. No core:default, no dialog and no opener permission is granted to the page.",
+  "description": "The main window's bridge commands (readd_connect and readd_send), the save_file command and the Server sheet commands (server_get and server_save): the page reaches readd, asks the shell to save a named text file and changes the desktop mode. No core:default, no dialog and no opener permission is granted to the page.",
   "windows": [
     "main"
   ],
   "permissions": [
     "allow-readd-connect",
     "allow-readd-send",
-    "allow-save-file"
+    "allow-save-file",
+    "allow-server-get",
+    "allow-server-save"
   ]
 }

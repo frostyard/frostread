@@ -189,7 +189,7 @@ pub(crate) fn desktop_state_dir_from(
     Ok(paths::clean(&dir.join("frostread")))
 }
 
-fn mode_path_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, String> {
+pub(crate) fn mode_path_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, String> {
     let dir = xdg_from(&getenv, "XDG_CONFIG_HOME", ".config")?;
     Ok(paths::clean(&dir.join("frostread").join(MODE_FILE)))
 }

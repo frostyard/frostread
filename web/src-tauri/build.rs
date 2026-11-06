@@ -8,7 +8,13 @@ fn main() {
         .expect("frostread's build failed");
 }
 
-/// The app's own commands: the bridge's two and the file saver.
+/// The app's own commands: the bridge, the file saver and the Server sheet.
 fn manifest() -> tauri_build::AppManifest {
-    tauri_build::AppManifest::new().commands(&["readd_connect", "readd_send", "save_file"])
+    tauri_build::AppManifest::new().commands(&[
+        "readd_connect",
+        "readd_send",
+        "save_file",
+        "server_get",
+        "server_save",
+    ])
 }

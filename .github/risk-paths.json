@@ -94,7 +94,7 @@
       "why": "auth: the sanitizer calls on feed and article HTML, and the image types an article keeps (no SVG)"
     },
     {
-      "glob": "web/src-tauri/src/{main,bridge,remote,paths,files,portal}.rs",
+      "glob": "web/src-tauri/src/{main,bridge,remote,paths,files,portal,server}.rs",
       "why": "auth: the shell's navigation admission, link opener, bridge to readd or lodge and its socket path, lodge connection and file saves"
     },
     {

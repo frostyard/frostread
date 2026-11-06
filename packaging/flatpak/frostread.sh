@@ -10,6 +10,10 @@
 #                            state directory's lock (a second one exits at
 #                            once), turns readd.log over past 1 MiB once it
 #                            holds the lock, and exits 0 in lodge mode.
+#   frostread --start        Start and wait for this computer's readd in local
+#                            mode, start the Background helper, and exit 0
+#                            only when readctl status answers. In lodge mode,
+#                            print an error and start no readd or helper.
 #   frostread [ARGS]         In local mode: make sure the latest readd runs,
 #                            ask the Background portal for background and
 #                            autostart, and run the app. In lodge mode: stop
@@ -76,10 +80,15 @@ fi
 
 mode=$(bounded 5 readd -desktop -mode 2>/dev/null) || mode=local
 
+if [ "${1:-}" = "--start" ]; then
+    if [ "$mode" = "lodge" ]; then
+        echo "frostread --start: the mode is lodge" >&2
+        exit 1
+    fi
+fi
+
 # Lodge mode does not start this computer's readd, and stops one that a
-# crash or a stale autostart left running (ADR-0008, step 2). The wait for
-# the data lock (step 3) is the window's, with the lodge connection
-# (plan 0002, Phase 6).
+# crash or a stale autostart left running (ADR-0008, step 2).
 if [ "$mode" = "lodge" ]; then
     if status; then
         bounded 35 readctl shutdown >>"$state/readd.log" 2>&1 || true
@@ -87,73 +96,87 @@ if [ "$mode" = "lodge" ]; then
     exec "$app" "$@"
 fi
 
-# In local mode, replace an old readd only when the latest build is known.
-if status && [ -n "$have_spawn" ]; then
-    running=$(bounded 2 readctl status 2>/dev/null | sed -n 's/^build //p') || running=
-    latest=
-    latest_file=$(mktemp "$state/latest-build.XXXXXX" 2>/dev/null) || latest_file=
-    if [ -n "$latest_file" ]; then
-        if bounded 10 flatpak-spawn --latest-version readd -build </dev/null >"$latest_file" 2>/dev/null; then
-            read -r latest <"$latest_file" || true
-        fi
-        rm -f "$latest_file"
-    fi
-    if [ -n "$running" ] && [ -n "$latest" ] && [ "$running" != "$latest" ]; then
-        bounded 35 readctl shutdown >>"$state/readd.log" 2>&1 || true
-
-        # readctl shutdown answers while readd is stopping. The old readd
-        # can answer status briefly after that, so do not let it skip the
-        # start block. Wait until status fails; then only a replacement
-        # readd that holds the lock can answer status.
-        deadline=$(($(date +%s) + 10))
-        while [ "$(date +%s)" -lt "$deadline" ] && status; do
-            sleep 0.25
-        done
-    fi
-fi
-
-# Start readd through the portal, for about 10 s, until it answers.
-# readctl shutdown returns when readd answers, not when it has released its
-# lock: a readd started too early exits with "another readd uses", and its
-# flatpak-spawn ends. So a spawn that has ended is started again, until the
-# deadline.
-if ! status; then
-    spawned=
-    if [ -n "$have_spawn" ]; then
-        flatpak-spawn --latest-version frostread --background </dev/null >>"$state/readd.log" 2>&1 &
-        spawned=$!
-
-        deadline=$(($(date +%s) + 10))
-        while [ "$(date +%s)" -lt "$deadline" ] && ! status; do
-            if [ -z "$spawned" ] || ! kill -0 "$spawned" 2>/dev/null; then
-                flatpak-spawn --latest-version frostread --background </dev/null >>"$state/readd.log" 2>&1 &
-                spawned=$!
+# Shared local-mode work: replace an old readd, start readd through the
+# portal, and start the Background helper. Plain launch and --start call
+# this same block. The caller decides whether to run the app or exit.
+start_local() {
+    # Replace an old readd only when the latest build is known.
+    if status && [ -n "$have_spawn" ]; then
+        running=$(bounded 2 readctl status 2>/dev/null | sed -n 's/^build //p') || running=
+        latest=
+        latest_file=$(mktemp "$state/latest-build.XXXXXX" 2>/dev/null) || latest_file=
+        if [ -n "$latest_file" ]; then
+            if bounded 10 flatpak-spawn --latest-version readd -build </dev/null >"$latest_file" 2>/dev/null; then
+                read -r latest <"$latest_file" || true
             fi
-            sleep 0.5
-        done
-
-        # flatpak-spawn forwards catchable signals to the command it spawned.
-        # Only SIGKILL ends flatpak-spawn alone. The portal keeps readd on
-        # without --watch-bus, and readd holds its own stdout and stderr.
-        # End the portal process on every path before the app starts.
-        if [ -n "$spawned" ]; then
-            kill -KILL "$spawned" 2>/dev/null || true
-            wait "$spawned" 2>/dev/null || true
+            rm -f "$latest_file"
         fi
+        if [ -n "$running" ] && [ -n "$latest" ] && [ "$running" != "$latest" ]; then
+            bounded 35 readctl shutdown >>"$state/readd.log" 2>&1 || true
 
-        if ! status; then
+            # readctl shutdown answers while readd is stopping. The old readd
+            # can answer status briefly after that, so do not let it skip the
+            # start block. Wait until status fails; then only a replacement
+            # readd that holds the lock can answer status.
+            deadline=$(($(date +%s) + 10))
+            while [ "$(date +%s)" -lt "$deadline" ] && status; do
+                sleep 0.25
+            done
+        fi
+    fi
+
+    # Start readd through the portal, for about 10 s, until it answers.
+    # readctl shutdown returns when readd answers, not when it has released
+    # its lock, so a spawn that has ended is started again until its deadline.
+    if ! status; then
+        spawned=
+        if [ -n "$have_spawn" ]; then
+            flatpak-spawn --latest-version frostread --background </dev/null >>"$state/readd.log" 2>&1 &
+            spawned=$!
+
+            deadline=$(($(date +%s) + 10))
+            while [ "$(date +%s)" -lt "$deadline" ] && ! status; do
+                if [ -z "$spawned" ] || ! kill -0 "$spawned" 2>/dev/null; then
+                    flatpak-spawn --latest-version frostread --background </dev/null >>"$state/readd.log" 2>&1 &
+                    spawned=$!
+                fi
+                sleep 0.5
+            done
+
+            # flatpak-spawn forwards catchable signals to the command it
+            # spawned. Only SIGKILL ends flatpak-spawn alone. The portal keeps
+            # readd on without --watch-bus, and readd holds its own stdout
+            # and stderr. End the portal process on every path before the
+            # app starts or --start exits.
+            if [ -n "$spawned" ]; then
+                kill -KILL "$spawned" 2>/dev/null || true
+                wait "$spawned" 2>/dev/null || true
+            fi
+
+            if ! status; then
+                msg="frostread: readd did not start through the Flatpak portal (flatpak-spawn); see $state/readd.log"
+                echo "$msg" >&2
+                echo "$msg" >>"$state/readd.log"
+            fi
+        else
             msg="frostread: readd did not start through the Flatpak portal (flatpak-spawn); see $state/readd.log"
             echo "$msg" >&2
             echo "$msg" >>"$state/readd.log"
         fi
-    else
-        msg="frostread: readd did not start through the Flatpak portal (flatpak-spawn); see $state/readd.log"
-        echo "$msg" >&2
-        echo "$msg" >>"$state/readd.log"
     fi
+
+    # Start the helper in a subshell, so it is not a child of the Tauri
+    # app. A Tauri app does not reap this helper and would leave it defunct.
+    ( frostread-request-background >>"$state/background.log" 2>&1 & )
+}
+
+start_local
+
+if [ "${1:-}" = "--start" ]; then
+    if status; then
+        exit 0
+    fi
+    exit 1
 fi
 
-# Start the helper in a subshell, so it is not a child of the Tauri app.
-# A Tauri app does not reap this helper and would leave it defunct.
-( frostread-request-background >>"$state/background.log" 2>&1 & )
 exec "$app" "$@"

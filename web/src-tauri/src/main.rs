@@ -10,6 +10,7 @@ mod paths;
 mod portal;
 mod problems;
 mod remote;
+mod server;
 
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -45,10 +46,13 @@ fn main() {
         )
         .plugin(tauri_plugin_dialog::init())
         .manage(bridge::Bridge::default())
+        .manage(server::SaveState::default())
         .invoke_handler(tauri::generate_handler![
             bridge::readd_connect,
             bridge::readd_send,
-            files::save_file
+            files::save_file,
+            server::server_get,
+            server::server_save
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
@@ -277,7 +281,13 @@ mod tests {
         let granted: Vec<&str> = list.split('"').skip(1).step_by(2).collect();
         assert_eq!(
             granted,
-            ["allow-readd-connect", "allow-readd-send", "allow-save-file"]
+            [
+                "allow-readd-connect",
+                "allow-readd-send",
+                "allow-save-file",
+                "allow-server-get",
+                "allow-server-save"
+            ]
         );
         assert!(
             caps.contains("\"main\""),

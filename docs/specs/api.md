@@ -586,6 +586,32 @@ does not parse is an error, never local mode. In lodge mode
    a WebSocket ping; the kit ignores a client notification, so readd
    answers nothing and the page's ids are untouched.
 
+**The Server sheet** (plan 0002, Phase 6, part 2) has two Tauri
+commands: `server_get` returns `{"lodge":"…","localData":true|false}` and
+`server_save` changes the mode and closes the window's current bridge
+connection. `server_get` returns the lodge origin as text, or the raw
+trimmed lodge text when it does not parse; `""` means local mode. The
+local data is true only when `<state>/frostread.db` is a file. A mode
+file that does not parse is an error.
+
+When the user saves lodge, `server_save` parses the address before it
+writes; a bad address writes nothing. It then writes `app.json` with the
+lodge origin, takes the data lock and calls `daemon.shutdown` on the
+local readd, waiting at most 30 seconds. A lock that stays held writes
+app.json back to local mode and returns exactly `This computer's reader did not stop. Frostread still uses it.` If that write-back also fails, it
+returns exactly `This computer's reader did not stop, and Frostread could not write local back to app.json: <error>`. A successful stop closes the
+current bridge connection. When the user saves local, `server_save`
+writes app.json without `lodge`, closes the current bridge connection,
+and runs `frostread --start`. A missing launcher, a non-zero exit or a 30
+second timeout returns exactly `Frostread now uses this computer's reader, but it did not start. See readd.log in ~/.var/app/org.frostyard.Frostread/.local/state/frostread.` The mode stays local.
+
+`frostread --start` in the Flatpak starts no Tauri app. In local mode it
+runs the shared local launcher block: replace an old readd through the
+Flatpak portal, wait for `readctl status`, and start the Background helper.
+It exits 0 only when `readctl status` answers, else it exits 1. In lodge
+mode it prints `frostread --start: the mode is lodge` to stderr and
+exits 1 without starting readd or the helper.
+
 A connection that fails is an error to the window, which retries with its
 next call. The shell never falls back to the local readd in lodge mode.
 

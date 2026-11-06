@@ -147,6 +147,64 @@ export FROSTREAD_LIBEXEC_DIR="$work/libexec"
 PATH="$work/bin:$bin:$PATH"
 export PATH
 
+# --start starts local readd and the helper without running the app.
+rm -f "$SMOKE_SPAWN_PID" "$SMOKE_CHILD_PID" "$SMOKE_REQUEST_ARGS" "$SMOKE_APP_CHILDREN"
+rc=0
+"$bin/frostread" --start >"$work/start.log" 2>&1 || rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "smoke test: frostread --start exited $rc in local mode with no readd" >&2
+    print_logs
+    exit 1
+fi
+start_pid=$(cat "$SMOKE_CHILD_PID" 2>/dev/null || true)
+start_spawn=$(cat "$SMOKE_SPAWN_PID" 2>/dev/null || true)
+ready=
+for _ in $(seq 1 40); do
+    if readctl status >/dev/null 2>&1; then
+        ready=1
+        break
+    fi
+    if [ -n "$start_pid" ] && ! kill -0 "$start_pid" 2>/dev/null; then
+        break
+    fi
+    sleep 0.25
+done
+if [ -z "$ready" ] || [ -z "$start_pid" ]; then
+    echo "smoke test: frostread --start did not leave a ready readd" >&2
+    print_logs
+    exit 1
+fi
+for _ in $(seq 1 50); do
+    [ -s "$SMOKE_REQUEST_ARGS" ] && break
+    sleep 0.1
+done
+if [ ! -s "$SMOKE_REQUEST_ARGS" ]; then
+    echo "smoke test: frostread --start did not run the Background helper" >&2
+    print_logs
+    exit 1
+fi
+if [ -e "$SMOKE_APP_CHILDREN" ]; then
+    echo "smoke test: frostread --start ran the Tauri app" >&2
+    print_logs
+    exit 1
+fi
+if [ -n "$start_spawn" ] && kill -0 "$start_spawn" 2>/dev/null; then
+    echo "smoke test: flatpak-spawn $start_spawn outlived frostread --start" >&2
+    print_logs
+    exit 1
+fi
+
+# Stop the readd started only for this --start check. The existing launcher
+# and log-rotation scenario below starts with no readd again.
+readctl shutdown >/dev/null 2>&1 || true
+for _ in $(seq 1 40); do
+    if [ -z "$start_pid" ] || ! kill -0 "$start_pid" 2>/dev/null; then
+        break
+    fi
+    sleep 0.25
+done
+rm -f "$SMOKE_SPAWN_PID" "$SMOKE_CHILD_PID"
+
 # A readd log over 1 MiB must rotate once the daemon holds the lock.
 dd if=/dev/zero of="$state/readd.log" bs=1024 count=1025 2>/dev/null
 
@@ -438,6 +496,26 @@ if [ "$rc" -ne 0 ]; then
 fi
 if readctl status >/dev/null 2>&1; then
     echo "smoke test: frostread --background started readd in lodge mode" >&2
+    print_logs
+    exit 1
+fi
+# --start in lodge mode starts neither readd nor the app or helper.
+rm -f "$SMOKE_SPAWN_PID" "$SMOKE_CHILD_PID" "$SMOKE_REQUEST_ARGS" "$SMOKE_APP_CHILDREN"
+rc=0
+"$bin/frostread" --start >"$work/start.log" 2>&1 || rc=$?
+if [ "$rc" -ne 1 ]; then
+    echo "smoke test: frostread --start exited $rc in lodge mode; want 1" >&2
+    print_logs
+    exit 1
+fi
+if [ -e "$SMOKE_SPAWN_PID" ] || [ -e "$SMOKE_REQUEST_ARGS" ] || [ -e "$SMOKE_APP_CHILDREN" ]; then
+    echo "smoke test: frostread --start started readd, the app or the helper in lodge mode" >&2
+    print_logs
+    exit 1
+fi
+if ! grep -qx "frostread --start: the mode is lodge" "$work/start.log"; then
+    echo "smoke test: frostread --start has no lodge-mode error" >&2
+    cat "$work/start.log" >&2
     print_logs
     exit 1
 fi
