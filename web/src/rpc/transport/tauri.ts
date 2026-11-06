@@ -68,7 +68,12 @@ export function connectTauri(ipc?: BridgeIPC): Transport {
       if (message.kind === "line") next.receive(message.line);
       else next.close(message.error);
     });
-    await bridge.invoke("readd_connect", { onMessage: channel });
+    try {
+      await bridge.invoke("readd_connect", { onMessage: channel });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new RPCError(CodeNotConnected, reason);
+    }
     // A new connection is a new session: readd answers every method but
     // rpc.hello with notReady until it has one (docs/specs/api.md). The
     // session is the caller's only after it, so no call goes before it.

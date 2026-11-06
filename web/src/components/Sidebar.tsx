@@ -8,8 +8,18 @@ import { BOOKMARKLET, type Route } from "../lib/routes.js";
 import { type Source, VIEW_TITLES, VIEWS } from "../rpc/api.js";
 import { useShell } from "../shell.js";
 import { useRead } from "./context.js";
+import { ServerSheet } from "./ServerSheet.js";
 import { SourceSheet } from "./SourceSheet.js";
 import { UrlSheet } from "./UrlSheet.js";
+
+/** hostOf shows the lodge host in the compact sidebar button. */
+export function hostOf(address: string): string {
+  try {
+    return new URL(address).host;
+  } catch {
+    return address;
+  }
+}
 
 /** Sidebar is the left pane, or the narrow window's first pane. */
 export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void }) {
@@ -25,6 +35,7 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
   const setError = useRead((state) => state.setError);
   const [adding, setAdding] = useState(false);
   const [managingId, setManagingId] = useState<number | null>(null);
+  const [serverOpen, setServerOpen] = useState(false);
   const file = useRef<HTMLInputElement>(null);
 
   const go = (route: Route) => {
@@ -106,16 +117,33 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
         ))}
       </ul>
 
-      {shell.savePages && (
+      {(shell.savePages || shell.server !== undefined) && (
         <div className="mt-auto border-t border-separator px-1 py-2">
-          <button
-            type="button"
-            onClick={() => go(BOOKMARKLET)}
-            className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row text-secondary hover:bg-selection-inactive"
-          >
-            <span className="min-w-0 flex-1 truncate">Save from your phone</span>
-          </button>
+          {shell.savePages && (
+            <button
+              type="button"
+              onClick={() => go(BOOKMARKLET)}
+              className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row text-secondary hover:bg-selection-inactive"
+            >
+              <span className="min-w-0 flex-1 truncate">Save from your phone</span>
+            </button>
+          )}
+          {shell.server !== undefined && (
+            <button
+              type="button"
+              onClick={() => setServerOpen(true)}
+              className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-row text-secondary hover:bg-selection-inactive"
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {shell.server.lodge === "" ? "Connect to lodge…" : `Lodge: ${hostOf(shell.server.lodge)}`}
+              </span>
+            </button>
+          )}
         </div>
+      )}
+
+      {serverOpen && shell.server !== undefined && (
+        <ServerSheet server={shell.server} onClose={() => setServerOpen(false)} />
       )}
 
       {managing !== null && <SourceSheet source={managing} onClose={() => setManagingId(null)} />}

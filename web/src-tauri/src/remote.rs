@@ -90,7 +90,7 @@ enum Frame {
 
 /// Check duplicate names after typed parsing. The byte scan skips values without
 /// converting numbers, like Go's json/v2 when it ignores an unknown member.
-fn reject_duplicate_names(data: &[u8]) -> Result<(), String> {
+pub(crate) fn reject_duplicate_names(data: &[u8]) -> Result<(), String> {
     let mut frames: Vec<Frame> = Vec::new();
     let mut i = 0;
     while i < data.len() {
@@ -189,7 +189,7 @@ pub(crate) fn desktop_state_dir_from(
     Ok(paths::clean(&dir.join("frostread")))
 }
 
-fn mode_path_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, String> {
+pub(crate) fn mode_path_from(getenv: impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, String> {
     let dir = xdg_from(&getenv, "XDG_CONFIG_HOME", ".config")?;
     Ok(paths::clean(&dir.join("frostread").join(MODE_FILE)))
 }

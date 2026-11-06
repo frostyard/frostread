@@ -2,6 +2,7 @@
 // its list, j and k move, and opening an item marks it read.
 
 import type { Transport } from "@frostyard/lodge-client/rpc";
+import { CodeNotConnected, RPCError } from "@frostyard/lodge-client/rpc";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readAPI } from "./rpc/api.js";
 import { watchChanges } from "./rpc/events.js";
@@ -20,6 +21,41 @@ async function connected() {
 }
 
 describe("the store", () => {
+  it("keeps CodeNotConnected quiet and reconnects only the desktop loads", async () => {
+    const down = new RPCError(CodeNotConnected, "lodge refused the connection");
+    const api = readAPI(createMockTransport());
+    const failing = {
+      ...api,
+      status: async () => {
+        throw down;
+      },
+      counts: async () => {
+        throw down;
+      },
+      listSources: async () => {
+        throw down;
+      },
+      listItems: async () => {
+        throw down;
+      },
+    };
+
+    const quiet = createReadStore({ quietDisconnects: true });
+    await quiet.getState().connect(failing);
+    expect(quiet.getState().offline).toBe("lodge refused the connection");
+    expect(quiet.getState().error).toBeNull();
+
+    const back = readAPI(createMockTransport());
+    quiet.setState({ api: back });
+    await quiet.getState().reconnect();
+    expect(quiet.getState().offline).toBeNull();
+
+    const normal = createReadStore();
+    await normal.getState().connect(failing);
+    expect(normal.getState().offline).toBeNull();
+    expect(normal.getState().error).toBe("lodge refused the connection");
+  });
+
   it("loads the unread list when it connects", async () => {
     const store = await connected();
     const state = store.getState();

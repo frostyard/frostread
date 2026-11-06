@@ -203,7 +203,7 @@ describe("connectTauri", () => {
     const failure = await transport.call("status", {}).catch((err: unknown) => err);
     expect(failure).toBeInstanceOf(RPCError);
     expect((failure as RPCError).code).toBe(CodeNotConnected);
-    expect((failure as RPCError).message).toContain("no such file");
+    expect((failure as RPCError).message).toBe("connect to readd: no such file");
     expect(bridge.connects).toBe(1);
     expect(bridge.sent).toEqual([]);
   });

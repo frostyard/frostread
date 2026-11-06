@@ -652,7 +652,7 @@ Found and left open:
 
 Phase 6 lands in 2 parts (Brian, T909a, 2026-11-05):
 
-- **Part 1, the connection (in review, 2026-11-05).** `bridge.rs`'s
+- **Part 1, the connection (merged, frostread#54, 2026-11-05).** `bridge.rs`'s
   lodge mode and `remote.rs`, with Rust tests: `app.json` read as readd
   reads it, and lodge's address checked; on every connect in lodge mode,
   `daemon.shutdown` and the wait for the data lock (steps 2 and 3), with
@@ -663,8 +663,8 @@ Phase 6 lands in 2 parts (Brian, T909a, 2026-11-05):
   The shell and readd share 2 tables of cases,
   `internal/config/testdata/desktop-mode.json` and `desktop-dirs.json`.
   Nothing writes `app.json` yet.
-- **Part 2, the rest.** The Server sheet and its ordered stop, saving
-  local, the unreachable state's texts, save as note and "Open in Notes"
+- **Part 2, the rest (in review, 2026-11-06).** The Server sheet and
+  its ordered stop, saving local, the unreachable state's texts, save as note and "Open in Notes"
   in lodge mode, and the e2e test; then the Done when above.
 
 ## Phase 7 — Notes on the desktop (planner, small)

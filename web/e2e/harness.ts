@@ -192,9 +192,11 @@ interface Running {
  * start starts a child and collects its output. readd's own log is what
  * the seed waits on, so its output is kept as well as shown.
  */
-function start(command: string, args: string[], env: NodeJS.ProcessEnv, what: string): Running {
+function start(command: string, args: string[], env: NodeJS.ProcessEnv, what: string, group = false): Running {
   let text = "";
-  const proc = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+  // group makes the child the leader of a process group of its own, which
+  // every process under it joins unless it leaves on purpose.
+  const proc = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"], detached: group });
   for (const stream of [proc.stdout, proc.stderr]) {
     stream?.on("data", (chunk: Buffer) => {
       text += chunk.toString();
@@ -205,27 +207,128 @@ function start(command: string, args: string[], env: NodeJS.ProcessEnv, what: st
   return { proc, output: () => text };
 }
 
-/** end sends SIGTERM to a child and waits for it, failing after 10 s. */
-function end(what: string, proc: ChildProcess): Promise<void> {
-  return new Promise<void>((done, fail) => {
-    if (proc.exitCode !== null || proc.signalCode !== null) return done();
-    const timer = setTimeout(() => fail(new Error(`${what} still ran 10 s after SIGTERM`)), 10_000);
-    proc.once("exit", () => {
+/** waitExit waits for a child to exit, or until timeoutMs passes. */
+async function waitExit(proc: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (proc.exitCode !== null || proc.signalCode !== null) return true;
+  return new Promise<boolean>((done) => {
+    const onExit = () => {
       clearTimeout(timer);
-      done();
-    });
-    proc.kill("SIGTERM");
+      done(true);
+    };
+    const timer = setTimeout(() => {
+      proc.removeListener("exit", onExit);
+      done(false);
+    }, timeoutMs);
+    proc.once("exit", onExit);
   });
+}
+
+/** end sends SIGTERM, then SIGKILL, and waits for the child to exit. */
+export async function end(what: string, proc: ChildProcess, termWaitMs = 10_000, killWaitMs = 5_000): Promise<void> {
+  if (proc.exitCode !== null || proc.signalCode !== null) return;
+  proc.kill("SIGTERM");
+  if (await waitExit(proc, termWaitMs)) return;
+  if (proc.exitCode === null && proc.signalCode === null) {
+    proc.kill("SIGKILL");
+  }
+  if (await waitExit(proc, killWaitMs)) return;
+  throw new Error(`${what} still ran after SIGTERM and SIGKILL`);
+}
+
+/** pidAlive reports whether pid names a live, non-zombie process. */
+export function pidAlive(pid: number): boolean {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const close = stat.lastIndexOf(")");
+    const state =
+      close >= 0
+        ? stat
+            .slice(close + 2)
+            .trim()
+            .split(/\s+/)[0]
+        : "";
+    if (state === "Z") return false;
+  } catch {
+    // A process outside Linux, or one that has exited, has no stat entry.
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** readPids reads positive integer pids recorded in a harness pid file. */
+export function readPids(path: string): number[] {
+  if (!existsSync(path)) return [];
+  return [
+    ...new Set(
+      readFileSync(path, "utf8")
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((pid) => Number(pid))
+        .filter((pid) => Number.isInteger(pid) && pid > 0),
+    ),
+  ];
+}
+
+/** groupAlive says whether any process of the group pgid is left. */
+function groupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** waitGroup waits until the group pgid is empty, for at most ms: true when it is. */
+async function waitGroup(pgid: number, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (groupAlive(pgid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return !groupAlive(pgid);
+}
+
+/**
+ * endGroup ends every process of the group pgid: SIGTERM, a bounded wait,
+ * then SIGKILL and another. It needs no record of the processes, so a
+ * process that started just before, and was never written down, ends too.
+ * It answers the problems, empty when the group is gone.
+ */
+export async function endGroup(pgid: number, termWaitMs = 10_000, killWaitMs = 5_000): Promise<string[]> {
+  if (!groupAlive(pgid)) return [];
+  try {
+    process.kill(-pgid, "SIGTERM");
+  } catch {
+    // The group ended on its own.
+  }
+  if (await waitGroup(pgid, termWaitMs)) return [];
+  try {
+    process.kill(-pgid, "SIGKILL");
+  } catch {
+    // The group ended on its own.
+  }
+  if (await waitGroup(pgid, killWaitMs)) return [];
+  return [`process group ${pgid} still runs after SIGTERM and SIGKILL`];
 }
 
 /** App is the app under test: its session, the stand-in opener's record, and how to end it all. */
 export interface App {
   /** session is the WebDriver session on the app's window. */
   session: Session;
+  /** env is the environment of the app and its stand-ins. */
+  env: NodeJS.ProcessEnv;
   /** opened returns the URLs the app asked the system to open, oldest first. */
   opened: () => string[];
+  /** readdPids returns the harness readd and every readd the stand-in launcher started. */
+  readdPids: () => number[];
   /** dir is the run's temporary directory; stop deletes it. */
   dir: string;
+  /** restart quits the WebDriver session and starts a new one on the same driver. */
+  restart: () => Promise<void>;
   /** stop quits the session, ends every process of the run, and deletes dir. */
   stop: () => Promise<void>;
 }
@@ -235,6 +338,8 @@ export interface App {
  * feeds alone, as step 3.6 made it.
  */
 export interface LaunchOptions {
+  /** launcher puts a stand-in frostread on the app's PATH and starts readd from it. */
+  launcher?: boolean;
   /**
    * hostile starts readdev with the corpus as a sixth feed, Dev Hostile: its
    * pages are written into the run's directory with their canary URLs pointed
@@ -262,11 +367,12 @@ export interface LaunchOptions {
  * launch stops everything it started before it throws.
  *
  * Every wait of a launch is bounded, and the worst case of all of them, in
- * order, is 375 s without the hostile corpus and 495 s with it: readdev's
+ * order, is 405 s without the hostile corpus and 525 s with it: readdev's
  * answer 30, readd's socket 30, the seed's 3 calls 3 × 30, the extraction 30
  * (150 with the corpus), the driver's answer 45, and the session's start 120
  * (345 or 465 in all), plus the cleanup of a failed launch that has no
- * session yet: 3 processes at 10 s each, 30 more. That is below the 600 s
+ * session yet: 3 processes at 10 s and then 5 s after SIGKILL each, 45 more,
+ * and the stand-in readd processes, 15 more. That is below the 600 s
  * hookTimeout of vitest.e2e.config.ts, which leaves room for the polls'
  * small overruns, so a launch that stalls fails the hook in time and the
  * hook's own failure still stops the run. A change to a wait here must keep
@@ -277,8 +383,37 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
   const socket = join(dir, "run", "readd.sock");
   for (const sub of ["data", "config", "cache", "run"]) mkdirSync(join(dir, sub), { mode: 0o700, recursive: true });
   const opener = fakeOpener(dir);
+  const pidFile = join(dir, "readd-pids");
+  const readdPidsStarted = new Set<number>();
+  if (opts.launcher) {
+    const stand = join(dir, "bin");
+    const log = join(dir, "readd.log");
+    writeFileSync(
+      join(stand, "frostread"),
+      `#!/bin/sh
+set -eu
+readctl='${join(E2E, "readctl")}'
+readd='${join(E2E, "readd")}'
+status() { "$readctl" status >/dev/null 2>&1; }
+if status; then exit 0; fi
+# readd stays in the driver's process group, which the harness ends as a
+# whole; the pid file only tells the tests which readd to look at.
+"$readd" -desktop >> '${log}' 2>&1 &
+printf '%s\n' "$!" >> '${pidFile}'
+i=0
+while [ "$i" -lt 100 ]; do
+  if status; then exit 0; fi
+  i=$((i + 1))
+  sleep 0.1
+done
+exit 1
+`,
+      { mode: 0o755 },
+    );
+  }
   const base = { ...process.env };
   const procs: { what: string; proc: ChildProcess }[] = [];
+  let driverGroup: number | undefined;
   let session: Session | undefined;
   let stopped = false;
 
@@ -297,13 +432,21 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
         problems.push(`the session did not quit: ${String(err)}`);
       });
     } finally {
-      // In a finally, so the processes end even when the quit failed.
-      // The driver goes first, so it cannot start another app after readd.
+      // In a finally, so the children end even when the quit failed.
+      // The driver leads a process group of its own, and everything under it
+      // stays there: the app, a stand-in launcher and every readd that the
+      // launcher starts. Ending that whole group first leaves nothing that
+      // can start another process, and needs no record of who started what.
+      if (driverGroup !== undefined) problems.push(...(await endGroup(driverGroup)));
       for (const { what, proc } of [...procs].reverse()) {
         await end(what, proc).catch((err: unknown) => {
           problems.push(err instanceof Error ? err.message : String(err));
         });
       }
+      for (const pid of [...readdPidsStarted, ...readPids(pidFile)]) {
+        if (pidAlive(pid)) problems.push(`readd ${pid} is still alive after cleanup`);
+      }
+
       rmSync(dir, { force: true, maxRetries: 10, recursive: true });
     }
     if (problems.length > 0) throw new Error(problems.join("; "));
@@ -351,6 +494,7 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
     const allow = opts.server?.allow ?? addr;
     const readd = start(join(E2E, "readd"), ["-desktop"], { ...appEnv, READ_DEV_ALLOW: allow }, "readd");
     procs.push({ proc: readd.proc, what: "readd" });
+    if (readd.proc.pid !== undefined) readdPidsStarted.add(readd.proc.pid);
     await until("readd's desktop socket", () => existsSync(socket), 30_000);
 
     // The seed: readctl import subscribes readdev's five feeds, and readctl
@@ -387,13 +531,31 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
       [`--port=${driverPort}`],
       { ...appEnv, ...opener.env, TAURI_WEBVIEW_AUTOMATION: "true" },
       "WebKitWebDriver",
+      true,
     );
     procs.push({ proc: driver.proc, what: "WebKitWebDriver" });
+    driverGroup = driver.proc.pid;
     await until("the WebDriver server", () => reachable(`${driverURL}/status`), 45_000);
-    session = await Session.start(driverURL, {
+    const capabilities = {
       "webkitgtk:browserOptions": { args: ["--automation"], binary: APP },
-    });
-    return { dir, opened: opener.opened, session, stop };
+    };
+    session = await Session.start(driverURL, capabilities);
+    const appEnvWithStandIns = { ...appEnv, ...opener.env, TAURI_WEBVIEW_AUTOMATION: "true" };
+    const readdPids = (): number[] => [...new Set([...readdPidsStarted, ...readPids(pidFile)])];
+    const app: App = {
+      dir,
+      env: appEnvWithStandIns,
+      opened: opener.opened,
+      readdPids,
+      session,
+      async restart() {
+        await app.session.quit();
+        session = await Session.start(driverURL, capabilities);
+        app.session = session;
+      },
+      stop,
+    };
+    return app;
   } catch (err) {
     await stop().catch(() => {});
     throw err;

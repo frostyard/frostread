@@ -10,9 +10,14 @@ import { StoreProvider } from "../components/context.js";
 import { ErrorBoundary } from "../components/ErrorBoundary.js";
 import { readAPI } from "../rpc/api.js";
 import { watchChanges } from "../rpc/events.js";
+import type { ServerControl } from "../shell.js";
 import { ShellProvider } from "../shell.js";
 import { createReadStore } from "../store.js";
+import { ConnectionBanner } from "./ConnectionBanner.js";
 import { createDesktopShell, desktopRoute, type SaveFile } from "./shell.js";
+
+/** DESKTOP_RETRY_MS is the desktop's 10 second connection retry. */
+export const DESKTOP_RETRY_MS = 10_000;
 
 /** DesktopOptions say where the app starts: root is required, the rest default for the real window. */
 export interface DesktopOptions {
@@ -20,6 +25,7 @@ export interface DesktopOptions {
   win?: Window;
   transport?: Transport;
   saveFile?: SaveFile;
+  server?: ServerControl;
 }
 
 /** Desktop is a started desktop app: its store, and the call that stops it. */
@@ -31,7 +37,7 @@ export interface Desktop {
 /** startDesktop renders the app into root and connects it. stop unmounts it and removes every listener. */
 export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   const win = options.win ?? window;
-  const store = createReadStore();
+  const store = createReadStore({ quietDisconnects: options.server !== undefined });
 
   // The system's scheme is the theme source.
   const query = win.matchMedia("(prefers-color-scheme: dark)");
@@ -65,12 +71,22 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   void store.getState().setRoute(startRoute);
 
   const root = createRoot(options.root);
+  const shell = createDesktopShell(win, () => win.performance.now(), options.saveFile, options.server);
   root.render(
     <StrictMode>
-      <ShellProvider shell={createDesktopShell(win, () => win.performance.now(), options.saveFile)}>
+      <ShellProvider shell={shell}>
         <StoreProvider store={store}>
           <ErrorBoundary>
-            <App />
+            {options.server === undefined ? (
+              <App />
+            ) : (
+              <div className="flex h-full flex-col">
+                <ConnectionBanner server={options.server} />
+                <div className="min-h-0 flex-1">
+                  <App />
+                </div>
+              </div>
+            )}
           </ErrorBoundary>
         </StoreProvider>
       </ShellProvider>
@@ -84,7 +100,20 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   // Vite's development server. desktop.tsx passes the shell's bridge when
   // it runs in Tauri. The import is lazy either way.
   const transport = options.transport ?? (await import("../rpc/mock.js")).createMockTransport();
-  const unwatch = watchChanges(transport, () => void store.getState().changed());
+  const unclose =
+    options.server === undefined ? () => {} : transport.onClose((reason) => store.getState().setOffline(reason));
+  const unwatch =
+    options.server === undefined
+      ? watchChanges(transport, () => void store.getState().changed())
+      : // The watcher is the window's only retry schedule, every 10 s: a
+        // subscribe that takes after a drop or a failure reloads everything
+        // the window missed, and reconnect's status call clears the banner.
+        watchChanges(
+          transport,
+          () => void store.getState().changed(),
+          DESKTOP_RETRY_MS,
+          () => void store.getState().reconnect(),
+        );
   await store.getState().connect(readAPI(transport));
   await store.getState().setRoute(store.getState().route);
 
@@ -94,6 +123,7 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
       win.removeEventListener("popstate", onPop);
       query.removeEventListener("change", onScheme);
       unwatch();
+      unclose();
       unscheme();
       unfollow();
       root.unmount();

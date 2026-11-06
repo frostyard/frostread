@@ -50,7 +50,9 @@ file, metainfo and CI build, is merged (frostread#49, 2026-11-04). Phase
 is merged (frostread#50, 2026-11-04). Phase 5, the check on a real Snow
 desktop with real portals, is in review (frostread#51, 2026-11-04); its
 record is in plan 0002. Phase 6's part 1, the shell's lodge
-connection, is in review (2026-11-05). The clean-install gate is not built yet.
+connection, is merged (frostread#54, 2026-11-05), and part 2, the Server
+sheet, its ordered stop and the e2e test against `make dev-lodge`, is in
+review (2026-11-06). The clean-install gate is not built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -104,9 +106,10 @@ counterpart of something those repositories do, read their file.
 - `web/src-tauri/`: the Tauri v2 shell for identifier
   `org.frostyard.Frostread`; `bridge.rs` moves lines between the window
   and readd's private socket, or lodge's `/app/read/api` in lodge mode,
-  and never parses them; `remote.rs` reads `app.json` and lodge's
-  address, and stops a local readd before a lodge connection, from 2
-  tables of cases it shares with `internal/config`
+  and never parses them; `server.rs` serves the Server sheet: it writes
+  `app.json` and stops or starts this computer's readd; `remote.rs`
+  reads `app.json` and lodge's address, and stops a local readd before
+  a lodge connection, from 2 tables of cases it shares with `internal/config`
   (`testdata/desktop-mode.json`, `testdata/desktop-dirs.json`); `paths.rs` derives
   the socket as `internal/config` does, from a test data table both
   share; `files.rs` and `portal.rs` save a file the user picks, through
@@ -114,7 +117,7 @@ counterpart of something those repositories do, read their file.
   `main.rs` admits only the app in the main frame, opens `http`, `https`
   and `mailto` links with the opener and denies every new window, and
   keeps a single instance; `capabilities/default.json` grants only the
-  bridge and `save_file`.
+  bridge, `save_file` and the two Server sheet commands.
 - `web/src/desktop.tsx` and `web/src/desktop/`: the desktop entry,
   `web/desktop.html`, built into `build/desktop`: the desktop `Shell`
   and the saver; the Tauri transport is
@@ -183,6 +186,13 @@ counterpart of something those repositories do, read their file.
   machine `frostnotes` (`make web-build`), as lodge's apps do.
 - `make flatpak-smoke` builds host readd and readctl, then runs the Flatpak
   launcher and portal smoke test on the host.
+- `make app-e2e-lodge` starts lodge's development build and runs the
+  desktop lodge connection suite, including local, lodge, notes, stopped
+  lodge, stop failure and crash restart. It needs the lodge and frostnotes
+  sibling builds passed as `LODGE_DIR` and `NOTES_DIR`, frostread's
+  `build/web` from `make web-build`, and the nsl machine.
+- An e2e script ends only the processes it started (their process group
+  or recorded pids). It never kills processes found by name.
 - `make app-e2e` drives the built desktop app in WebKitGTK, headless in
   the nsl machine: `web/e2e/harness.ts` starts readdev and `readd
   -desktop` (the dev tags) on a temporary XDG tree, imports readdev's
