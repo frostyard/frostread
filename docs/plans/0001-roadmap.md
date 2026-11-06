@@ -89,8 +89,9 @@ accepted). This roadmap stays the lodge app's.
 - **Done when:** the owner reads a feed on a phone through lodge, marks it
   read with `m`, and saves it to notes.
 - **Deployed 2026-10-21** on lodge's host, for the owner's daily use, at
-  `b01ee81`, with the steps in the README's "Install on lodge's host". The
-  notes token is `vault=2;write=Reading/` on the owner's real vault. The
+  `b01ee81`, with the steps in the README's "Install on lodge's host", now
+  in [packaging/README.md](../../packaging/README.md#install-on-lodges-host).
+  The notes token is `vault=2;write=Reading/` on the owner's real vault. The
   live check there: the Read tab in lodge, one test feed polled and
   extracted, and Save as note wrote a note under `Reading/` that synced to
   the owner's devices; the test note was then deleted.

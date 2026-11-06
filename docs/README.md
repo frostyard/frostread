@@ -9,7 +9,8 @@ Docs are split by the question they answer (frostyard/core ADR-0025):
 | [specs/](specs/) | **What exactly** is the contract? | Precise, testable interface definitions |
 | [plans/](plans/) | **When/in what order** do we build? | Roadmaps and phase plans, updated as work lands |
 
-frostread is an app behind
+Org-wide decisions that bind this repository are in
+[org-adrs.md](org-adrs.md). frostread is an app behind
 [lodge](https://github.com/frostyard/lodge), under frostyard/core's
 [ADR-0057](https://github.com/frostyard/core/blob/main/docs/adr/0057-run-first-party-apps-behind-lodge.md).
 The contract it follows is lodge's

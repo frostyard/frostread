@@ -592,7 +592,7 @@ next call. The shell never falls back to the local readd in lodge mode.
 ### Installation on lodge's host
 
 The daemon installs as lodge's `read` app, beside lodge and notes, with
-the steps [README.md, Install on lodge's host](../../README.md#install-on-lodges-host)
+the steps [packaging/README.md, Install on lodge's host](../../packaging/README.md#install-on-lodges-host)
 gives. What it needs:
 
 | What | Where | Made by |

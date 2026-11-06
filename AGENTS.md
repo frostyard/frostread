@@ -13,8 +13,8 @@ lodge is lodge's
 [app-contract.md](https://github.com/frostyard/lodge/blob/main/docs/specs/app-contract.md).
 
 This file (`AGENTS.md`) is the CANONICAL agent instructions. `CLAUDE.md`,
-`GEMINI.md` and `.github/copilot-instructions.md` are symlinks to it, and
-`.claude/skills` symlinks to `.agents/skills/`
+`GEMINI.md`, `.cursorrules` and `.github/copilot-instructions.md` are
+relative symlinks to it, and `.claude/skills` symlinks to `.agents/skills/`
 ([ADR-0002](docs/adr/0002-agent-portable-instruction-surface.md)). Edit only
 the canonical paths, and keep content tool-agnostic.
 
@@ -33,7 +33,7 @@ Phases 7 (save from the phone, frostread#10) and 8 (the blob sweep,
 frostread#12) are built and merged (2026-10-21); Phase 7's Done when waits
 for the owner's check in iOS Safari. frostread runs on lodge's host for the
 owner's daily use (2026-10-21), at v0.5.0 from its release `.deb` since
-2026-11-05 (README, Update). The founding ADRs, 0001 to
+2026-11-05 (packaging/README.md, Update). The founding ADRs, 0001 to
 0005, are Accepted (Brian, 2026-10-21), and ADR-0006, the bookmarklet, and
 ADR-0007, the blob sweep, are Accepted (Brian, 2026-10-22).
 ADR-0008, the standalone desktop Flatpak, is Accepted (Brian, 2026-10-28);
@@ -152,6 +152,11 @@ counterpart of something those repositories do, read their file.
   no tag or publish yet). `internal/workflowcheck` tests that their
   actions are SHA-pinned with least privilege (frostyard/core ADR-0021),
   the Flatpak workflow's jobs, and the required check names of `ci.yml`.
+- `packaging/README.md`: the runbook: install, update, roll back, after
+  the sysexts and release.
+- `.github/risk-paths.json` and its caller
+  `.github/workflows/risk-paths.yml`: the high-risk paths of core ADR-0068,
+  and the label `risk:high` on a PR that touches one.
 
 ## Gates
 
@@ -198,6 +203,38 @@ counterpart of something those repositories do, read their file.
 - Tests run unfiltered (`go test ./...`). No test reaches the network: it
   uses `httptest`, and never sleeps to synchronize.
 
+## Repository baseline
+
+The repository follows core's baseline (frostyard/core ADR-0071, its spec
+`docs/specs/repository-baseline.md`, rows B1 to B17;
+[org-adrs.md](docs/org-adrs.md)). `internal/workflowcheck` fails `make
+verify` when one of these files breaks:
+
+- The instruction symlinks above (B1). Edit `AGENTS.md`, never a link.
+- `.memory/corrections.jsonl` (B2): 1 JSON object per line with exactly
+  `date`, `scope`, `correction`, `evidence` and `promoted_to`. Append only:
+  never edit or remove a line (no test checks this). An empty file is
+  valid. A fix of a blocking review point adds its guard and 1 line.
+- `.github/risk-paths.json` (B6, core ADR-0068): a PR that touches a listed
+  path gets `risk:high` from `.github/workflows/risk-paths.yml`. Its PR body
+  names each matched path and why the change is safe. A new release
+  workflow, packaging script, unit, credential store, auth check or socket
+  admission joins the list in the PR that adds it; a glob that matches no
+  file fails. `TestRiskMarkers` also fails when a Go file with a method's
+  callers, a file's mode, a socket, the fetcher's guard, a content URL's
+  secret, the sanitizer policy, an MCP session or the agent token's scope
+  matches no glob.
+- `.github/dependabot.yml` (B13): 1 entry for each manifest (`go.mod`,
+  `web/package.json`, `web/src-tauri/Cargo.toml`). A new manifest gets an
+  entry.
+
+`.github/pull_request_template.md` (B7) holds the risk tier.
+Vulnerabilities are reported privately ([SECURITY.md](SECURITY.md), B14).
+The root `README.md` follows core's README spec for the kind `service`
+(B17, core ADR-0072): core's `frostyard-readme` skill checks it, in the nsl
+machine. No `CODEOWNERS` file (B15), and no other agent framework's tree
+(B16).
+
 ## Releases and dependencies
 
 - Tags look like `v1.2.3`: svu (`.svu.yml`, prefix `v`, v0 mode).
@@ -214,7 +251,7 @@ counterpart of something those repositories do, read their file.
   `kittest`, `manifest` and `rpctest`.
 - Web pins in `web/package.json`: `@frostyard/lodge-client` as
   `github:frostyard/lodge#client/v0.3.2`, and `@frostyard/lodge-ui` as
-  `github:frostyard/lodge#ui/v0.6.0`. Update the version text in README.md,
+  `github:frostyard/lodge#ui/v0.6.0`. Update the version text in
   `docs/design/overview.md` and Status above with a bump.
 - `mise.toml` pins only third-party tools (golangci-lint, svu, nfpm). No
   workflow or script pins a frostyard module.
