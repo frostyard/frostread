@@ -138,9 +138,11 @@ func relativeSymlink(t *testing.T, name string) (string, bool) {
 	return got, true
 }
 
-// correctionsMember names the 5 members a line of .memory/corrections.jsonl
-// carries (row B2).
-var correctionsMember = []string{"date", "scope", "correction", "evidence", "promoted_to"}
+// correctionsMember returns the 5 members a line of
+// .memory/corrections.jsonl carries (row B2).
+func correctionsMember() []string {
+	return []string{"date", "scope", "correction", "evidence", "promoted_to"}
+}
 
 // datePattern is the form of a correction's date.
 var datePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
@@ -163,13 +165,13 @@ func correctionProblems(line string) []string {
 	}
 
 	var problems, missing, unknown []string
-	for _, name := range correctionsMember {
+	for _, name := range correctionsMember() {
 		if _, ok := obj[name]; !ok {
 			missing = append(missing, name)
 		}
 	}
 	for name := range obj {
-		if !slices.Contains(correctionsMember, name) {
+		if !slices.Contains(correctionsMember(), name) {
 			unknown = append(unknown, name)
 		}
 	}
@@ -180,7 +182,7 @@ func correctionProblems(line string) []string {
 	if len(unknown) > 0 {
 		problems = append(problems, "unknown key(s): "+strings.Join(unknown, ", "))
 	}
-	for _, name := range correctionsMember {
+	for _, name := range correctionsMember() {
 		v, ok := obj[name]
 		if !ok {
 			continue
@@ -303,97 +305,111 @@ type riskPathFile struct {
 	Paths         []riskPath `json:"paths"`
 }
 
-// riskCategories are the categories of frostyard/core docs/specs/risk-paths.md
-// (section B); each why starts with 1 of them and a colon.
-var riskCategories = []string{
-	"boot chain",
-	"signing and keys",
-	"update verification",
-	"auth",
-	"publication",
-	"secrets and credentials",
-	"rulesets and settings",
-	"destructive operations",
-	"governance",
+// riskCategories returns the categories of frostyard/core
+// docs/specs/risk-paths.md (section B); each why starts with 1 of them and a
+// colon.
+func riskCategories() []string {
+	return []string{
+		"boot chain",
+		"signing and keys",
+		"update verification",
+		"auth",
+		"publication",
+		"secrets and credentials",
+		"rulesets and settings",
+		"destructive operations",
+		"governance",
+	}
 }
 
 // whyCategory reports whether why starts with 1 of riskCategories and a colon.
 func whyCategory(why string) bool {
 	category, _, ok := strings.Cut(why, ":")
-	return ok && slices.Contains(riskCategories, category)
+	return ok && slices.Contains(riskCategories(), category)
 }
 
-// governedPaths are the release, secrets, auth and governance paths of this
-// repository; .github/risk-paths.json must list each of them.
-var governedPaths = []string{
-	".github/risk-paths.json",
-	".github/workflows/risk-paths.yml",
-	".github/workflows/release.yml",
-	".github/workflows/ci.yml",
-	".github/workflows/flatpak.yml",
-	"Makefile",
-	"mise.toml",
-	"mise.lock",
-	".svu.yml",
-	"internal/workflowcheck/baseline_test.go",
-	"internal/workflowcheck/workflows_test.go",
-	"internal/packagecheck/background_helper_test.go",
-	"internal/packagecheck/debcheck_test.go",
-	"internal/packagecheck/flatpak_manifest_test.go",
-	"internal/packagecheck/flatpak_screenshots_test.go",
-	"internal/packagecheck/flatpak_version_test.go",
-	"internal/packagecheck/package_test.go",
-	"packaging/nfpm.yaml",
-	"packaging/deb-check.py",
-	"packaging/lodge/app.json",
-	"packaging/lodge/frostread.service",
-	"packaging/lodge/frostread.socket",
-	"packaging/lodge/stage.sh",
-	"packaging/lodge/sysusers.d-frostread.conf",
-	"packaging/flatpak/org.frostyard.Frostread.json",
-	"packaging/flatpak/frostread.sh",
-	"packaging/flatpak/request-background.py",
-	"packaging/flatpak/tauri-build.sh",
-	"scripts/release-version.sh",
-	"scripts/flatpak-sources.sh",
-	"packaging/flatpak/generator-requirements.txt",
-	"tools/flatpakgo/main.go",
-	"cmd/readd/main.go",
-	"cmd/readd/lock.go",
-	"cmd/readd/logfile.go",
-	"cmd/readd/main_test.go",
-	"cmd/readd/desktop_test.go",
-	"internal/config/config.go",
-	"internal/config/desktop.go",
-	"api/api.go",
-	"api/daemon.go",
-	"api/events.go",
-	"api/rpc.go",
-	"api/read.go",
-	"internal/rpcserver/server.go",
-	"internal/readapi/readapi.go",
-	"internal/engine/scope.go",
-	"internal/mcpserver/mcpserver.go",
-	"internal/notes/notes.go",
-	"internal/content/content.go",
-	"internal/fetch/fetch.go",
-	"internal/fetch/devfetch.go",
-	"internal/sanitize/sanitize.go",
-	"web/src-tauri/src/main.rs",
-	"web/src-tauri/src/bridge.rs",
-	"web/src-tauri/src/remote.rs",
-	"web/src-tauri/src/paths.rs",
-	"web/src-tauri/src/files.rs",
-	"web/src-tauri/src/portal.rs",
-	"web/src-tauri/tauri.conf.json",
-	"web/src-tauri/capabilities/default.json",
-	"web/src/components/RenderedArticle.tsx",
-	"internal/store/store.go",
-	"internal/store/migrations/0001_init.sql",
-	"internal/store/migrations/0002_blob_orphans.sql",
-	"internal/store/migrations/0003_source_folders.sql",
-	"internal/blobs/blobs.go",
-	"internal/engine/sweep.go",
+// governedPaths returns the release, secrets, auth and governance paths of
+// this repository; .github/risk-paths.json must list each of them.
+func governedPaths() []string {
+	return []string{
+		".github/risk-paths.json",
+		".github/workflows/risk-paths.yml",
+		".github/workflows/release.yml",
+		".github/workflows/ci.yml",
+		".github/workflows/flatpak.yml",
+		"Makefile",
+		"mise.toml",
+		"mise.lock",
+		".svu.yml",
+		"internal/workflowcheck/baseline_test.go",
+		"internal/workflowcheck/workflows_test.go",
+		"internal/packagecheck/background_helper_test.go",
+		"internal/packagecheck/debcheck_test.go",
+		"internal/packagecheck/flatpak_manifest_test.go",
+		"internal/packagecheck/flatpak_screenshots_test.go",
+		"internal/packagecheck/flatpak_version_test.go",
+		"internal/packagecheck/package_test.go",
+		"packaging/nfpm.yaml",
+		"packaging/deb-check.py",
+		"packaging/lodge/app.json",
+		"packaging/lodge/frostread.service",
+		"packaging/lodge/frostread.socket",
+		"packaging/lodge/stage.sh",
+		"packaging/lodge/sysusers.d-frostread.conf",
+		"packaging/flatpak/org.frostyard.Frostread.json",
+		"packaging/flatpak/frostread.sh",
+		"packaging/flatpak/request-background.py",
+		"packaging/flatpak/tauri-build.sh",
+		"scripts/release-version.sh",
+		"scripts/flatpak-sources.sh",
+		"packaging/flatpak/generator-requirements.txt",
+		"packaging/flatpak/go-sources.json",
+		"packaging/flatpak/cargo-sources.json",
+		"packaging/flatpak/node-sources.json",
+		"tools/flatpakgo/main.go",
+		"cmd/readd/main.go",
+		"cmd/readd/lock.go",
+		"cmd/readd/logfile.go",
+		"cmd/readd/main_test.go",
+		"cmd/readd/desktop_test.go",
+		"internal/config/config.go",
+		"internal/config/desktop.go",
+		"api/api.go",
+		"api/daemon.go",
+		"api/events.go",
+		"api/rpc.go",
+		"api/read.go",
+		"internal/rpcserver/server.go",
+		"internal/readapi/readapi.go",
+		"internal/engine/scope.go",
+		"internal/engine/engine.go",
+		"internal/engine/poll.go",
+		"internal/mcpserver/mcpserver.go",
+		"internal/notes/notes.go",
+		"internal/content/content.go",
+		"internal/extract/extract.go",
+		"internal/fetch/fetch.go",
+		"internal/fetch/devfetch.go",
+		"internal/sanitize/sanitize.go",
+		"web/src-tauri/src/main.rs",
+		"web/src-tauri/src/bridge.rs",
+		"web/src-tauri/src/remote.rs",
+		"web/src-tauri/src/paths.rs",
+		"web/src-tauri/src/files.rs",
+		"web/src-tauri/src/portal.rs",
+		"web/src-tauri/tauri.conf.json",
+		"web/src-tauri/capabilities/default.json",
+		"web/src/components/Reader.tsx",
+		"web/src/components/RenderedArticle.tsx",
+		"internal/store/store.go",
+		"internal/store/migrations/0001_init.sql",
+		"internal/store/migrations/0002_blob_orphans.sql",
+		"internal/store/migrations/0003_source_folders.sql",
+		"internal/store/blobrefs.go",
+		"internal/store/sources.go",
+		"internal/blobs/blobs.go",
+		"internal/engine/sweep.go",
+	}
 }
 
 // readRiskPaths reads and parses .github/risk-paths.json strictly: an unknown
@@ -411,27 +427,33 @@ func readRiskPaths(t *testing.T) riskPathFile {
 	return cfg
 }
 
-// riskMarkers are the lines of Go source that mark a file as a risk path: a
-// method's callers, a file's mode, a socket, the fetcher's address guard, a
-// content URL's signature, the sanitizer policy, an MCP session and the agent
-// token's scope.
-var riskMarkers = []string{
-	"[]CallerKind{",
-	".Chmod(",
-	"0o600",
-	"0o700",
-	"jsonrpc.Listen",
-	"netguard.",
-	"hmac.",
-	"bluemonday.",
-	"mcpsession.",
-	"engine.Scope{",
+// riskMarkers returns the lines of Go source that mark a file as a risk path:
+// a method's callers, a file's mode, a socket, the fetcher's address guard, a
+// content URL's signature, a sanitizer call on untrusted HTML, the sanitizer
+// policy, an MCP session, the agent token's scope and the scope check of a
+// write method, and a delete in the store.
+func riskMarkers() []string {
+	return []string{
+		"[]CallerKind{",
+		".Chmod(",
+		"0o600",
+		"0o700",
+		"jsonrpc.Listen",
+		"netguard.",
+		"hmac.",
+		"sanitize.HTML(",
+		"bluemonday.",
+		"mcpsession.",
+		"engine.Scope{",
+		"sc.Write",
+		"DELETE FROM",
+	}
 }
 
-// riskMarker returns the first marker of riskMarkers that src holds, in the
+// riskMarker returns the first marker of riskMarkers() that src holds, in the
 // order of the list; no marker means plain source.
 func riskMarker(src string) (string, bool) {
-	for _, marker := range riskMarkers {
+	for _, marker := range riskMarkers() {
 		if strings.Contains(src, marker) {
 			return marker, true
 		}
@@ -465,14 +487,14 @@ func TestRiskPaths(t *testing.T) {
 			t.Errorf("entry %d: glob %q has no why", i, p.Glob)
 		}
 		if !whyCategory(p.Why) {
-			t.Errorf("entry %d: glob %q has the why %q; it must start with 1 of the categories %q and a colon", i, p.Glob, p.Why, riskCategories)
+			t.Errorf("entry %d: glob %q has the why %q; it must start with 1 of the categories %q and a colon", i, p.Glob, p.Why, riskCategories())
 		}
 		if n := utf8.RuneCountInString(p.Why); n > 200 {
 			t.Errorf("entry %d: glob %q has a why of %d characters, want 200 at most", i, p.Glob, n)
 		}
 	}
 
-	want := append([]string{}, governedPaths...)
+	want := governedPaths()
 	workflows, err := filepath.Glob(filepath.Join("..", "..", ".github", "workflows", "*"))
 	if err != nil {
 		t.Fatal(err)
@@ -547,9 +569,12 @@ func TestRiskMarker(t *testing.T) {
 		{"private socket", "private, err := jsonrpc.Listen(socket, log)", "jsonrpc.Listen"},
 		{"address guard", "guard, err := netguard.New(cfg)", "netguard."},
 		{"content URL signature", "sum := hmac.New(sha256.New, secret)", "hmac."},
+		{"sanitizer call on untrusted HTML", "body := sanitize.HTML(raw, base)", "sanitize.HTML("},
 		{"sanitizer policy", "policy := bluemonday.NewPolicy()", "bluemonday."},
 		{"MCP session", "session := mcpsession.New(conn)", "mcpsession."},
 		{"token scope", "scope := engine.Scope{Read: true, Write: false}", "engine.Scope{"},
+		{"write scope check", "if !sc.Write {\n\treturn ErrForbidden\n}", "sc.Write"},
+		{"delete in the store", "_, err := tx.ExecContext(ctx, `DELETE FROM sources WHERE id = ?`, id)", "DELETE FROM"},
 		{"first marker in the list order", "if err := tmp.Chmod(0o600); err != nil {", ".Chmod("},
 		{"plain source", "package api\n\nfunc Serve() {}\n", ""},
 	} {

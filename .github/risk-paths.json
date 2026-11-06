@@ -50,6 +50,10 @@
       "why": "update verification: the generators of the Flatpak's offline sources and the checksums its build trusts"
     },
     {
+      "glob": "packaging/flatpak/{go,cargo,node}-sources.json",
+      "why": "update verification: the Flatpak's offline sources: the download URLs, commits and checksums its build trusts"
+    },
+    {
       "glob": "cmd/readd/{main,lock,logfile,main_test,desktop_test}.go",
       "why": "auth: readd's sockets and their rules (kittest), the desktop's private socket, the content secret's wiring, and the modes of the state directory, lock and log"
     },
@@ -64,6 +68,10 @@
     {
       "glob": "{internal/engine/scope.go,internal/mcpserver/**}",
       "why": "auth: the agent token's scope, which the engine enforces, and the MCP tools"
+    },
+    {
+      "glob": "internal/engine/engine.go",
+      "why": "auth: the write scope that each engine method enforces, and the removal of a source"
     },
     {
       "glob": "internal/notes/**",
@@ -82,6 +90,10 @@
       "why": "auth: the sanitizer policy for untrusted article HTML (ADR-0005)"
     },
     {
+      "glob": "{internal/engine/poll.go,internal/extract/extract.go}",
+      "why": "auth: the sanitizer calls on feed and article HTML, and the image types an article keeps (no SVG)"
+    },
+    {
       "glob": "web/src-tauri/src/{main,bridge,remote,paths,files,portal}.rs",
       "why": "auth: the shell's navigation admission, link opener, bridge to readd or lodge and its socket path, lodge connection and file saves"
     },
@@ -90,16 +102,20 @@
       "why": "auth: the shell's CSP and its capabilities"
     },
     {
-      "glob": "web/src/components/RenderedArticle.tsx",
-      "why": "auth: the reader's srcdoc frame, sandboxed without scripts or same origin"
+      "glob": "web/src/components/{Reader,RenderedArticle}.tsx",
+      "why": "auth: the reader's frames in lodge and on the desktop: their sandbox and referrer policy"
     },
     {
       "glob": "{internal/store/store.go,internal/store/migrations/**}",
       "why": "destructive operations: the database schema, its migrations and the content secret"
     },
     {
-      "glob": "{internal/blobs/blobs.go,internal/engine/sweep.go}",
-      "why": "destructive operations: the blob sweep, which deletes orphaned blobs"
+      "glob": "internal/store/sources.go",
+      "why": "destructive operations: source removal, which deletes a source and its items"
+    },
+    {
+      "glob": "{internal/blobs/blobs.go,internal/engine/sweep.go,internal/store/blobrefs.go}",
+      "why": "destructive operations: the blob sweep, and the reference checks that keep it from deleting blobs in use"
     }
   ]
 }

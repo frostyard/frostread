@@ -222,8 +222,9 @@ verify` when one of these files breaks:
   admission joins the list in the PR that adds it; a glob that matches no
   file fails. `TestRiskMarkers` also fails when a Go file with a method's
   callers, a file's mode, a socket, the fetcher's guard, a content URL's
-  secret, the sanitizer policy, an MCP session or the agent token's scope
-  matches no glob.
+  secret, a sanitizer call on untrusted HTML, the sanitizer policy, an MCP
+  session, the agent token's scope, a write method's scope check or a delete
+  in the store matches no glob.
 - `.github/dependabot.yml` (B13): 1 entry for each manifest (`go.mod`,
   `web/package.json`, `web/src-tauri/Cargo.toml`). A new manifest gets an
   entry.
