@@ -81,14 +81,24 @@ never falls back to the local readd. `paths.rs` derives the socket as
 `https` and `mailto` links with the opener and denies every new window.
 `on_download` denies downloads. Single instance focuses the main window.
 `save_file` uses the FileChooser portal in a Flatpak and the dialog plugin
-elsewhere. The capabilities grant only `allow-readd-connect`,
-`allow-readd-send` and `allow-save-file`.
+elsewhere. `server.rs` serves the Server sheet: `server_get` gives the
+mode and whether a local database exists, and `server_save` writes
+`app.json` and then stops this computer's readd in ADR-0008's order,
+writing local back when its lock stays held after 30 s, or starts readd
+through `frostread --start` when the user saves local. The capabilities
+grant only `allow-readd-connect`, `allow-readd-send`, `allow-save-file`,
+`allow-server-get` and `allow-server-save`.
 
 The desktop entry (`web/desktop.html`, `web/src/desktop.tsx`) follows
 the system's color scheme. It keeps its route in the URL fragment and
 the window's own history, with a budget of 50 history calls in 10 s,
 below WebKit's limit. It has no save page and no bookmarklet. OPML
 export goes through `save_file`; the lodge entry keeps its download.
+The sidebar's `Connect to lodge…` (or `Lodge: HOST`) opens the Server
+sheet, which says what a change does from local facts only. A lost
+connection shows a banner that retries every 10 s, and never local data
+in lodge mode. In lodge mode, "Open in Notes" opens lodge's note route
+in the browser.
 `make app-e2e` drives the built app in WebKitGTK, with the hostile
 corpus ([plan 0002, Phase 3's record](../plans/0002-the-standalone-desktop-flatpak.md#phase-3s-record)).
 

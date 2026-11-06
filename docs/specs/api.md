@@ -586,31 +586,35 @@ does not parse is an error, never local mode. In lodge mode
    a WebSocket ping; the kit ignores a client notification, so readd
    answers nothing and the page's ids are untouched.
 
-**The Server sheet** (plan 0002, Phase 6, part 2) has two Tauri
-commands: `server_get` returns `{"lodge":"…","localData":true|false}` and
-`server_save` changes the mode and closes the window's current bridge
-connection. `server_get` returns the lodge origin as text, or the raw
-trimmed lodge text when it does not parse; `""` means local mode. The
-local data is true only when `<state>/frostread.db` is a file. A mode
-file that does not parse is an error.
+**The Server sheet** (plan 0002, Phase 6, part 2) calls 2 commands of
+the shell, `web/src-tauri/src/server.rs`:
 
-When the user saves lodge, `server_save` parses the address before it
-writes; a bad address writes nothing. It then writes `app.json` with the
-lodge origin, takes the data lock and calls `daemon.shutdown` on the
-local readd, waiting at most 30 seconds. A lock that stays held writes
-app.json back to local mode and returns exactly `This computer's reader did not stop. Frostread still uses it.` If that write-back also fails, it
-returns exactly `This computer's reader did not stop, and Frostread could not write local back to app.json: <error>`. A successful stop closes the
-current bridge connection. When the user saves local, `server_save`
-writes app.json without `lodge`, closes the current bridge connection,
-and runs `frostread --start`. A missing launcher, a non-zero exit or a 30
-second timeout returns exactly `Frostread now uses this computer's reader, but it did not start. See readd.log in ~/.var/app/org.frostyard.Frostread/.local/state/frostread.` The mode stays local.
+- `server_get` answers `{"lodge": "…", "localData": true}`. `lodge` is
+  lodge's origin in lodge mode (the trimmed text when it is no valid
+  address), and `""` in local mode. `localData` is true when
+  `<state>/frostread.db` is a file. A mode file that does not parse is
+  an error.
+- `server_save {lodge}` with an address saves lodge mode. It checks the
+  address first, and a bad one writes nothing. Then, in order (ADR-0008,
+  steps 1 to 4): it writes `app.json` with lodge's origin (a temporary
+  file, synced, renamed, and the directory synced); it stops this
+  computer's readd as the window in lodge mode does (step 2 above), for
+  up to 30 s; when the lock is still held, it writes `app.json` back
+  without `lodge` and fails with `This computer's reader did not stop.
+  Frostread still uses it.` A stop that succeeds closes the window's
+  connection, and the window reloads.
+- `server_save {lodge: ""}` saves local mode: it writes `app.json`
+  without `lodge`, closes the window's connection, and runs `frostread
+  --start` for up to 30 s. A start that fails keeps local mode and fails
+  with `Frostread now uses this computer's reader, but it did not start.
+  See readd.log in ~/.var/app/org.frostyard.Frostread/.local/state/frostread.`
+- One save runs at a time. Other members of `app.json` are kept.
 
-`frostread --start` in the Flatpak starts no Tauri app. In local mode it
-runs the shared local launcher block: replace an old readd through the
-Flatpak portal, wait for `readctl status`, and start the Background helper.
-It exits 0 only when `readctl status` answers, else it exits 1. In lodge
-mode it prints `frostread --start: the mode is lodge` to stderr and
-exits 1 without starting readd or the helper.
+`frostread --start` is the launcher's local start without the window: in
+local mode it replaces an old readd, starts readd through the portal and
+the Background helper, and exits 0 when `readctl status` answers, else 1.
+In lodge mode it prints `frostread --start: the mode is lodge` and exits
+1, and starts nothing.
 
 A connection that fails is an error to the window, which retries with its
 next call. The shell never falls back to the local readd in lodge mode.
