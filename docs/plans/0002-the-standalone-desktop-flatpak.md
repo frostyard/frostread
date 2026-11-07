@@ -706,6 +706,18 @@ Brian chose ADR-0008's proposal for open question 3 (2026-10-27).
   installed; in lodge mode a save writes a note in lodge's vault under
   `Reading/`.
 
+Built (2026-11-07): the reader's "Export as Markdown…" in local mode
+(`Shell.exportsMarkdown`, the store's `exportMarkdown`, and
+`items.exportMarkdown`'s golden, written for the `local` caller), with
+Vitest cases for both modes and `make app-e2e` and `make app-e2e-lodge`
+checks of the button in each mode. `items.exportMarkdown`'s name now
+stays within the 255 bytes that `save_file` takes. The metainfo's
+screenshots show the new button.
+
+### Phase 7's record
+
+No VM run yet.
+
 ## Phase 8 — Moving from lodge (planner, small)
 
 Brian chose ADR-0008's proposal for open question 2 (2026-10-27).
@@ -717,6 +729,13 @@ Brian chose ADR-0008's proposal for open question 2 (2026-10-27).
   generated sources, items, stars and saved links: the export and the
   import give the desktop the same sources, lodge's data is unchanged
   afterwards, and nothing moved before the user acted.
+
+Written (2026-11-07): the steps are in
+[design/overview.md](../design/overview.md), "Moving from lodge".
+
+### Phase 8's record
+
+No VM run yet.
 
 ## Phase 9 — A release candidate (Brian and Lucilla, small)
 

@@ -98,8 +98,14 @@ The sidebar's `Connect to lodge…` (or `Lodge: HOST`) opens the Server
 sheet, which says what a change does from local facts only. A lost
 connection, from a failed call or the connection's close, shows a banner
 that retries every 10 s, and never local data in lodge mode; when the
-connection comes back, the window reloads its lists. In lodge mode, "Open in Notes" opens lodge's note route
-in the browser.
+connection comes back, the window reloads its lists. The reader keeps
+an article by the mode
+([plan 0002, Phase 7](../plans/0002-the-standalone-desktop-flatpak.md#phase-7--notes-on-the-desktop-planner-small)).
+In local mode, "Export as Markdown…" asks this computer's readd for
+`items.exportMarkdown` and gives its file to `save_file`; there is no
+save as note, because a local readd has no notes client. In lodge mode,
+the reader offers save as note and "Open in Notes", as Read in lodge
+does, and "Open in Notes" opens lodge's note route in the browser.
 `make app-e2e` drives the built app in WebKitGTK, with the hostile
 corpus ([plan 0002, Phase 3's record](../plans/0002-the-standalone-desktop-flatpak.md#phase-3s-record)).
 
@@ -134,9 +140,10 @@ checked it on a Snow VM:
   FileChooser portal, so the user can pick a file in any folder, such
   as `~/Downloads`, with no file system permission. OPML export goes
   through `save_file` and `SaveFile`, which offers `frostread.opml` with
-  an OPML filter. The reader's "Export as Markdown…" will take the same
-  path; it is not built yet
-  ([plan 0002, Phase 7](../plans/0002-the-standalone-desktop-flatpak.md#phase-7--notes-on-the-desktop-planner-small)).
+  an OPML filter. The reader's "Export as Markdown…" takes the same
+  path: it offers `items.exportMarkdown`'s name, `<YYYY-MM-DD> <title>.md`,
+  with an MD filter, and the file holds the note's frontmatter and the
+  article's text.
 - **Links.** `on_new_window` gives `http`, `https` and `mailto` links to
   the opener, which uses OpenURI: the article's open button and a link
   in the reader's frame open in the default browser.
@@ -148,6 +155,34 @@ checked it on a Snow VM:
   chooser shows `[Invalid UTF-8]` for it and GTK logs a
   `g_variant_new_string` assertion: WebKitGTK gives the file input's
   filter no name. The filter itself works.
+
+**Moving from lodge.** The move is optional, and the user makes it
+([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
+Moving from lodge;
+[plan 0002, Phase 8](../plans/0002-the-standalone-desktop-flatpak.md#phase-8--moving-from-lodge-planner-small)).
+The app copies nothing from lodge by itself, and nothing it does changes
+lodge's data. An owner who reads in Read on lodge today has 2 ways:
+
+1. **Keep lodge, with the connection.** Nothing moves. In the desktop
+   app, open `Connect to lodge…` in the sidebar, choose `Lodge`, type
+   lodge's address, such as `https://lodge.example.ts.net`, and save. The window then
+   shows lodge's list, with its items, read state, stars, saved links
+   and notes, and this computer's readd stops. Its own data, if any,
+   stays on this computer until the user switches back to local.
+2. **Move the subscriptions, with OPML.** In Read on lodge, choose
+   `Export OPML`: the browser downloads `frostread.opml`. The desktop
+   app in lodge mode has the same button, and saves the file where the
+   user picks. Then, in the desktop app in local mode (`Lodge: HOST` in
+   the sidebar, `This computer`, and save), choose `Import OPML` and
+   pick the file. Each feed becomes a local source in its folder, and a
+   feed that is already a source is skipped (`opml.import`,
+   [specs/api.md](../specs/api.md#folders)). The sources poll from this
+   computer, and their items come at the first poll: only the items that
+   the feed still holds.
+
+Only the subscriptions move. Items, read state, stars, archived items,
+saved links and notes stay on lodge, and the export only reads them. To
+read them again, switch the desktop app to lodge, or open Read on lodge.
 
 **The store.** SQLite on local disk, WAL, foreign keys on, migrations by
 `user_version`:
