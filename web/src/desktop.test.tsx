@@ -444,6 +444,29 @@ describe("the desktop shell", () => {
     expect(open).toHaveBeenCalledWith("https://example.com/a", "_blank", "noopener");
   });
 
+  it("sets Markdown export only for local desktop mode", () => {
+    const local = createDesktopShell(
+      window,
+      () => 0,
+      async () => true,
+    );
+    expect(local.exportsMarkdown).toBe(true);
+
+    const lodge: ServerControl = {
+      lodge: "http://127.0.0.1:8480",
+      get: async () => ({ lodge: "http://127.0.0.1:8480", localData: true }),
+      save: async () => {},
+      reload: () => {},
+    };
+    const connected = createDesktopShell(
+      window,
+      () => 0,
+      async () => true,
+      lodge,
+    );
+    expect(connected.exportsMarkdown).toBe(false);
+  });
+
   it("reads a fragment as a route", () => {
     expect(desktopRoute("#/view/starred")).toEqual({ kind: "view", view: "starred" });
     expect(desktopRoute("#/item/4")).toEqual({ kind: "item", id: 4 });

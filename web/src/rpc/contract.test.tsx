@@ -15,6 +15,7 @@ import type {
   Counts,
   ImportResult,
   ItemDetail,
+  ItemMarkdown,
   ItemRender,
   ItemSummary,
   Note,
@@ -30,6 +31,7 @@ import {
   validateImport,
   validateItemDetail,
   validateItemResult,
+  validateMarkdown,
   validateNote,
   validateNoteStatus,
   validateNull,
@@ -43,6 +45,7 @@ import {
 } from "./contract.js";
 import countsJSON from "./testdata/counts.json";
 import subscribeJSON from "./testdata/events.subscribe.json";
+import markdownJSON from "./testdata/items.exportMarkdown.json";
 import doneJSON from "./testdata/items.get.done.json";
 import failedJSON from "./testdata/items.get.failed.json";
 import savedJSON from "./testdata/items.get.saved.json";
@@ -77,6 +80,7 @@ const saved: ItemDetail = checked<ItemDetail>(savedJSON, validateItemDetail);
 const later: ItemSummary = checked<{ item: ItemSummary }>(laterJSON, validateItemResult).item;
 const note: Note = checked<Note>(saveAsNoteJSON, validateNote);
 const rendered: ItemRender = checked<ItemRender>(renderJSON, validateRender);
+const markdown: ItemMarkdown = checked<ItemMarkdown>(markdownJSON, validateMarkdown);
 
 describe("the daemon's answers match api.ts", () => {
   it("rpc.hello", () => {
@@ -136,6 +140,12 @@ describe("the daemon's answers match api.ts", () => {
       ),
     ).toBe(true);
     expect(rendered.omittedImages).toBe(0);
+  });
+
+  it("items.exportMarkdown", () => {
+    expect(markdown.filename.endsWith(".md")).toBe(true);
+    expect(markdown.markdown.startsWith("---\n")).toBe(true);
+    expect(markdown.markdown).not.toContain("read_item");
   });
 
   it("items.saveAsNote and later.save", () => {

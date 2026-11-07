@@ -214,6 +214,7 @@ describe("the Server sheet", () => {
       <ShellProvider
         shell={{
           savePages: false,
+          exportsMarkdown: true,
           server: local,
           reportRoute: () => {},
           openRoute: () => {},
@@ -234,6 +235,7 @@ describe("the Server sheet", () => {
       <ShellProvider
         shell={{
           savePages: false,
+          exportsMarkdown: false,
           server: server({ lodge: "https://lodge.example.ts.net", localData: true }),
           reportRoute: () => {},
           openRoute: () => {},
@@ -258,6 +260,7 @@ describe("the Server sheet", () => {
       <ShellProvider
         shell={{
           savePages: false,
+          exportsMarkdown: true,
           server: control,
           reportRoute: () => {},
           openRoute: () => {},

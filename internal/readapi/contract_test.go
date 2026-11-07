@@ -232,43 +232,44 @@ func (stubEvents) Subscribe(context.Context, *api.EventsSubscribeParams) (*api.E
 	return &api.EventsSubscribeResult{Subscribed: true}, nil
 }
 
-// TestContract writes, or checks, every session method's golden.
+// TestContract writes, or checks, each method's golden with its caller.
 func TestContract(t *testing.T) {
 	s := seed(t)
 	cases := []struct {
 		name   string
 		method string
 		params string
+		caller api.CallerKind
 	}{
-		{"rpc.hello", "rpc.hello", `{"protocol":1,"client":"contract"}`},
-		{"status", "status", `{}`},
-		{"counts", "counts", `{}`},
-		{"sources.list", "sources.list", `{}`},
-		{"items.list.unread", "items.list", `{"view":"unread","limit":2}`},
-		{"items.list.all", "items.list", `{"view":"all","limit":50}`},
-		{"items.list.folder", "items.list", `{"view":"all","folder":"Garden","limit":50}`},
-		{"items.get.done", "items.get", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`},
-		{"items.get.failed", "items.get", `{"id":` + itoa(s.items["A page that fails"]) + `}`},
-		{"items.get.saved", "items.get", `{"id":` + itoa(s.saved) + `}`},
-		{"items.search", "items.search", `{"query":"tomatoes","limit":10}`},
-		{"items.saveAsNote", "items.saveAsNote", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`},
-		{"items.noteStatus", "items.noteStatus", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`},
-		{"items.render", "items.render", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `,"scheme":"dark"}`},
-		{"later.save", "later.save", `{"url":"https://example.org/read-later"}`},
-		{"events.subscribe", "events.subscribe", `{}`},
-		{"opml.export", "opml.export", `{}`},
-		{"opml.import", "opml.import", `{"xml":"<?xml version=\"1.0\"?><opml version=\"2.0\"><body><outline type=\"rss\" text=\"Second Feed\" xmlUrl=\"https://second.example/feed.xml\"/></body></opml>"}`},
-		{"sources.add", "sources.add", `{"url":"https://third.example/feed.xml"}`},
-		{"sources.rename", "sources.rename", `{"id":1,"title":"Example Journal, renamed"}`},
-		{"sources.setFolder", "sources.setFolder", `{"id":1,"folder":"Garden"}`},
-		{"sources.refresh", "sources.refresh", `{"id":1}`},
-		{"items.setRead", "items.setRead", `{"ids":[` + itoa(s.items["Planting tomatoes after the last frost"]) + `],"read":true}`},
-		{"items.setStarred", "items.setStarred", `{"id":` + itoa(s.items["An item with no words"]) + `,"starred":true}`},
-		{"items.setArchived", "items.setArchived", `{"id":` + itoa(s.items["An item with no words"]) + `,"archived":false}`},
-		{"items.markAllRead", "items.markAllRead", `{"view":"all"}`},
-		{"sources.remove", "sources.remove", `{"id":3}`},
+		{"rpc.hello", "rpc.hello", `{"protocol":1,"client":"contract"}`, ""},
+		{"status", "status", `{}`, ""},
+		{"counts", "counts", `{}`, ""},
+		{"sources.list", "sources.list", `{}`, ""},
+		{"items.list.unread", "items.list", `{"view":"unread","limit":2}`, ""},
+		{"items.list.all", "items.list", `{"view":"all","limit":50}`, ""},
+		{"items.list.folder", "items.list", `{"view":"all","folder":"Garden","limit":50}`, ""},
+		{"items.get.done", "items.get", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`, ""},
+		{"items.get.failed", "items.get", `{"id":` + itoa(s.items["A page that fails"]) + `}`, ""},
+		{"items.get.saved", "items.get", `{"id":` + itoa(s.saved) + `}`, ""},
+		{"items.search", "items.search", `{"query":"tomatoes","limit":10}`, ""},
+		{"items.saveAsNote", "items.saveAsNote", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`, ""},
+		{"items.noteStatus", "items.noteStatus", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`, ""},
+		{"items.render", "items.render", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `,"scheme":"dark"}`, ""},
+		{"later.save", "later.save", `{"url":"https://example.org/read-later"}`, ""},
+		{"events.subscribe", "events.subscribe", `{}`, ""},
+		{"opml.export", "opml.export", `{}`, ""},
+		{"opml.import", "opml.import", `{"xml":"<?xml version=\"1.0\"?><opml version=\"2.0\"><body><outline type=\"rss\" text=\"Second Feed\" xmlUrl=\"https://second.example/feed.xml\"/></body></opml>"}`, ""},
+		{"sources.add", "sources.add", `{"url":"https://third.example/feed.xml"}`, ""},
+		{"sources.rename", "sources.rename", `{"id":1,"title":"Example Journal, renamed"}`, ""},
+		{"sources.setFolder", "sources.setFolder", `{"id":1,"folder":"Garden"}`, ""},
+		{"sources.refresh", "sources.refresh", `{"id":1}`, ""},
+		{"items.setRead", "items.setRead", `{"ids":[` + itoa(s.items["Planting tomatoes after the last frost"]) + `],"read":true}`, ""},
+		{"items.setStarred", "items.setStarred", `{"id":` + itoa(s.items["An item with no words"]) + `,"starred":true}`, ""},
+		{"items.setArchived", "items.setArchived", `{"id":` + itoa(s.items["An item with no words"]) + `,"archived":false}`, ""},
+		{"items.markAllRead", "items.markAllRead", `{"view":"all"}`, ""},
+		{"sources.remove", "sources.remove", `{"id":3}`, ""},
+		{"items.exportMarkdown", "items.exportMarkdown", `{"id":` + itoa(s.items["Planting tomatoes after the last frost"]) + `}`, api.CallerLocal},
 	}
-	ctx := api.WithCaller(t.Context(), api.CallerSession)
 	if *update {
 		if err := os.MkdirAll(testdata, 0o755); err != nil {
 			t.Fatal(err)
@@ -276,6 +277,11 @@ func TestContract(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			caller := c.caller
+			if caller == "" {
+				caller = api.CallerSession
+			}
+			ctx := api.WithCaller(t.Context(), caller)
 			res, err := s.router.Dispatch(ctx, c.method, jsontext.Value(c.params))
 			if err != nil {
 				t.Fatalf("%s: %v", c.method, err)

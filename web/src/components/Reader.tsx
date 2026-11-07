@@ -1,8 +1,9 @@
 // The reader: the item's title, source, author and date, its actions, and
 // its article. In lodge that is the content frame; on the desktop it comes
-// from items.render in a sandboxed srcdoc frame (ADR-0008). Save as note
-// writes the item into notes and then opens it there (docs/specs/api.md,
-// items.saveAsNote).
+// from items.render in a sandboxed srcdoc frame (ADR-0008). Local desktop
+// mode exports Markdown to a user-picked file. Lodge mode keeps save as
+// note, which writes the item into notes and then opens it there
+// (docs/specs/api.md, items.saveAsNote and items.exportMarkdown).
 import { IconButton, iconButtonClass, useNarrow } from "@frostyard/lodge-ui/react";
 import { Archive, ArrowLeft, ExternalLink, Mail, MailOpen, Star } from "lucide-react";
 import { headerDate } from "../lib/format.js";
@@ -25,6 +26,8 @@ export function Reader(props: { onBack?: () => void }) {
   const toggleRead = useRead((state) => state.toggleRead);
   const archive = useRead((state) => state.archive);
   const saveAsNote = useRead((state) => state.saveAsNote);
+  const exportMarkdown = useRead((state) => state.exportMarkdown);
+  const setError = useRead((state) => state.setError);
   const narrow = useNarrow();
   const shell = useShell();
 
@@ -87,18 +90,39 @@ export function Reader(props: { onBack?: () => void }) {
       >
         <ExternalLink size={16} aria-hidden="true" />
       </a>
-      <button
-        type="button"
-        disabled={!configured || busy}
-        title={configured ? undefined : "Notes is not set up: see readctl notes-token"}
-        onClick={() => {
-          if (hasNote) void openNotes();
-          else void saveAsNote(item.id);
-        }}
-        className="ml-1 h-7 rounded-md border border-separator px-2 text-sidebar-row text-primary hover:bg-selection-inactive disabled:opacity-40 disabled:hover:bg-transparent"
-      >
-        {hasNote ? "Open in Notes" : "Save as note"}
-      </button>
+      {shell.exportsMarkdown ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            void (async () => {
+              const result = await exportMarkdown(item.id);
+              if (result === null) return;
+              try {
+                await shell.saveFile(result.filename, result.markdown, "text/markdown");
+              } catch (error) {
+                setError(error);
+              }
+            })();
+          }}
+          className="ml-1 h-7 rounded-md border border-separator px-2 text-sidebar-row text-primary hover:bg-selection-inactive disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          Export as Markdown…
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={!configured || busy}
+          title={configured ? undefined : "Notes is not set up: see readctl notes-token"}
+          onClick={() => {
+            if (hasNote) void openNotes();
+            else void saveAsNote(item.id);
+          }}
+          className="ml-1 h-7 rounded-md border border-separator px-2 text-sidebar-row text-primary hover:bg-selection-inactive disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          {hasNote ? "Open in Notes" : "Save as note"}
+        </button>
+      )}
     </>
   );
 
@@ -124,7 +148,7 @@ export function Reader(props: { onBack?: () => void }) {
         </header>
       )}
 
-      {noteState?.state === "unreachable" && (
+      {!shell.exportsMarkdown && noteState?.state === "unreachable" && (
         <p role="alert" className="border-b border-separator px-[var(--pad-x)] py-1 text-sidebar-row text-flag-1">
           Notes could not be reached: {noteState.error ?? "no answer"}.
         </p>

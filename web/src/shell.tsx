@@ -24,6 +24,11 @@ export interface Shell {
   server?: ServerControl;
   /** savePages: the save page, the bookmarklet page and their sidebar entry exist. */
   readonly savePages: boolean;
+  /**
+   * exportsMarkdown: the reader offers "Export as Markdown…" instead of save
+   * as note (the desktop in local mode, ADR-0008).
+   */
+  readonly exportsMarkdown: boolean;
   /** reportRoute tells the shell the app's route, for its address and history. */
   reportRoute(path: string, title: string, replace: boolean): void;
   /** openRoute opens a route in another app: a note. */

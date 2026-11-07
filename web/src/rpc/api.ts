@@ -115,6 +115,12 @@ export interface Note {
   route: string;
 }
 
+/** ItemMarkdown is the filename and text items.exportMarkdown makes. */
+export interface ItemMarkdown {
+  filename: string;
+  markdown: string;
+}
+
 /** ImportResult is what opml.import added or skipped. */
 export interface ImportResult {
   added: number;
@@ -191,6 +197,7 @@ export interface ReadAPI {
   setStarred(id: number, starred: boolean): Promise<void>;
   setArchived(id: number, archived: boolean): Promise<void>;
   saveAsNote(id: number): Promise<Note>;
+  exportMarkdown(id: number): Promise<ItemMarkdown>;
   noteStatus(id: number): Promise<NoteStatus>;
   /** renderItem is the article's page for the desktop's frame, in a scheme. */
   renderItem(id: number, scheme?: "light" | "dark"): Promise<ItemRender>;
@@ -240,6 +247,7 @@ export function readAPI(transport: Transport): ReadAPI {
       await call("items.setArchived", { id, archived });
     },
     saveAsNote: (id) => call<Note>("items.saveAsNote", { id }),
+    exportMarkdown: (id) => call<ItemMarkdown>("items.exportMarkdown", { id }),
     noteStatus: (id) => call<NoteStatus>("items.noteStatus", { id }),
     renderItem: (id, scheme) => call<ItemRender>("items.render", scheme === undefined ? { id } : { id, scheme }),
     saveLater: (url, title) =>

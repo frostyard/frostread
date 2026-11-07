@@ -7,6 +7,7 @@ import type {
   ExtractState,
   ImportResult,
   ItemDetail,
+  ItemMarkdown,
   ItemRender,
   ItemsChanged,
   Note,
@@ -253,6 +254,15 @@ export function validateNote(v: unknown): Problems {
   return p;
 }
 
+/** validateMarkdown checks items.exportMarkdown's filename and text. */
+export function validateMarkdown(v: unknown): Problems {
+  const p: Problems = [];
+  if (!object(v, "items.exportMarkdown", ["filename", "markdown"], p)) return p;
+  field(v, "filename", "items.exportMarkdown", p, isString);
+  field(v, "markdown", "items.exportMarkdown", p, isString);
+  return p;
+}
+
 /** validateImport checks opml.import's result. */
 export function validateImport(v: unknown): Problems {
   const p: Problems = [];
@@ -348,6 +358,7 @@ export type GoldenTypes = {
   detail: ItemDetail;
   render: ItemRender;
   note: Note;
+  markdown: ItemMarkdown;
   imported: ImportResult;
   changed: ItemsChanged;
 };

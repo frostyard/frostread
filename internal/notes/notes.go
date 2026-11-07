@@ -325,7 +325,24 @@ func Export(a Article, now time.Time) (filename, markdown string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	return now.UTC().Format("2006-01-02") + " " + safeTitle(a.Title) + ".md", body, nil
+	day := now.UTC().Format("2006-01-02")
+	title := safeTitle(a.Title)
+	// save_file takes at most 255 bytes for the complete suggested name.
+	const maxExportNameBytes = 255
+	prefix, suffix := day+" ", ".md"
+	limit := maxExportNameBytes - len(prefix) - len(suffix)
+	if len(title) > limit {
+		var b strings.Builder
+		for _, r := range title {
+			runeSize := len(string(r))
+			if b.Len()+runeSize > limit {
+				break
+			}
+			b.WriteRune(r)
+		}
+		title = strings.TrimSpace(b.String())
+	}
+	return prefix + title + suffix, body, nil
 }
 
 // note is the Markdown a note holds: the frontmatter, the title, the link
