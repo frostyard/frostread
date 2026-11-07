@@ -32,9 +32,11 @@ async function connectDesktop(): Promise<{ transport: Transport; saveFile: SaveF
   }
   const { connectTauri } = await import("./rpc/transport/tauri.js");
   let lodge = "";
+  let known = false;
   try {
     const answer = await core.invoke<{ lodge: string; localData: boolean }>("server_get");
     lodge = answer.lodge;
+    known = true;
   } catch {
     // The bridge's connect shows the connection error. A server get refusal
     // here does not turn an unknown mode into local mode.
@@ -42,7 +44,7 @@ async function connectDesktop(): Promise<{ transport: Transport; saveFile: SaveF
   return {
     transport: connectTauri(),
     saveFile: tauriSaveFile(core.invoke),
-    server: tauriServer(core.invoke, window, lodge),
+    server: tauriServer(core.invoke, window, lodge, known),
   };
 }
 

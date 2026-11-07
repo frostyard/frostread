@@ -6,6 +6,7 @@
 // (docs/specs/api.md, items.saveAsNote and items.exportMarkdown).
 import { IconButton, iconButtonClass, useNarrow } from "@frostyard/lodge-ui/react";
 import { Archive, ArrowLeft, ExternalLink, Mail, MailOpen, Star } from "lucide-react";
+import { useState } from "react";
 import { headerDate } from "../lib/format.js";
 import { useShell } from "../shell.js";
 import { useRead } from "./context.js";
@@ -28,6 +29,7 @@ export function Reader(props: { onBack?: () => void }) {
   const saveAsNote = useRead((state) => state.saveAsNote);
   const exportMarkdown = useRead((state) => state.exportMarkdown);
   const setError = useRead((state) => state.setError);
+  const [exporting, setExporting] = useState(false);
   const narrow = useNarrow();
   const shell = useShell();
 
@@ -93,15 +95,19 @@ export function Reader(props: { onBack?: () => void }) {
       {shell.exportsMarkdown ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || exporting}
           onClick={() => {
+            if (exporting) return;
+            setExporting(true);
             void (async () => {
-              const result = await exportMarkdown(item.id);
-              if (result === null) return;
               try {
+                const result = await exportMarkdown(item.id);
+                if (result === null) return;
                 await shell.saveFile(result.filename, result.markdown, "text/markdown");
               } catch (error) {
                 setError(error);
+              } finally {
+                setExporting(false);
               }
             })();
           }}

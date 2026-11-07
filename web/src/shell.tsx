@@ -13,6 +13,8 @@ export interface ServerInfo {
 /** ServerControl changes the desktop's connection and reloads the window. */
 export interface ServerControl {
   readonly lodge: string;
+  /** known is false when the window could not read the mode at its start. */
+  readonly known: boolean;
   get(): Promise<ServerInfo>;
   save(lodge: string): Promise<void>;
   reload(): void;

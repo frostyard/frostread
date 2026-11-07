@@ -36,6 +36,7 @@ afterEach(() => {
 function control(lodge: string): ServerControl {
   return {
     lodge,
+    known: true,
     get: async () => ({ lodge, localData: true }),
     save: async () => {},
     reload: () => {},
