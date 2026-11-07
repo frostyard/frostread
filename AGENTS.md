@@ -56,7 +56,8 @@ merged (frostread#61, 2026-11-06). Phase 6's Done when holds
 (2026-11-06): the e2e test and the 2 VM checks; its record is in plan
 0002. Phase 7, "Export as Markdown…" in local mode, and Phase 8, the
 steps to move from lodge in docs/design/overview.md, are built in
-frostread#63 (2026-11-07). The clean-install gate is not built yet.
+frostread#63 (2026-11-07), and both Done whens hold on the VM; their
+records are in plan 0002. The clean-install gate is not built yet.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.

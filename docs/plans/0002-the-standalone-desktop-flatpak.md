@@ -716,7 +716,27 @@ screenshots show the new button.
 
 ### Phase 7's record
 
-No VM run yet.
+Phase 7's Done when holds (2026-11-07), on Duncan's disposable Snow
+desktop VM: Snow `20261106012847` (Debian 13.7), GNOME Shell 48.7 on
+Wayland, xdg-desktop-portal 1.20.3 with xdg-desktop-portal-gnome 48.0,
+Flatpak 1.16.6 and `org.gnome.Platform//51`, in a real GNOME session
+after a GDM login. The bundle is the Flatpak workflow's build of
+frostread#63 at 6de9dda
+([run 42333868112](https://github.com/frostyard/frostread/actions/runs/42333868112),
+Flatpak commit `c35015c6…`), installed with `flatpak install --user
+--bundle` on a VM with no Frostread data. Lodge is lodge's development
+build (`make dev-lodge`: lodge `main` 6966a91, Notes `main` c7feb72,
+and Read from the same frostread#63 tree), on the host's loopback; the
+VM reached it as `http://127.0.0.1:8480` through an SSH tunnel to its
+own loopback. The later commits of frostread#63 change only a start
+whose mode is unknown and a second click during an export, which this
+run did not reach.
+
+| Done when | What the VM showed |
+| --- | --- |
+| In local mode, an export lands where the user picked it, with the article's text and frontmatter | The reader of "A new Go API for JSON" (The Go Blog, polled by this computer's readd) shows "Export as Markdown…" and no "Save as note". The click opened GNOME's `SaveFile` portal ("Save file", filter MD, name `2026-11-07 A new Go API for JSON.md`, in `~/Documents`). Save wrote the file, 25,765 bytes: the frontmatter (`source`, `saved`, `author`, `site`), the title and the article's text, with no `read_item` marker and no "Open in Read" link |
+| No Notes is installed | `flatpak list --app` shows Frostread and no Notes app |
+| In lodge mode, a save writes a note in lodge's vault under `Reading/` | After the Server sheet saved lodge at `http://127.0.0.1:8480`, the reader of the same article shows "Save as note" and no export. The click wrote `Reading/2026-11-07 A new Go API for JSON.md` in lodge's generated vault, with its `read_item` marker, and the button became "Open in Notes" |
 
 ## Phase 8 — Moving from lodge (planner, small)
 
@@ -735,7 +755,21 @@ Written (2026-11-07): the steps are in
 
 ### Phase 8's record
 
-No VM run yet.
+Phase 8's Done when holds (2026-11-07), in the same run as Phase 7's
+record, on the same VM, bundle and lodge. Lodge held 7 sources (the 5
+generated feeds in folder `Development`, The Go Blog, and xkcd in folder
+`Comics`), 22 items, 3 stars, 1 archived item, 2 saved links and, after
+Phase 7's save, 1 note.
+
+| Done when | What the VM showed |
+| --- | --- |
+| Nothing moved before the user acted | The new install started an empty local reader. After the switch to lodge and back to local (the sheet: "This computer's reader starts again with the sources and articles it had. Nothing moves from lodge."), `readctl sources` in the Flatpak still printed `no sources` |
+| The export and the import give the desktop the same sources | In lodge mode, "Export OPML" opened the `SaveFile` portal and wrote `~/Documents/frostread.opml` with lodge's 7 sources and their folders. In local mode, "Import OPML" through the FileChooser portal added The Go Blog and xkcd in `Comics`, and their items came at the first poll. It skipped the 5 generated feeds, whose address is `127.0.0.1`: the desktop's fetcher refuses a loopback address (ADR-0003), and only the development build's `devfetch` admits them on lodge. A lodge release has the same guard, so a real lodge holds no source the desktop refuses. No star, saved link or note came with the sources |
+| Lodge's data is unchanged afterwards | A read-only snapshot of lodge's database (each source's URL, title and folder, and each item's read, star, archive, saved and note state) has the same SHA-256 before the export and after the import and the local export |
+
+Found and left open: the window does not say that an import skipped
+feeds. `opml.import` answers `{added, skipped}`, but the sidebar shows
+neither; readd's log names each skipped host and why.
 
 ## Phase 9 — A release candidate (Brian and Lucilla, small)
 

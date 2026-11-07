@@ -174,9 +174,12 @@ lodge's data. An owner who reads in Read on lodge today has 2 ways:
    app in lodge mode has the same button, and saves the file where the
    user picks. Then, in the desktop app in local mode (`Lodge: HOST` in
    the sidebar, `This computer`, and save), choose `Import OPML` and
-   pick the file. Each feed becomes a local source in its folder, and a
-   feed that is already a source is skipped (`opml.import`,
-   [specs/api.md](../specs/api.md#folders)). The sources poll from this
+   pick the file. Each feed becomes a local source in its folder. A feed
+   that is already a source is skipped (`opml.import`,
+   [specs/api.md](../specs/api.md#folders)), and so is a feed whose
+   address the fetcher refuses
+   ([ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md)),
+   which lodge's own readd refuses too. The sources poll from this
    computer, and their items come at the first poll: only the items that
    the feed still holds.
 
