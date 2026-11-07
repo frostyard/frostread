@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -145,6 +146,41 @@ func TestSave(t *testing.T) {
 	}
 	if strings.Contains(body, "blob:") {
 		t.Fatalf("the note keeps a blob marker:\n%s", body)
+	}
+}
+
+func TestExportFilename(t *testing.T) {
+	now := time.Date(2026, 10, 21, 15, 0, 0, 0, time.UTC)
+	plain := "Gardening in the spring"
+	cjk := strings.Repeat("園", 80)
+	emoji := strings.Repeat("🌱", 80)
+	for _, tc := range []struct {
+		name  string
+		title string
+		want  string
+	}{
+		{"emoji", emoji, "2026-10-21 " + strings.Repeat("🌱", 60) + ".md"},
+		{"CJK", cjk, "2026-10-21 " + cjk + ".md"},
+		{"ASCII", plain, "2026-10-21 " + plain + ".md"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			filename, _, err := Export(Article{ID: 7, URL: "https://example.com/garden", Title: tc.title, Content: "<p>Text</p>"}, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !utf8.ValidString(filename) {
+				t.Fatalf("filename is not valid UTF-8: %q", filename)
+			}
+			if !strings.HasSuffix(filename, ".md") {
+				t.Fatalf("filename has no .md suffix: %q", filename)
+			}
+			if len(filename) > 255 {
+				t.Fatalf("filename is %d bytes, want at most 255: %q", len(filename), filename)
+			}
+			if filename != tc.want {
+				t.Fatalf("filename = %q, want %q", filename, tc.want)
+			}
+		})
 	}
 }
 

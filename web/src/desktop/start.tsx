@@ -114,7 +114,32 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
           DESKTOP_RETRY_MS,
           () => void store.getState().reconnect(),
         );
+  let stopModeCheck = () => {};
+  let checkModeAfterConnect = () => {};
+  if (options.server !== undefined && !options.server.known) {
+    const server = options.server;
+    let modeCheckStarted = false;
+    const checkMode = () => {
+      if (modeCheckStarted || store.getState().status === null) return;
+      modeCheckStarted = true;
+      stopModeCheck();
+      // A start that could not read app.json keeps mode-specific actions off.
+      // The first non-null status may follow a first connect or a reconnect:
+      // read the mode once, reload once if known, and keep the safe mode on failure.
+      void server
+        .get()
+        .then(() => server.reload())
+        .catch(() => {});
+    };
+    stopModeCheck = store.subscribe((state, previous) => {
+      if (state.status !== null && state.status !== previous.status) checkMode();
+    });
+    checkModeAfterConnect = checkMode;
+  }
+
   await store.getState().connect(readAPI(transport));
+  checkModeAfterConnect();
+
   await store.getState().setRoute(store.getState().route);
 
   return {
@@ -124,6 +149,7 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
       query.removeEventListener("change", onScheme);
       unwatch();
       unclose();
+      stopModeCheck();
       unscheme();
       unfollow();
       root.unmount();

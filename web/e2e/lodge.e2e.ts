@@ -205,6 +205,10 @@ describe.skipIf(!origin)("the desktop lodge connection", () => {
     const s = running.session;
     await showTomatoes(s);
 
+    const labels = await Promise.all((await s.findAll('section[aria-label="Reader"] button')).map((el) => s.text(el)));
+    expect(labels).toContain("Save as note");
+    expect(labels).not.toContain("Export as Markdown…");
+
     await s.click(await findButton(s, "Save as note"));
     await s.waitFor(
       "Open in Notes",

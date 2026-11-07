@@ -11,6 +11,7 @@ import { createReadStore } from "./store.js";
 function server(answer: { lodge: string; localData: boolean }, overrides: Partial<ServerControl> = {}): ServerControl {
   return {
     lodge: answer.lodge,
+    known: true,
     get: vi.fn(async () => answer),
     save: vi.fn(async () => {}),
     reload: vi.fn(),
@@ -32,7 +33,7 @@ describe("the Server sheet", () => {
       return undefined as T;
     }
     const win = { location: { reload: vi.fn() } } as unknown as Window;
-    const control = tauriServer(invoke, win, "https://lodge.example.ts.net");
+    const control = tauriServer(invoke, win, "https://lodge.example.ts.net", true);
     await expect(control.get()).resolves.toEqual({ lodge: "https://lodge.example.ts.net", localData: true });
     await control.save("https://two.example");
     control.reload();
@@ -146,6 +147,7 @@ describe("the Server sheet", () => {
     let reads = 0;
     const control: ServerControl = {
       lodge: "https://lodge.example.ts.net",
+      known: true,
       get: vi.fn(async () => {
         reads++;
         return reads === 1
@@ -182,6 +184,7 @@ describe("the Server sheet", () => {
     let reads = 0;
     const control: ServerControl = {
       lodge: "",
+      known: true,
       get: vi.fn(async () => {
         reads++;
         return reads === 1
@@ -214,6 +217,7 @@ describe("the Server sheet", () => {
       <ShellProvider
         shell={{
           savePages: false,
+          exportsMarkdown: true,
           server: local,
           reportRoute: () => {},
           openRoute: () => {},
@@ -234,6 +238,7 @@ describe("the Server sheet", () => {
       <ShellProvider
         shell={{
           savePages: false,
+          exportsMarkdown: false,
           server: server({ lodge: "https://lodge.example.ts.net", localData: true }),
           reportRoute: () => {},
           openRoute: () => {},
@@ -258,6 +263,7 @@ describe("the Server sheet", () => {
       <ShellProvider
         shell={{
           savePages: false,
+          exportsMarkdown: true,
           server: control,
           reportRoute: () => {},
           openRoute: () => {},

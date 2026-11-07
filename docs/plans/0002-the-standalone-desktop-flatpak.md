@@ -706,6 +706,38 @@ Brian chose ADR-0008's proposal for open question 3 (2026-10-27).
   installed; in lodge mode a save writes a note in lodge's vault under
   `Reading/`.
 
+Built (2026-11-07): the reader's "Export as Markdown…" in local mode
+(`Shell.exportsMarkdown`, the store's `exportMarkdown`, and
+`items.exportMarkdown`'s golden, written for the `local` caller), with
+Vitest cases for both modes and `make app-e2e` and `make app-e2e-lodge`
+checks of the button in each mode. `items.exportMarkdown`'s name now
+stays within the 255 bytes that `save_file` takes. The metainfo's
+screenshots show the new button.
+
+### Phase 7's record
+
+Phase 7's Done when holds (2026-11-07), on Duncan's disposable Snow
+desktop VM: Snow `20261106012847` (Debian 13.7), GNOME Shell 48.7 on
+Wayland, xdg-desktop-portal 1.20.3 with xdg-desktop-portal-gnome 48.0,
+Flatpak 1.16.6 and `org.gnome.Platform//51`, in a real GNOME session
+after a GDM login. The bundle is the Flatpak workflow's build of
+frostread#63 at 6de9dda
+([run 42333868112](https://github.com/frostyard/frostread/actions/runs/42333868112),
+Flatpak commit `c35015c6…`), installed with `flatpak install --user
+--bundle` on a VM with no Frostread data. Lodge is lodge's development
+build (`make dev-lodge`: lodge `main` 6966a91, Notes `main` c7feb72,
+and Read from the same frostread#63 tree), on the host's loopback; the
+VM reached it as `http://127.0.0.1:8480` through an SSH tunnel to its
+own loopback. The later commits of frostread#63 change only a start
+whose mode is unknown and a second click during an export, which this
+run did not reach.
+
+| Done when | What the VM showed |
+| --- | --- |
+| In local mode, an export lands where the user picked it, with the article's text and frontmatter | The reader of "A new Go API for JSON" (The Go Blog, polled by this computer's readd) shows "Export as Markdown…" and no "Save as note". The click opened GNOME's `SaveFile` portal ("Save file", filter MD, name `2026-11-07 A new Go API for JSON.md`, in `~/Documents`). Save wrote the file, 25,765 bytes: the frontmatter (`source`, `saved`, `author`, `site`), the title and the article's text, with no `read_item` marker and no "Open in Read" link |
+| No Notes is installed | `flatpak list --app` shows Frostread and no Notes app |
+| In lodge mode, a save writes a note in lodge's vault under `Reading/` | After the Server sheet saved lodge at `http://127.0.0.1:8480`, the reader of the same article shows "Save as note" and no export. The click wrote `Reading/2026-11-07 A new Go API for JSON.md` in lodge's generated vault, with its `read_item` marker, and the button became "Open in Notes" |
+
 ## Phase 8 — Moving from lodge (planner, small)
 
 Brian chose ADR-0008's proposal for open question 2 (2026-10-27).
@@ -717,6 +749,44 @@ Brian chose ADR-0008's proposal for open question 2 (2026-10-27).
   generated sources, items, stars and saved links: the export and the
   import give the desktop the same sources, lodge's data is unchanged
   afterwards, and nothing moved before the user acted.
+
+Written (2026-11-07): the steps are in
+[design/overview.md](../design/overview.md), "Moving from lodge".
+
+### Phase 8's record
+
+Phase 8's Done when holds (2026-11-07), on the same VM as Phase 7's
+record, in 2 runs.
+
+- **Run 1,** the bundle of 6de9dda (Phase 7's run), with lodge's
+  development build as `make dev-lodge` makes it, plus 2 public feeds:
+  7 sources (the 5 generated feeds in folder `Development`, The Go Blog,
+  and xkcd in folder `Comics`), 22 items, 3 stars, 1 archived item, 2
+  saved links and 1 note. The import added The Go Blog and xkcd in
+  `Comics`, and skipped the 5 generated feeds: their address is
+  `127.0.0.1`, which the desktop's fetcher refuses (ADR-0003); only the
+  development build's `devfetch` admits them on lodge. So run 1 shows
+  the skip, and cannot show the same sources.
+- **Run 2,** the bundle of frostread#63 at c6de21d
+  ([run 42335316905](https://github.com/frostyard/frostread/actions/runs/42335316905),
+  Flatpak commit `e9f05b5c…`), installed fresh, with a new development
+  build whose sources are public feeds only: 4 sources (The Go Blog and
+  the Rust Blog in folder `Programming`, xkcd in folder `Comics`, and
+  Debian News in none), 32 items, 3 stars, 1 archived item, 2 read
+  items, 2 saved links and 1 note. The Done when names generated
+  sources, but the desktop refuses every one of them, so run 2 holds
+  public feeds in their place, with the same kinds of state. The table
+  is run 2's.
+
+| Done when | What the VM showed |
+| --- | --- |
+| Nothing moved before the user acted | The new install started an empty local reader. After the switch to lodge and back to local (the sheet: "This computer's reader starts again with the sources and articles it had. Nothing moves from lodge."), `readctl sources` in the Flatpak still printed `no sources` |
+| The export and the import give the desktop the same sources | In lodge mode, the window showed lodge's 4 sources, and "Export OPML" opened the `SaveFile` portal and wrote `~/Documents/frostread.opml` with the 4 feeds. In local mode, "Import OPML" through the FileChooser portal added all 4, each in lodge's folder, and skipped none; their 30 items came at the first poll. No star, saved link, archived item or note came with them |
+| Lodge's data is unchanged afterwards | A read-only snapshot of lodge's database (each source's URL, title and folder, and each item's read, star, archive, saved and note state) has the same SHA-256 before the export, after the import, and after the run |
+
+Found and left open: the window does not say that an import skipped
+feeds. `opml.import` answers `{added, skipped}`, but the sidebar shows
+neither; readd's log names each skipped host and why.
 
 ## Phase 9 — A release candidate (Brian and Lucilla, small)
 

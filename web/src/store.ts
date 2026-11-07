@@ -4,7 +4,17 @@
 import { CodeNotConnected, RPCError } from "@frostyard/lodge-client/rpc";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { type Route, noteRoute as routeOfNote, UNREAD } from "./lib/routes.js";
-import type { Counts, ItemDetail, ItemSummary, NoteStatus, ReadAPI, Source, Status, View } from "./rpc/api.js";
+import type {
+  Counts,
+  ItemDetail,
+  ItemMarkdown,
+  ItemSummary,
+  NoteStatus,
+  ReadAPI,
+  Source,
+  Status,
+  View,
+} from "./rpc/api.js";
 
 /** EMPTY_COUNTS is the counts before the first answer. */
 const EMPTY_COUNTS: Counts = { views: { unread: 0, starred: 0, later: 0, archive: 0, all: 0 }, sources: [] };
@@ -74,6 +84,7 @@ export interface ReadActions {
    * and answers the saved item. It rejects so the page can show why. */
   saveFromPage(url: string, title: string): Promise<ItemSummary>;
   saveAsNote(id: number): Promise<void>;
+  exportMarkdown(id: number): Promise<ItemMarkdown | null>;
   /** checkNote asks notes where an item's note is, and keeps note_path
    * true: a missing note clears it, a moved one records its path, and an
    * unreachable notes keeps it. It answers the status, or null. */
@@ -507,6 +518,20 @@ export function createReadStore(options?: { quietDisconnects?: boolean }): Store
         }));
       } catch (err) {
         set({ busy: false, error: message(err) });
+      }
+    },
+
+    async exportMarkdown(id) {
+      const { api } = get();
+      if (api === null) return null;
+      set({ busy: true });
+      try {
+        const result = await api.exportMarkdown(id);
+        set({ busy: false });
+        return result;
+      } catch (err) {
+        set({ busy: false, error: message(err) });
+        return null;
       }
     },
 

@@ -147,6 +147,7 @@ export function createDesktopShell(
   return {
     ...(server === undefined ? {} : { server }),
     savePages: false,
+    exportsMarkdown: server === undefined || (server.known && server.lodge === ""),
     reportRoute(path, title, replace) {
       // The title needs no history entry, so it is set even when the
       // window refuses the route.

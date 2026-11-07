@@ -63,6 +63,7 @@ describe("the desktop entry", () => {
     const fakeWin = { open } as unknown as Window;
     const lodge: ServerControl = {
       lodge: "https://lodge.example.ts.net/",
+      known: true,
       get: async () => ({ lodge: "https://lodge.example.ts.net/", localData: true }),
       save: async () => {},
       reload: () => {},
@@ -442,6 +443,45 @@ describe("the desktop shell", () => {
     expect(open).not.toHaveBeenCalled();
     shell.openOutside("https://example.com/a");
     expect(open).toHaveBeenCalledWith("https://example.com/a", "_blank", "noopener");
+  });
+
+  it("sets Markdown export only for local desktop mode", () => {
+    const local = createDesktopShell(
+      window,
+      () => 0,
+      async () => true,
+    );
+    expect(local.exportsMarkdown).toBe(true);
+
+    const lodge: ServerControl = {
+      lodge: "http://127.0.0.1:8480",
+      known: true,
+      get: async () => ({ lodge: "http://127.0.0.1:8480", localData: true }),
+      save: async () => {},
+      reload: () => {},
+    };
+    const connected = createDesktopShell(
+      window,
+      () => 0,
+      async () => true,
+      lodge,
+    );
+    expect(connected.exportsMarkdown).toBe(false);
+
+    const unknown: ServerControl = {
+      lodge: "",
+      known: false,
+      get: async () => ({ lodge: "", localData: true }),
+      save: async () => {},
+      reload: () => {},
+    };
+    const unknownShell = createDesktopShell(
+      window,
+      () => 0,
+      async () => true,
+      unknown,
+    );
+    expect(unknownShell.exportsMarkdown).toBe(false);
   });
 
   it("reads a fragment as a route", () => {

@@ -86,6 +86,16 @@ describe("the app on readdev's feeds", () => {
     }
   });
 
+  it("shows Markdown export and no Save as note in local mode", async () => {
+    if (!app) throw new Error("not started");
+    const s = app.session;
+    await showTomatoes(s);
+    const buttons = await s.findAll('section[aria-label="Reader"] button');
+    const labels = await Promise.all(buttons.map((el) => s.text(el)));
+    expect(labels).toContain("Export as Markdown…");
+    expect(labels).not.toContain("Save as note");
+  });
+
   it("sends a click on the article's link to the stand-in opener", async () => {
     if (!app) throw new Error("not started");
     const s = app.session;

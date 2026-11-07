@@ -54,6 +54,7 @@ export function contentSrc(contentPath: string | undefined, scheme?: "light" | "
 /** lodgeShell is the lodge frame's Shell, over the functions above. */
 export const lodgeShell: Shell = {
   savePages: true,
+  exportsMarkdown: false,
   reportRoute,
   openRoute,
   openOutside,

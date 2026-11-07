@@ -300,6 +300,15 @@ export function createMockTransport(options: MockOptions = {}): Transport {
         notify("all");
         return { path: item.notePath, route: `/notes/1/Reading/${encodeURIComponent(file)}` } as T;
       }
+      case "items.exportMarkdown": {
+        const item = byId(Number(params.id));
+        if (item === undefined) throw new MockError(1001, "no such item");
+        const filename = `${item.published.slice(0, 10)} ${item.title.replaceAll("/", "-")}.md`;
+        const markdown =
+          `---\nsource: ${item.url}\nsaved: ${item.published.slice(0, 10)}\n` +
+          `author: ${item.author}\n---\n\n# ${item.title}\n\n${item.excerpt}\n`;
+        return { filename, markdown } as T;
+      }
       case "items.noteStatus": {
         const item = byId(Number(params.id));
         if (item === undefined) throw new MockError(1001, "no such item");

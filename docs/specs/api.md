@@ -267,8 +267,10 @@ file.
 Markdown a note holds, from the same conversion in `internal/notes`,
 without the `read_item` marker and without the line that links back to
 the reader. The name is `<YYYY-MM-DD> <safe title>.md`, the note's base
-name without its folder. The body is the extracted article, or the
-sanitized summary when that is empty, as the content page chooses. The
+name without its folder, with the title cut at a character so that the
+name is at most 255 bytes, which the shell's `save_file` takes. The
+body is the extracted article, or the sanitized summary when that is
+empty, as the content page chooses. The
 shell writes the file where the user picks, through the FileChooser
 portal's `SaveFile`; readd writes no file.
 
