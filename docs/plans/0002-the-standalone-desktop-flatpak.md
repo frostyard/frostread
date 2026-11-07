@@ -755,17 +755,34 @@ Written (2026-11-07): the steps are in
 
 ### Phase 8's record
 
-Phase 8's Done when holds (2026-11-07), in the same run as Phase 7's
-record, on the same VM, bundle and lodge. Lodge held 7 sources (the 5
-generated feeds in folder `Development`, The Go Blog, and xkcd in folder
-`Comics`), 22 items, 3 stars, 1 archived item, 2 saved links and, after
-Phase 7's save, 1 note.
+Phase 8's Done when holds (2026-11-07), on the same VM as Phase 7's
+record, in 2 runs.
+
+- **Run 1,** the bundle of 6de9dda (Phase 7's run), with lodge's
+  development build as `make dev-lodge` makes it, plus 2 public feeds:
+  7 sources (the 5 generated feeds in folder `Development`, The Go Blog,
+  and xkcd in folder `Comics`), 22 items, 3 stars, 1 archived item, 2
+  saved links and 1 note. The import added The Go Blog and xkcd in
+  `Comics`, and skipped the 5 generated feeds: their address is
+  `127.0.0.1`, which the desktop's fetcher refuses (ADR-0003); only the
+  development build's `devfetch` admits them on lodge. So run 1 shows
+  the skip, and cannot show the same sources.
+- **Run 2,** the bundle of frostread#63 at c6de21d
+  ([run 42335316905](https://github.com/frostyard/frostread/actions/runs/42335316905),
+  Flatpak commit `e9f05b5c…`), installed fresh, with a new development
+  build whose sources are public feeds only: 4 sources (The Go Blog and
+  the Rust Blog in folder `Programming`, xkcd in folder `Comics`, and
+  Debian News in none), 32 items, 3 stars, 1 archived item, 2 read
+  items, 2 saved links and 1 note. The Done when names generated
+  sources, but the desktop refuses every one of them, so run 2 holds
+  public feeds in their place, with the same kinds of state. The table
+  is run 2's.
 
 | Done when | What the VM showed |
 | --- | --- |
 | Nothing moved before the user acted | The new install started an empty local reader. After the switch to lodge and back to local (the sheet: "This computer's reader starts again with the sources and articles it had. Nothing moves from lodge."), `readctl sources` in the Flatpak still printed `no sources` |
-| The export and the import give the desktop the same sources | In lodge mode, "Export OPML" opened the `SaveFile` portal and wrote `~/Documents/frostread.opml` with lodge's 7 sources and their folders. In local mode, "Import OPML" through the FileChooser portal added The Go Blog and xkcd in `Comics`, and their items came at the first poll. It skipped the 5 generated feeds, whose address is `127.0.0.1`: the desktop's fetcher refuses a loopback address (ADR-0003), and only the development build's `devfetch` admits them on lodge. A lodge release has the same guard, so a real lodge holds no source the desktop refuses. No star, saved link or note came with the sources |
-| Lodge's data is unchanged afterwards | A read-only snapshot of lodge's database (each source's URL, title and folder, and each item's read, star, archive, saved and note state) has the same SHA-256 before the export and after the import and the local export |
+| The export and the import give the desktop the same sources | In lodge mode, the window showed lodge's 4 sources, and "Export OPML" opened the `SaveFile` portal and wrote `~/Documents/frostread.opml` with the 4 feeds. In local mode, "Import OPML" through the FileChooser portal added all 4, each in lodge's folder, and skipped none; their 30 items came at the first poll. No star, saved link, archived item or note came with them |
+| Lodge's data is unchanged afterwards | A read-only snapshot of lodge's database (each source's URL, title and folder, and each item's read, star, archive, saved and note state) has the same SHA-256 before the export, after the import, and after the run |
 
 Found and left open: the window does not say that an import skipped
 feeds. `opml.import` answers `{added, skipped}`, but the sidebar shows
