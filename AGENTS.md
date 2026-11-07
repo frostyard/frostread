@@ -380,3 +380,6 @@ and specs it shapes. A design doc links its ADRs, its specs and the roadmap
 phase that builds it. A spec links its ADRs and its design doc. A plan
 links what each phase implements. A new doc gets a line in
 [docs/README.md](docs/README.md). Convert relative dates to absolute dates.
+A plan's record says a Done when holds only when the run showed every
+outcome it names; a partial or skipped result is recorded as such, and the
+Done when stays pending until a run shows it.
