@@ -47,8 +47,9 @@ Read runs on lodge's host, beside lodge and notes: it is lodge's `read`
 app, installed from a release's `frostyard-readd` `.deb` as
 `/usr/bin/readd` under the system user `frostread`, and lodge serves its web
 bundle at `/app/read/`. A change reaches it as a `vX.Y.Z` tag that
-`make bump` pushes: the tag's workflow builds, attests and publishes the
-`.deb`, and the host installs it by hand. The runbooks are in
+`make bump CANDIDATE=vX.Y.Z-rc.N` pushes on a tested candidate's commit:
+the tag's workflow builds, attests and publishes the `.deb`, and the host
+installs it by hand. The runbooks are in
 [packaging/README.md](packaging/README.md):
 [install on lodge's host](packaging/README.md#install-on-lodges-host),
 [update](packaging/README.md#update),

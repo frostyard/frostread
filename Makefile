@@ -212,80 +212,79 @@ svu-version-check:
 		exit 1; \
 	fi
 
-# bump is the only sanctioned way to tag a release (ADR-0012). It has 2 forms:
+# bump is the only sanctioned way to tag a release (ADR-0012). It has 1 form:
 #
-#   make bump                          on main, equal to origin/main, with a
-#     clean tree and a passing gate, it tags svu's next version and pushes the
-#     tag, which starts the Release workflow (the .deb only). It refuses when
-#     a candidate of that version exists: that release must be the candidate's.
 #   make bump CANDIDATE=vX.Y.Z-rc.N    tags vX.Y.Z on the commit of a
-#     candidate that passed plan 0002's gate, after make verify in a
-#     temporary worktree of that commit, so release.yml builds the .deb from
-#     the same code that the Promote workflow (.github/workflows/promote.yml)
-#     then releases as the Flatpak.
+#     published candidate that passed plan 0002's gate, after make verify in a
+#     temporary worktree of that commit.
+#
+# The .deb of release.yml and the Flatpak that promote.yml copies hold the same
+# code (frostmail ADR-0048:
+# https://github.com/frostyard/frostmail/blob/main/docs/adr/0048-tag-each-release-on-its-tested-candidates-commit.md).
+# Before make verify, bump also checks that origin holds the candidate tag at
+# the same commit, and that flatpak.yml ran with success for that tag on that
+# commit (the candidate was published). Without CANDIDATE it refuses at once.
 # The recipe is 1 shell line, and it calls make by name, not by $(MAKE): a
 # line that names $(MAKE) runs even under make -n, and this one tags and
 # pushes.
 CANDIDATE ?=
 export CANDIDATE
+BUMP_REPO := frostyard/frostread
 
-bump: ## Tag the next plain release, or the release tag of CANDIDATE=vX.Y.Z-rc.N
-	@if [ -n "$${CANDIDATE:-}" ]; then \
-		set -eu; \
-		candidate=$$CANDIDATE; \
-		printf '%s\n' "$$candidate" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+' || { \
-			echo "make bump needs CANDIDATE=vX.Y.Z-rc.N, the candidate that passed the gate"; exit 1; }; \
-		version=$${candidate%-rc.*}; \
-		git fetch --tags origin main; \
-		commit=$$(git rev-parse --verify "refs/tags/$$candidate^{commit}") || { \
-			echo "the candidate tag $$candidate does not exist"; exit 1; }; \
-		git merge-base --is-ancestor "$$commit" origin/main || { \
-			echo "the candidate $$candidate is not on origin/main"; exit 1; }; \
-		if git rev-parse -q --verify "refs/tags/$$version" >/dev/null; then \
-			echo "the tag $$version already exists"; exit 1; \
+bump: ## Tag the candidate's release commit with CANDIDATE=vX.Y.Z-rc.N
+	@if [ -z "$${CANDIDATE:-}" ]; then echo "make bump needs CANDIDATE=vX.Y.Z-rc.N, the candidate that passed the gate"; exit 1; fi; \
+	set -eu; \
+	candidate=$$CANDIDATE; \
+	printf '%s\n' "$$candidate" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+' || { \
+		echo "make bump needs CANDIDATE=vX.Y.Z-rc.N, the candidate that passed the gate"; exit 1; }; \
+	version=$${candidate%-rc.*}; \
+	git fetch --tags origin main; \
+	commit=$$(git rev-parse --verify "refs/tags/$$candidate^{commit}") || { \
+		echo "the candidate tag $$candidate does not exist"; exit 1; }; \
+	git merge-base --is-ancestor "$$commit" origin/main || { \
+		echo "the candidate $$candidate is not on origin/main"; exit 1; }; \
+	if git rev-parse -q --verify "refs/tags/$$version" >/dev/null; then \
+		echo "the tag $$version already exists"; exit 1; \
+	fi; \
+	if git ls-remote --exit-code --tags origin "refs/tags/$$version" >/dev/null; then \
+		echo "the tag $$version already exists on origin"; exit 1; \
+	fi; \
+	newest=$$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -1); \
+	if [ -n "$$newest" ]; then \
+		if [ "$$version" = "$$newest" ] || [ "$$(printf '%s\n%s\n' "$$newest" "$$version" | sort -V | tail -1)" != "$$version" ]; then \
+			echo "$$version is not newer than the newest release tag $$newest"; exit 1; \
 		fi; \
-		if git ls-remote --exit-code --tags origin "refs/tags/$$version" >/dev/null; then \
-			echo "the tag $$version already exists on origin"; exit 1; \
-		fi; \
-		newest=$$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -1); \
-		if [ -n "$$newest" ]; then \
-			if [ "$$version" = "$$newest" ] || [ "$$(printf '%s\n%s\n' "$$newest" "$$version" | sort -V | tail -1)" != "$$version" ]; then \
-				echo "$$version is not newer than the newest release tag $$newest"; exit 1; \
-			fi; \
-		fi; \
-		dir=$$(mktemp -d); \
-		if git worktree add --detach "$$dir" "$$commit" >/dev/null; then \
-			trap 'if git worktree remove "$$dir" >/dev/null 2>&1; then :; else echo "kept the worktree $$dir" >&2; fi' EXIT; \
-		else \
-			rmdir "$$dir" 2>/dev/null || true; \
-			exit 1; \
-		fi; \
-		MISE_TRUSTED_CONFIG_PATHS="$$dir$${MISE_TRUSTED_CONFIG_PATHS:+:$$MISE_TRUSTED_CONFIG_PATHS}" \
-			make -C "$$dir" --no-print-directory verify; \
-		test -z "$$(git -C "$$dir" status --porcelain)" || { \
-			echo "make verify left the candidate's worktree unclean"; exit 1; }; \
-		git tag -a "$$version" "$$commit" -m "Version $$version (candidate $$candidate)"; \
-		echo "Tagged $$version at $$commit (the candidate $$candidate); pushing it to origin..."; \
-		git push origin "refs/tags/$$version"; \
+	fi; \
+	remote=$$(git ls-remote --tags origin "refs/tags/$$candidate" "refs/tags/$$candidate^{}") || { \
+		echo "the candidate tag $$candidate is not on origin"; exit 1; }; \
+	peeled=$$(printf '%s\n' "$$remote" | awk '$$2 == "refs/tags/'"$$candidate"'^{}" { print $$1 }'); \
+	plain=$$(printf '%s\n' "$$remote" | awk '$$2 == "refs/tags/'"$$candidate"'" { print $$1 }'); \
+	remote_commit=$${peeled:-$$plain}; \
+	if [ -z "$$remote_commit" ]; then \
+		echo "the candidate tag $$candidate is not on origin"; exit 1; \
+	fi; \
+	if [ "$$remote_commit" != "$$commit" ]; then \
+		echo "the candidate tag $$candidate on origin is not $$commit"; exit 1; \
+	fi; \
+	runs=$$(gh run list --repo $(BUMP_REPO) --workflow flatpak.yml --event push --branch "$$candidate" --status success --limit 100 --json headSha --jq '.[].headSha') || { \
+		echo "the candidate $$candidate has no successful Flatpak workflow run on $$commit: it was not published"; exit 1; }; \
+	if ! printf '%s\n' "$$runs" | grep -Fxq "$$commit"; then \
+		echo "the candidate $$candidate has no successful Flatpak workflow run on $$commit: it was not published"; exit 1; \
+	fi; \
+	dir=$$(mktemp -d); \
+	if git worktree add --detach "$$dir" "$$commit" >/dev/null; then \
+		trap 'if git worktree remove "$$dir" >/dev/null 2>&1; then :; else echo "kept the worktree $$dir" >&2; fi' EXIT; \
 	else \
-		set -eu; \
-		make --no-print-directory svu-version-check; \
-		test "$$(git rev-parse --abbrev-ref HEAD)" = main || { echo "make bump runs on main"; exit 1; }; \
-		git fetch --tags origin; \
-		git fetch origin main; \
-		test "$$(git rev-parse HEAD)" = "$$(git rev-parse origin/main)" || { echo "HEAD is not origin/main"; exit 1; }; \
-		test -z "$$(git status --porcelain)" || { echo "the working tree is not clean"; exit 1; }; \
-		make --no-print-directory check; \
-		test -z "$$(git status --porcelain)" || { echo "the gate changed the tree (formatting?); commit it first"; exit 1; }; \
-		version=$$($(SVU) next); \
-		printf '%s\n' "$$version" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+' || { echo "svu next gave '$$version', not vX.Y.Z"; exit 1; }; \
-		if [ -n "$$(git tag --list "$$version-rc.*")" ]; then \
-			echo "a candidate of $$version exists: run make bump CANDIDATE=$$version-rc.N"; exit 1; \
-		fi; \
-		git tag -a "$$version" -m "Version $$version"; \
-		echo "Tagged $$version; pushing it to origin..."; \
-		git push origin "refs/tags/$$version"; \
-	fi
+		rmdir "$$dir" 2>/dev/null || true; \
+		exit 1; \
+	fi; \
+	MISE_TRUSTED_CONFIG_PATHS="$$dir$${MISE_TRUSTED_CONFIG_PATHS:+:$$MISE_TRUSTED_CONFIG_PATHS}" \
+		make -C "$$dir" --no-print-directory verify; \
+	test -z "$$(git -C "$$dir" status --porcelain)" || { \
+		echo "make verify left the candidate's worktree unclean"; exit 1; }; \
+	git tag -a "$$version" "$$commit" -m "Version $$version (candidate $$candidate)"; \
+	echo "Tagged $$version at $$commit (the candidate $$candidate); pushing it to origin..."; \
+	git push origin "refs/tags/$$version"
 
 clean: ## Remove build output
 	rm -rf build dist

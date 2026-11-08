@@ -157,8 +157,8 @@ counterpart of something those repositories do, read their file.
   takes the metainfo's 3 PNGs in `docs/images/` from the real desktop app
   on made-up feeds, in the nsl machine.
 - `.github/workflows/`: `ci.yml` (the jobs of `make ci`, plus `deb`, a
-  snapshot `.deb`), `release.yml` (plain `vX.Y.Z` tags build, attest and
-  publish the `.deb`), `flatpak.yml` (the sources check and Flatpak build;
+  snapshot `.deb`), `release.yml` (a `vX.Y.Z` tag on a candidate's commit
+  builds, attests and publishes the `.deb`), `flatpak.yml` (the sources check and Flatpak build;
   `v*` tags stamp, export and publish candidates), and `promote.yml`
   (manual dispatch copies a tested candidate digest to `vX.Y.Z` and
   `latest`). `internal/workflowcheck` tests that their
@@ -262,8 +262,10 @@ machine. No `CODEOWNERS` file (B15), and no other agent framework's tree
 ## Releases and dependencies
 
 - Tags look like `v1.2.3`: svu (`.svu.yml`, prefix `v`, v0 mode).
-- The push of a plain `vX.Y.Z` tag runs `.github/workflows/release.yml`.
-  It builds the web bundle and `frostyard-readd`'s `.deb` (`make deb`, nFPM), attests its
+- Every release starts with a candidate tag `vX.Y.Z-rc.N` and a successful
+  candidate publish in `.github/workflows/flatpak.yml`. The push of the
+  matching `vX.Y.Z` tag runs `.github/workflows/release.yml`. It builds the
+  web bundle and `frostyard-readd`'s `.deb` (`make deb`, nFPM), attests its
   provenance, and makes the GitHub release with `gh release create`.
 - A candidate tag `vX.Y.Z-rc.N`, pushed by Brian, runs
   `.github/workflows/flatpak.yml`: it publishes and attests the Flatpak
@@ -274,10 +276,13 @@ machine. No `CODEOWNERS` file (B15), and no other agent framework's tree
   commit, and `.github/workflows/promote.yml`, run by hand, copies the
   candidate's attested digest to `vX.Y.Z` and `latest`.
 - Brian tags and runs Promote. Agents never tag, push a tag, run Promote or
-  release. `make bump` is the only way to tag a release: on a clean,
-  current `main` it runs `make check`, tags `svu next` and pushes the tag;
-  with `CANDIDATE` it tags the candidate's commit instead.
-- The version comes from `svu next` over Conventional Commits. On v0, a
+  release. `make bump CANDIDATE=vX.Y.Z-rc.N` is the only form. It checks that
+  the candidate exists on origin at the requested commit and has a successful
+  Flatpak workflow run for that commit. It runs `make verify` in a temporary
+  worktree, tags `vX.Y.Z` at the candidate's commit and pushes the tag.
+  `release.yml` refuses a `vX.Y.Z` tag on any other commit.
+- The version comes from `svu next` over Conventional Commits. It names the
+  candidate's `vX.Y.Z` version. On v0, a
   breaking change gives a minor.
 - Go module: `github.com/frostyard/lodge/kit` v0.4.0 (`go.mod`). It uses
   `kit/jsonrpc`, `lodgeapp`, `mcpsession` and `netguard`; its tests use

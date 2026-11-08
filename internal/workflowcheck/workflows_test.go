@@ -318,6 +318,22 @@ func TestReleaseWorkflow(t *testing.T) {
 	if got := values(push); !slices.Equal(got, []string{"v*", "!v*-*"}) {
 		t.Errorf("release push tags = %v, want [v* !v*-*]", got)
 	}
+	build := get(get(root, "jobs"), "build")
+	if build == nil {
+		t.Fatal("release.yml has no build job")
+	}
+	needs := get(build, "needs")
+	var gotNeeds []string
+	if needs != nil {
+		if needs.Kind == yaml.ScalarNode {
+			gotNeeds = []string{needs.Value}
+		} else {
+			gotNeeds = values(needs)
+		}
+	}
+	if !slices.Equal(gotNeeds, []string{"candidate"}) {
+		t.Errorf("release build needs = %v, want [candidate]", gotNeeds)
+	}
 }
 
 // TestCIRequiredJobNames keeps the five required CI job names stable.

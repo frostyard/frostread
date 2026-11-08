@@ -16,8 +16,8 @@ import (
 )
 
 type bumpRepo struct {
-	root, origin, clone, stubDir, stubMake, stubSVU, makeLog string
-	env                                                      []string
+	root, origin, clone, stubDir, stubMake, stubSVU, stubGH, makeLog, ghLog string
+	env                                                                     []string
 }
 
 // bumpEnv is the fixtures' environment: the caller's, without the make
@@ -65,8 +65,10 @@ func newBumpRepo(t *testing.T) bumpRepo {
 	clone := filepath.Join(root, "clone")
 	stubDir := filepath.Join(root, "bin")
 	makeLog := filepath.Join(root, "make.log")
+	ghLog := filepath.Join(root, "gh.log")
 	stubMake := filepath.Join(stubDir, "make")
 	stubSVU := filepath.Join(stubDir, "svu")
+	stubGH := filepath.Join(stubDir, "gh")
 	if err := os.MkdirAll(stubDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +100,19 @@ func newBumpRepo(t *testing.T) bumpRepo {
 	if err := os.WriteFile(makeLog, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(ghLog, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ghStub := "#!/bin/sh\n{ printf '%s' gh; [ 0 -eq $# ] || printf ' %s' \"$@\"; printf '\\n'; } >>\"$STUB_GH_LOG\"\nif [ \"${1:-}\" != run ] || [ \"${2:-}\" != list ]; then exit 0; fi\nrepo=0; workflow=0; event=0; status=0; branch=0\nprev=\nfor arg in \"$@\"; do\n  if [ \"$prev\" = --repo ] && [ \"$arg\" = frostyard/frostread ]; then repo=1; fi\n  if [ \"$prev\" = --workflow ] && [ \"$arg\" = flatpak.yml ]; then workflow=1; fi\n  if [ \"$prev\" = --event ] && [ \"$arg\" = push ]; then event=1; fi\n  if [ \"$prev\" = --status ] && [ \"$arg\" = success ]; then status=1; fi\n  if [ \"$prev\" = --branch ] && [ \"$arg\" = \"$CANDIDATE\" ]; then branch=1; fi\n  prev=$arg\ndone\nif [ $repo -eq 1 ] && [ $workflow -eq 1 ] && [ $event -eq 1 ] && [ $status -eq 1 ] && [ $branch -eq 1 ]; then\n  for sha in ${STUB_GH_RUNS:-}; do printf '%s\\n' \"$sha\"; done\nfi\n"
+	if err := os.WriteFile(stubGH, []byte(ghStub), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	bumpCommand(t, env, clone, "git", "add", "Makefile", "mise.toml")
 	bumpCommand(t, env, clone, "git", "commit", "-q", "-m", "add bump recipe")
 	bumpCommand(t, env, clone, "git", "push", "-q", "-u", "origin", "main")
 
-	return bumpRepo{root: root, origin: origin, clone: clone, stubDir: stubDir, stubMake: stubMake, stubSVU: stubSVU, makeLog: makeLog, env: env}
+	return bumpRepo{root: root, origin: origin, clone: clone, stubDir: stubDir, stubMake: stubMake, stubSVU: stubSVU, stubGH: stubGH, makeLog: makeLog, ghLog: ghLog, env: env}
 }
 
 func (r bumpRepo) commitA(t *testing.T) string {
@@ -132,7 +141,7 @@ func (r bumpRepo) addTag(t *testing.T, tag, commit string, candidate bool) {
 	bumpCommand(t, r.env, r.clone, "git", "push", "-q", "origin", "refs/tags/"+tag)
 }
 
-func (r bumpRepo) runMake(t *testing.T, absMake, candidate, svuNext, stubExit string, dryRun bool) (string, error) {
+func (r bumpRepo) runMake(t *testing.T, absMake, candidate, svuNext, stubExit, stubRuns string, dryRun bool) (string, error) {
 	t.Helper()
 	args := []string{"-f", "Makefile", "bump"}
 	if dryRun {
@@ -148,6 +157,9 @@ func (r bumpRepo) runMake(t *testing.T, absMake, candidate, svuNext, stubExit st
 		"STUB_MAKE_LOG="+r.makeLog,
 		"STUB_MAKE_EXIT="+stubExit,
 		"STUB_SVU_NEXT="+svuNext,
+		"CANDIDATE="+candidate,
+		"STUB_GH_LOG="+r.ghLog,
+		"STUB_GH_RUNS="+stubRuns,
 	)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -185,6 +197,19 @@ func (r bumpRepo) makeLogLines(t *testing.T) []string {
 	return strings.Split(text, "\n")
 }
 
+func (r bumpRepo) ghLogLines(t *testing.T) []string {
+	t.Helper()
+	data, err := os.ReadFile(r.ghLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.TrimSpace(string(data))
+	if text == "" {
+		return nil
+	}
+	return strings.Split(text, "\n")
+}
+
 func (r bumpRepo) worktrees(t *testing.T) string {
 	t.Helper()
 	return bumpCommand(t, r.env, r.root, "git", "-C", r.clone, "worktree", "list", "--porcelain")
@@ -204,7 +229,7 @@ func TestBump(t *testing.T) {
 		a := r.commitA(t)
 		r.addTag(t, "v1.2.0-rc.1", a, true)
 		b := r.commitB(t)
-		out, err := r.runMake(t, makePath, "v1.2.0-rc.1", "", "", false)
+		out, err := r.runMake(t, makePath, "v1.2.0-rc.1", "", "", a, false)
 		if err != nil {
 			t.Fatalf("bump failed: %v\n%s", err, out)
 		}
@@ -234,7 +259,7 @@ func TestBump(t *testing.T) {
 		a := r.commitA(t)
 		r.addTag(t, "v1.2.0-rc.1", a, true)
 		r.commitB(t)
-		out, err := r.runMake(t, makePath, "v1.2.0-rc.1", "", "1", false)
+		out, err := r.runMake(t, makePath, "v1.2.0-rc.1", "", "1", a, false)
 		if err == nil {
 			t.Fatalf("failed verification succeeded:\n%s", out)
 		}
@@ -270,7 +295,7 @@ func TestBump(t *testing.T) {
 			if tc.releaseTag != "" {
 				r.addTag(t, tc.releaseTag, a, false)
 			}
-			out, err := r.runMake(t, makePath, tc.candidate, "", "", false)
+			out, err := r.runMake(t, makePath, tc.candidate, "", "", a, false)
 			if err == nil {
 				t.Fatalf("refusal succeeded:\n%s", out)
 			}
@@ -293,37 +318,111 @@ func TestBump(t *testing.T) {
 		})
 	}
 
-	t.Run("plain candidate exists", func(t *testing.T) {
+	t.Run("no candidate is refused", func(t *testing.T) {
 		r := newBumpRepo(t)
-		a := r.commitA(t)
-		r.addTag(t, "v1.2.0-rc.1", a, true)
-		out, err := r.runMake(t, makePath, "", "v1.2.0", "", false)
+		out, err := r.runMake(t, makePath, "", "v1.4.0", "", "", false)
 		if err == nil {
-			t.Fatalf("plain bump succeeded:\n%s", out)
+			t.Fatalf("bump without CANDIDATE succeeded:\n%s", out)
 		}
-		if !strings.Contains(out, "a candidate of v1.2.0 exists") {
-			t.Fatalf("plain bump output lacks candidate refusal:\n%s", out)
+		if !strings.Contains(out, "make bump needs CANDIDATE=vX.Y.Z-rc.N, the candidate that passed the gate") {
+			t.Fatalf("bump without CANDIDATE lacks its refusal:\n%s", out)
 		}
-		if slices.Contains(r.originTags(t), "v1.2.0") {
-			t.Fatal("plain bump pushed v1.2.0")
+		if slices.Contains(r.originTags(t), "v1.4.0") {
+			t.Fatal("bump without CANDIDATE pushed v1.4.0")
+		}
+		if local := bumpCommand(t, r.env, r.clone, "git", "tag", "--list", "v1.4.0"); local != "" {
+			t.Fatalf("bump without CANDIDATE left v1.4.0 local: %q", local)
+		}
+		if got := r.makeLogLines(t); len(got) != 0 {
+			t.Fatalf("bump without CANDIDATE ran stub make: %v", got)
+		}
+		if got := r.ghLogLines(t); len(got) != 0 {
+			t.Fatalf("bump without CANDIDATE ran gh: %v", got)
 		}
 	})
 
-	// A real make bump CANDIDATE=... runs make verify, and so this test,
-	// with CANDIDATE and MAKEFLAGS in its environment: the fixtures must
-	// not inherit them, or the plain cases take the candidate path.
-	t.Run("plain success under a candidate release", func(t *testing.T) {
+	// A real make bump CANDIDATE=... runs make verify, and so this test
+	// isolates CANDIDATE and MAKEFLAGS: the fixture must not inherit the caller.
+	t.Run("no candidate under a candidate release fixture", func(t *testing.T) {
 		t.Setenv("CANDIDATE", "v9.9.9-rc.1")
 		t.Setenv("MAKEFLAGS", "CANDIDATE=v9.9.9-rc.1")
 		t.Setenv("MAKEOVERRIDES", "CANDIDATE=v9.9.9-rc.1")
 		r := newBumpRepo(t)
-		a := r.commitA(t)
-		out, err := r.runMake(t, makePath, "", "v1.4.0", "", false)
-		if err != nil {
-			t.Fatalf("plain bump failed: %v\n%s", err, out)
+		out, err := r.runMake(t, makePath, "", "v1.4.0", "", "", false)
+		if err == nil {
+			t.Fatalf("bump under inherited candidate fixtures succeeded:\n%s", out)
 		}
-		if got := r.originTagCommit(t, "v1.4.0"); got != a {
-			t.Fatalf("v1.4.0 points at %s, want HEAD %s", got, a)
+		if !strings.Contains(out, "make bump needs CANDIDATE=vX.Y.Z-rc.N, the candidate that passed the gate") {
+			t.Fatalf("isolated fixture lacks the no-candidate refusal:\n%s", out)
+		}
+		if got := r.makeLogLines(t); len(got) != 0 {
+			t.Fatalf("fixture isolation ran stub make: %v", got)
+		}
+		if got := r.ghLogLines(t); len(got) != 0 {
+			t.Fatalf("fixture isolation ran gh: %v", got)
+		}
+	})
+
+	t.Run("candidate not on origin", func(t *testing.T) {
+		r := newBumpRepo(t)
+		a := r.commitA(t)
+		bumpCommand(t, r.env, r.clone, "git", "tag", "-a", "v1.2.0-rc.1", a, "-m", "candidate v1.2.0-rc.1")
+		out, err := r.runMake(t, makePath, "v1.2.0-rc.1", "", "", a, false)
+		if err == nil {
+			t.Fatalf("local-only candidate succeeded:\n%s", out)
+		}
+		if !strings.Contains(out, "the candidate tag v1.2.0-rc.1 is not on origin") {
+			t.Fatalf("candidate origin refusal lacks its message:\n%s", out)
+		}
+		if slices.Contains(r.originTags(t), "v1.2.0") {
+			t.Fatal("candidate not on origin pushed v1.2.0")
+		}
+		if got := r.makeLogLines(t); len(got) != 0 {
+			t.Fatalf("candidate not on origin ran make: %v", got)
+		}
+		if got := r.ghLogLines(t); len(got) != 0 {
+			t.Fatalf("candidate not on origin ran gh: %v", got)
+		}
+	})
+
+	t.Run("candidate not published", func(t *testing.T) {
+		r := newBumpRepo(t)
+		a := r.commitA(t)
+		r.addTag(t, "v1.2.0-rc.1", a, true)
+		out, err := r.runMake(t, makePath, "v1.2.0-rc.1", "", "", "", false)
+		if err == nil {
+			t.Fatalf("candidate with no successful workflow succeeded:\n%s", out)
+		}
+		want := "the candidate v1.2.0-rc.1 has no successful Flatpak workflow run on " + a + ": it was not published"
+		if !strings.Contains(out, want) {
+			t.Fatalf("unpublished candidate lacks %q:\n%s", want, out)
+		}
+		if slices.Contains(r.originTags(t), "v1.2.0") {
+			t.Fatal("unpublished candidate pushed v1.2.0")
+		}
+		if got := r.makeLogLines(t); len(got) != 0 {
+			t.Fatalf("unpublished candidate ran make: %v", got)
+		}
+	})
+
+	t.Run("candidate published on another commit", func(t *testing.T) {
+		r := newBumpRepo(t)
+		a := r.commitA(t)
+		r.addTag(t, "v1.2.0-rc.1", a, true)
+		other := strings.Repeat("3", 40)
+		out, err := r.runMake(t, makePath, "v1.2.0-rc.1", "", "", other, false)
+		if err == nil {
+			t.Fatalf("candidate published on another commit succeeded:\n%s", out)
+		}
+		want := "the candidate v1.2.0-rc.1 has no successful Flatpak workflow run on " + a + ": it was not published"
+		if !strings.Contains(out, want) {
+			t.Fatalf("another-commit publication lacks %q:\n%s", want, out)
+		}
+		if slices.Contains(r.originTags(t), "v1.2.0") {
+			t.Fatal("candidate published on another commit pushed v1.2.0")
+		}
+		if got := r.makeLogLines(t); len(got) != 0 {
+			t.Fatalf("candidate published on another commit ran make: %v", got)
 		}
 	})
 
@@ -333,7 +432,7 @@ func TestBump(t *testing.T) {
 		r.addTag(t, "v1.2.0-rc.1", a, true)
 		cmd := exec.CommandContext(t.Context(), makePath, "-f", "Makefile", "bump", "SVU="+r.stubSVU)
 		cmd.Dir = r.clone
-		cmd.Env = append(r.env, "PATH="+r.stubDir+":"+os.Getenv("PATH"), "STUB_MAKE_LOG="+r.makeLog, "CANDIDATE=v1.2.0-rc.1")
+		cmd.Env = append(r.env, "PATH="+r.stubDir+":"+os.Getenv("PATH"), "STUB_MAKE_LOG="+r.makeLog, "STUB_GH_LOG="+r.ghLog, "STUB_GH_RUNS="+a, "CANDIDATE=v1.2.0-rc.1")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("bump with CANDIDATE in the environment failed: %v\n%s", err, out)
 		}
@@ -342,26 +441,11 @@ func TestBump(t *testing.T) {
 		}
 	})
 
-	t.Run("plain success", func(t *testing.T) {
-		r := newBumpRepo(t)
-		a := r.commitA(t)
-		out, err := r.runMake(t, makePath, "", "v1.4.0", "", false)
-		if err != nil {
-			t.Fatalf("plain bump failed: %v\n%s", err, out)
-		}
-		if got := r.originTagCommit(t, "v1.4.0"); got != a {
-			t.Fatalf("v1.4.0 points at %s, want HEAD %s", got, a)
-		}
-		if got := r.originTagType(t, "v1.4.0"); got != "tag" {
-			t.Fatalf("v1.4.0 type = %q, want annotated tag", got)
-		}
-	})
-
 	t.Run("dry run", func(t *testing.T) {
 		r := newBumpRepo(t)
 		a := r.commitA(t)
 		r.addTag(t, "v1.2.0-rc.1", a, true)
-		out, err := r.runMake(t, makePath, "v1.2.0-rc.1", "", "", true)
+		out, err := r.runMake(t, makePath, "v1.2.0-rc.1", "", "", a, true)
 		if err != nil {
 			t.Fatalf("make -n failed: %v\n%s", err, out)
 		}
