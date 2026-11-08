@@ -18,6 +18,17 @@
 # cargo entry ignores it; internal/workflowcheck requires an ignore entry for
 # each frostyard git crate.
 #
+# zbus (web/src-tauri) stays on major 5: the cargo entry ignores its major
+# updates and keeps its minor and patch updates. zbus 6 changes the API
+# (the zbus::blocking module leaves the default API, which portal.rs uses),
+# and tauri-plugin-single-instance still depends on zbus 5, so a bump alone
+# would ship 2 D-Bus stacks. The shell's direct zbus dependency shares the
+# zbus that single-instance brings. Port portal.rs to zbus 6, and remove
+# this ignore, when the Tauri crates in Cargo.lock move to zbus 6. The cause:
+# https://github.com/frostyard/frostread/pull/58#issuecomment-6715085893
+# zbus_macros, zbus_names and the zvariant crates are not direct
+# dependencies, so Dependabot does not raise them; they move with zbus.
+#
 # The commit prefix is build (or ci): svu reads it as a patch, not a feature.
 version: 2
 updates:
@@ -63,6 +74,8 @@ updates:
       include: scope
     ignore:
       - dependency-name: frostyard-problems
+      - dependency-name: zbus
+        update-types: ["version-update:semver-major"]
     groups:
       web-cargo:
         patterns: ["*"]
