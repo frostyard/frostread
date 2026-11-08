@@ -1,0 +1,177 @@
+# Promotes a Flatpak release candidate to its release (plan 0002,
+# Phases 9 and 11; core ADR-0062). A vX.Y.Z-rc.N tag published an OCI image
+# to ghcr.io/frostyard/frostread and attested its digest
+# (.github/workflows/flatpak.yml); this workflow, run by hand, copies that
+# digest to the version tag vX.Y.Z and to latest, so the release serves
+# exactly the image the gate tested.
+#
+# It builds nothing and attests nothing on purpose: frostyard/flatpak-index
+# accepts one attestation only, from flatpak.yml (scripts/build-index.py,
+# verify_attestation), and an attestation binds the digest, so a copy by
+# digest keeps the candidate's. A second attestation from this file would
+# count for nothing, and a build here could only differ from the image the
+# gate tested.
+#
+# It refuses a candidate that is not vX.Y.Z-rc.N, a version that is not
+# vX.Y.Z or is not the candidate's release, a version tag that already points
+# to another digest, a release tag that is missing or is not the candidate's
+# commit, and a candidate with no digest or no attestation from flatpak.yml on
+# its own tag. A re-run that finds the candidate's digest at the version tag
+# goes on, and copies again.
+#
+# The order for a release: push the candidate tag; pass plan 0002's Phase 10
+# gate on it; run `make bump CANDIDATE=vX.Y.Z-rc.N`, which tags vX.Y.Z on the
+# candidate's commit, so release.yml builds the .deb from the same code and
+# makes the GitHub release; then run this workflow with the candidate and the
+# version.
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: the candidate tag, vX.Y.Z-rc.N
+        required: true
+        type: string
+      version:
+        description: the release, vX.Y.Z
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote the candidate
+    # GitHub-hosted on purpose: flatpak-index rejects attestations from
+    # self-hosted runners, so the digest must come from one.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      # Read only: this workflow verifies the candidate's attestation and
+      # makes none of its own.
+      attestations: read
+    # The inputs reach the scripts through the environment only: a ${{ }}
+    # expression in a run: script would let a tag inject a command.
+    env:
+      IMAGE: ghcr.io/frostyard/frostread
+      REPO: ${{ github.repository }}
+      CANDIDATE: ${{ inputs.candidate }}
+      VERSION: ${{ inputs.version }}
+      DISPATCH_TOKEN: ${{ secrets.FLATPAK_INDEX_DISPATCH_TOKEN }}
+    steps:
+      - name: Check the inputs
+        id: inputs
+        run: |
+          set -euo pipefail
+          if [[ ! $CANDIDATE =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "the candidate $CANDIDATE is not a candidate tag vX.Y.Z-rc.N" >&2
+            exit 1
+          fi
+          if [[ ! $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "the version $VERSION is not a release tag vX.Y.Z" >&2
+            exit 1
+          fi
+          if [[ ${CANDIDATE%-rc.*} != "$VERSION" ]]; then
+            echo "the candidate $CANDIDATE is not a candidate of the version $VERSION" >&2
+            exit 1
+          fi
+
+      # gh attestation verify reads the docker credentials, so the token goes
+      # to both.
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          echo "$GITHUB_TOKEN" | skopeo login ghcr.io --username "$ACTOR" --password-stdin
+          echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+
+      - name: Resolve the candidate's digest
+        id: candidate
+        run: |
+          set -euo pipefail
+          digest=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:$CANDIDATE")
+          if [[ ! $digest =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "the candidate $CANDIDATE names no sha256 digest: $digest" >&2
+            exit 1
+          fi
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+
+      # The release tag is the candidate's very commit (make bump), never a
+      # later commit of main: the .deb release.yml builds and the Flatpak this
+      # workflow promotes must hold the same code. So only "identical" passes.
+      - name: Check the release tag is the candidate's commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=$(gh api "repos/$REPO/compare/$CANDIDATE...$VERSION" --jq .status)
+          if [[ $status != identical ]]; then
+            echo "the git tag $VERSION must exist (make it with make bump CANDIDATE=$CANDIDATE) and be the candidate's commit: $CANDIDATE...$VERSION is $status" >&2
+            exit 1
+          fi
+
+      # The check flatpak-index makes (scripts/build-index.py,
+      # verify_attestation): only an attestation from flatpak.yml counts, and
+      # only one whose certificate names this tag, so an attestation from
+      # another workflow file or of another tag fails here too.
+      - name: Verify the candidate's attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          out=$(gh attestation verify "oci://$IMAGE@$DIGEST" --repo "$REPO" --signer-workflow "github.com/$REPO/.github/workflows/flatpak.yml" --source-ref "refs/tags/$CANDIDATE" --deny-self-hosted-runners --format json)
+          if ! jq -e --arg ref "refs/tags/$CANDIDATE" \
+            --arg signer "https://github.com/$REPO/.github/workflows/flatpak.yml@refs/tags/$CANDIDATE" \
+            'any(.[]; .verificationResult.signature.certificate.sourceRepositoryRef == $ref
+              and .verificationResult.signature.certificate.buildSignerURI == $signer)' <<<"$out" >/dev/null; then
+            echo "the digest $DIGEST has no attestation from flatpak.yml on refs/tags/$CANDIDATE" >&2
+            exit 1
+          fi
+
+      - name: Check the version tag is free
+        env:
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          tags=$(skopeo list-tags "docker://$IMAGE")
+          if jq -e --arg v "$VERSION" '.Tags | index($v)' <<<"$tags" >/dev/null; then
+            current=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:$VERSION")
+            if [[ $current != "$DIGEST" ]]; then
+              echo "$IMAGE:$VERSION already points to $current, not to the candidate's $DIGEST" >&2
+              exit 1
+            fi
+            echo "::notice::$IMAGE:$VERSION already points to the candidate's digest; promoting again"
+          fi
+
+      - name: Copy the candidate to the version
+        env:
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          skopeo copy --preserve-digests "docker://$IMAGE@$DIGEST" "docker://$IMAGE:$VERSION"
+
+      - name: Move latest to the candidate
+        env:
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          skopeo copy --preserve-digests "docker://$IMAGE@$DIGEST" "docker://$IMAGE:latest"
+
+      # Optional: a fine-grained token with Actions write access to
+      # frostyard/flatpak-index, so the remote refreshes right away instead of
+      # at its next hourly run.
+      - name: Refresh the Frostyard remote
+        if: env.DISPATCH_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ env.DISPATCH_TOKEN }}
+        run: gh workflow run publish.yml --repo frostyard/flatpak-index

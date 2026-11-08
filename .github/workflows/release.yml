@@ -1,13 +1,16 @@
-# Release: a v*.*.* tag, pushed by make bump (frostyard/core ADR-0012), builds
+# Release: a plain vX.Y.Z tag, pushed by make bump (frostyard/core ADR-0012), builds
 # frostyard-readd's .deb, attests its provenance and attaches it to a GitHub
 # release. The build job runs third-party npm code, so it holds no write token
 # and no id-token; only the release job does, and it runs no repository code
 # (ADR-0021, ADR-0053). Snosi picks the .deb up later (core Plan 0010, Phase 3).
+#
+# A vX.Y.Z-rc.N tag publishes only the Flatpak candidate through flatpak.yml.
+# This workflow builds no .deb and makes no GitHub release for that tag.
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v*", "!v*-*"]
 
 permissions: {}
 

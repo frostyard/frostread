@@ -790,6 +790,11 @@ neither; readd's log names each skipped host and why.
 
 ## Phase 9 — A release candidate (Brian and Lucilla, small)
 
+**Status:** The CI part is built, in review, 2026-11-07. It is not merged.
+The staged-catalogue gate remains open: Lucilla names the staged catalogue,
+Brian makes the GHCR package public and pushes the 2 candidate tags, and the
+Done when stays pending.
+
 The gate tests a candidate, and the release promotes that same digest, as
 core ADR-0062 asks.
 

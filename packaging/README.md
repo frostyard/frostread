@@ -360,9 +360,14 @@ saves.
 
 A release is a tag, and `make bump` is the only way to make one
 ([core ADR-0012](https://github.com/frostyard/core/blob/main/docs/adr/0012-svu-versioning-and-rolling-dev-prerelease.md)).
-It checks the pinned `svu`, that you are on `main` at `origin/main` with a
-clean tree, and that `make check` passes, then tags `svu next` and pushes
-the tag. The tag starts
+Brian pushes candidate tags `vX.Y.Z-rc.N`; each candidate publishes and
+attests only the Flatpak. `make bump CANDIDATE=vX.Y.Z-rc.N` tags the plain
+release on the candidate's commit. Promote copies that candidate digest to
+`vX.Y.Z` and `latest`. Agents never tag or run Promote.
+
+For a plain release, `make bump` checks the pinned `svu`, that you are on
+`main` at `origin/main` with a clean tree, and that `make check` passes, then
+tags `svu next` and pushes the tag. The tag starts
 [`.github/workflows/release.yml`](../.github/workflows/release.yml): it builds
 `frostyard-readd_X.Y.Z_amd64.deb` with `make deb`, attests its provenance, and
 attaches it to the GitHub release.

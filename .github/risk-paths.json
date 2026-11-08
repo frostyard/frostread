@@ -10,8 +10,8 @@
       "why": "governance: CI, the Flatpak build, the risk-paths caller and token permissions"
     },
     {
-      "glob": ".github/workflows/{release,flatpak}.yml",
-      "why": "publication: the .deb release, its attestation and the GitHub release, and the Flatpak build"
+      "glob": ".github/workflows/{release,flatpak,promote}.yml",
+      "why": "publication: the candidate OCI publish and attestation, the promotion to the release and latest tags, and the .deb release"
     },
     {
       "glob": "Makefile",
@@ -38,7 +38,7 @@
       "why": "publication: the app manifest, the socket and service units, the system user frostread, and stage.sh"
     },
     {
-      "glob": "packaging/flatpak/{org.frostyard.Frostread.json,frostread.sh,request-background.py,tauri-build.sh}",
+      "glob": "packaging/flatpak/{org.frostyard.Frostread.json,frostread.sh,request-background.py,tauri-build.sh,stamp-metainfo.sh}",
       "why": "publication: the Flatpak's manifest and sandbox permissions, its launcher, the Background portal helper and the version stamp"
     },
     {

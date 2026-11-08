@@ -69,7 +69,7 @@ Flatpak, after std's rules.
 
 ```sh
 readd -version          # prints readd's version, and exits
-sh scripts/release-version.sh   # 1.2.3 at tag v1.2.3; nothing on another commit
+sh scripts/release-version.sh   # 1.2.3 at tag v1.2.3 or v1.2.3-rc.N; nothing on another commit
 ```
 
 - The release `.deb` stamps readd with the tag's version: `release.yml`
@@ -77,7 +77,9 @@ sh scripts/release-version.sh   # 1.2.3 at tag v1.2.3; nothing on another commit
   (`0.0.0-<commit>-snapshot`) records nothing. `make build` stamps
   `git describe`, such as `v0.5.0` at a tag; readd removes 1 leading `v`.
 - The Flatpak's CI job writes `packaging/flatpak/release-version` with
-  `scripts/release-version.sh` before the build. The `readd` module builds
+  `scripts/release-version.sh` before the build. It prints `X.Y.Z` for both
+  `vX.Y.Z` and `vX.Y.Z-rc.N`. The tag run also stamps the metainfo with
+  `packaging/flatpak/stamp-metainfo.sh X.Y.Z`. The `readd` module builds
   with `-X main.version=` that file's version, or `dev` when it is empty or
   absent. The `frostread` module runs `packaging/flatpak/tauri-build.sh`,
   which reads `/app/bin/readd -version` and, for a release version, builds

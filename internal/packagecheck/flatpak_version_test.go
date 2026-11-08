@@ -163,7 +163,7 @@ func TestReleaseVersionScript(t *testing.T) {
 	}
 	for _, tc := range []struct{ tag, want string }{
 		{"v1.2.3", "1.2.3\n"},
-		{"v1.2.3-rc.2", "1.2.3-rc.2\n"},
+		{"v1.2.3-rc.2", "1.2.3\n"},
 		{"v1.2", ""},
 		{"1.2.4", ""},
 		{"v1.2.5-beta.1", ""},
@@ -177,5 +177,67 @@ func TestReleaseVersionScript(t *testing.T) {
 	commit()
 	if got := sh("sh", script); got != "" {
 		t.Errorf("an untagged commit after the tags = %q, want nothing", got)
+	}
+}
+
+func TestStampMetainfoScript(t *testing.T) {
+	script, err := filepath.Abs("../../packaging/flatpak/stamp-metainfo.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := os.ReadFile(filepath.Join("..", "..", "packaging", "flatpak", "org.frostyard.Frostread.metainfo.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("inserts first", func(t *testing.T) {
+		metainfo := filepath.Join(t.TempDir(), "metainfo.xml")
+		if err := os.WriteFile(metainfo, base, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.CommandContext(t.Context(), "sh", script, "1.2.3", metainfo)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("stamp-metainfo.sh: %v\n%s", err, out)
+		}
+		got, err := os.ReadFile(metainfo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(got)
+		releases := strings.Index(text, "<releases>")
+		added := strings.Index(text, `version="1.2.3"`)
+		old := strings.Index(text, `version="0.0.0"`)
+		if added < 0 || releases < 0 || added < releases || (old >= 0 && added > old) {
+			t.Errorf("new release is not first under <releases>: %s", text)
+		}
+	})
+
+	for _, tc := range []struct {
+		name, version string
+	}{
+		{name: "refuses repeated version", version: "0.0.0"},
+		{name: "refuses bad version", version: "1.2.3-rc.1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metainfo := filepath.Join(t.TempDir(), "metainfo.xml")
+			if err := os.WriteFile(metainfo, base, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(metainfo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.CommandContext(t.Context(), "sh", script, tc.version, metainfo)
+			if out, err := cmd.CombinedOutput(); err == nil {
+				t.Fatalf("stamp-metainfo.sh accepted %s: %s", tc.version, out)
+			}
+			after, err := os.ReadFile(metainfo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(before, after) {
+				t.Errorf("refused stamp changed the metainfo")
+			}
+		})
 	}
 }

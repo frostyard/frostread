@@ -57,7 +57,10 @@ merged (frostread#61, 2026-11-06). Phase 6's Done when holds
 0002. Phase 7, "Export as Markdown…" in local mode, and Phase 8, the
 steps to move from lodge in docs/design/overview.md, are built in
 frostread#63 (2026-11-07), and both Done whens hold on the VM; their
-records are in plan 0002. The clean-install gate is not built yet.
+records are in plan 0002. The clean-install gate is not built yet. Phase
+9's CI part, the candidate publish and the promotion, is built and in
+review (2026-11-07); the staged catalogue and the candidate runs remain
+open.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
@@ -154,10 +157,11 @@ counterpart of something those repositories do, read their file.
   takes the metainfo's 3 PNGs in `docs/images/` from the real desktop app
   on made-up feeds, in the nsl machine.
 - `.github/workflows/`: `ci.yml` (the jobs of `make ci`, plus `deb`, a
-  snapshot `.deb`), `release.yml` (a tag builds, attests and publishes
-  the `.deb`) and `flatpak.yml` (the sources check and the Flatpak's
-  build and tests, which installs the bundle and runs `readctl --help`;
-  no tag or publish yet). `internal/workflowcheck` tests that their
+  snapshot `.deb`), `release.yml` (plain `vX.Y.Z` tags build, attest and
+  publish the `.deb`), `flatpak.yml` (the sources check and Flatpak build;
+  `v*` tags stamp, export and publish candidates), and `promote.yml`
+  (manual dispatch copies a tested candidate digest to `vX.Y.Z` and
+  `latest`). `internal/workflowcheck` tests that their
   actions are SHA-pinned with least privilege (frostyard/core ADR-0021),
   the Flatpak workflow's jobs, and the required check names of `ci.yml`.
 - `packaging/README.md`: the runbook: install, update, roll back, after
@@ -258,12 +262,21 @@ machine. No `CODEOWNERS` file (B15), and no other agent framework's tree
 ## Releases and dependencies
 
 - Tags look like `v1.2.3`: svu (`.svu.yml`, prefix `v`, v0 mode).
-- The push of a `v*` tag runs `.github/workflows/release.yml`. It builds the
-  web bundle and `frostyard-readd`'s `.deb` (`make deb`, nFPM), attests its
+- The push of a plain `vX.Y.Z` tag runs `.github/workflows/release.yml`.
+  It builds the web bundle and `frostyard-readd`'s `.deb` (`make deb`, nFPM), attests its
   provenance, and makes the GitHub release with `gh release create`.
-- Brian tags. Agents never tag, push a tag or release. `make bump` is the
-  only way: on a clean, current `main` it runs `make check`, tags `svu next`
-  and pushes the tag.
+- A candidate tag `vX.Y.Z-rc.N`, pushed by Brian, runs
+  `.github/workflows/flatpak.yml`: it publishes and attests the Flatpak
+  candidate on `ghcr.io/frostyard/frostread` with its version and `sha-`
+  tags, never `latest`, and builds no `.deb` (`release.yml` skips
+  `v*-*`). After the gate (plan 0002, Phase 10),
+  `make bump CANDIDATE=vX.Y.Z-rc.N` tags `vX.Y.Z` on the candidate's
+  commit, and `.github/workflows/promote.yml`, run by hand, copies the
+  candidate's attested digest to `vX.Y.Z` and `latest`.
+- Brian tags and runs Promote. Agents never tag, push a tag, run Promote or
+  release. `make bump` is the only way to tag a release: on a clean,
+  current `main` it runs `make check`, tags `svu next` and pushes the tag;
+  with `CANDIDATE` it tags the candidate's commit instead.
 - The version comes from `svu next` over Conventional Commits. On v0, a
   breaking change gives a minor.
 - Go module: `github.com/frostyard/lodge/kit` v0.4.0 (`go.mod`). It uses
