@@ -20,8 +20,20 @@ type bumpRepo struct {
 	env                                                      []string
 }
 
+// bumpEnv is the fixtures' environment: the caller's, without the make
+// variables that a real make bump CANDIDATE=... passes down to its make
+// verify (and so to these tests), plus an isolated Git.
 func bumpEnv(root string) []string {
-	return append(os.Environ(),
+	var env []string
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		switch name {
+		case "CANDIDATE", "MAKEFLAGS", "MAKEOVERRIDES", "MFLAGS", "MAKELEVEL":
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env,
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_NOSYSTEM=1",
 		"HOME="+root,
@@ -126,9 +138,8 @@ func (r bumpRepo) runMake(t *testing.T, absMake, candidate, svuNext, stubExit st
 	if dryRun {
 		args = append([]string{"-n"}, args...)
 	}
-	if candidate != "" {
-		args = append(args, "CANDIDATE="+candidate)
-	}
+	// Always set, also when empty: the plain path must stay plain.
+	args = append(args, "CANDIDATE="+candidate)
 	args = append(args, "SVU="+r.stubSVU)
 	cmd := exec.CommandContext(t.Context(), absMake, args...)
 	cmd.Dir = r.clone
@@ -295,6 +306,39 @@ func TestBump(t *testing.T) {
 		}
 		if slices.Contains(r.originTags(t), "v1.2.0") {
 			t.Fatal("plain bump pushed v1.2.0")
+		}
+	})
+
+	// A real make bump CANDIDATE=... runs make verify, and so this test,
+	// with CANDIDATE and MAKEFLAGS in its environment: the fixtures must
+	// not inherit them, or the plain cases take the candidate path.
+	t.Run("plain success under a candidate release", func(t *testing.T) {
+		t.Setenv("CANDIDATE", "v9.9.9-rc.1")
+		t.Setenv("MAKEFLAGS", "CANDIDATE=v9.9.9-rc.1")
+		t.Setenv("MAKEOVERRIDES", "CANDIDATE=v9.9.9-rc.1")
+		r := newBumpRepo(t)
+		a := r.commitA(t)
+		out, err := r.runMake(t, makePath, "", "v1.4.0", "", false)
+		if err != nil {
+			t.Fatalf("plain bump failed: %v\n%s", err, out)
+		}
+		if got := r.originTagCommit(t, "v1.4.0"); got != a {
+			t.Fatalf("v1.4.0 points at %s, want HEAD %s", got, a)
+		}
+	})
+
+	t.Run("candidate from the environment", func(t *testing.T) {
+		r := newBumpRepo(t)
+		a := r.commitA(t)
+		r.addTag(t, "v1.2.0-rc.1", a, true)
+		cmd := exec.CommandContext(t.Context(), makePath, "-f", "Makefile", "bump", "SVU="+r.stubSVU)
+		cmd.Dir = r.clone
+		cmd.Env = append(r.env, "PATH="+r.stubDir+":"+os.Getenv("PATH"), "STUB_MAKE_LOG="+r.makeLog, "CANDIDATE=v1.2.0-rc.1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("bump with CANDIDATE in the environment failed: %v\n%s", err, out)
+		}
+		if got := r.originTagCommit(t, "v1.2.0"); got != a {
+			t.Fatalf("v1.2.0 points at %s, want the candidate's commit %s", got, a)
 		}
 	})
 
