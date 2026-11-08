@@ -73,14 +73,14 @@
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/github.com/dustin/go-humanize/@v/v1.0.1.mod",
-    "sha256": "4325999d0a6841031258a2561c22879d9fbdf77abc6b32a17b1cb6edf0810fb2",
+    "url": "https://proxy.golang.org/github.com/dustin/go-humanize/@v/v1.1.0.mod",
+    "sha256": "73ef52590e41200a113c6f8fbffd10cc5eb90dc0dc11d79bc5d46d85bddf9c0d",
     "dest": "goproxy/github.com/dustin/go-humanize/@v"
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/github.com/dustin/go-humanize/@v/v1.0.1.zip",
-    "sha256": "319404ea84c8a4e2d3d83f30988b006e7dd04976de3e1a1a90484ad94679fa46",
+    "url": "https://proxy.golang.org/github.com/dustin/go-humanize/@v/v1.1.0.zip",
+    "sha256": "b87af6613bff30e9b4f7e7b8e740eabcd921dee3bf0bda563af2278e1be9aaed",
     "dest": "goproxy/github.com/dustin/go-humanize/@v"
   },
   {
@@ -241,14 +241,14 @@
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/github.com/ncruces/go-strftime/@v/v1.0.0.mod",
-    "sha256": "e5864a1dd9ac62bd778e7444e02e1e4130fa7c00d88eaea271c34f934e724f73",
+    "url": "https://proxy.golang.org/github.com/ncruces/go-strftime/@v/v1.1.0.mod",
+    "sha256": "afaccd369055b049317ac557018ed6f5eb7d54991172c179ef6582bfd71e7ec4",
     "dest": "goproxy/github.com/ncruces/go-strftime/@v"
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/github.com/ncruces/go-strftime/@v/v1.0.0.zip",
-    "sha256": "c1a7e718dbf5f779e9fc98b7354ed4d98de2949b83b65837c429b4b2c8c27686",
+    "url": "https://proxy.golang.org/github.com/ncruces/go-strftime/@v/v1.1.0.zip",
+    "sha256": "6e54093eccf404fb240015327a9843db8188bfd9e4100ec988372e89ea183b08",
     "dest": "goproxy/github.com/ncruces/go-strftime/@v"
   },
   {
@@ -301,14 +301,14 @@
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/go.yaml.in/yaml/v3/@v/v3.0.5.mod",
+    "url": "https://proxy.golang.org/go.yaml.in/yaml/v3/@v/v3.0.6.mod",
     "sha256": "4bf9de8891d4d71507d92568022f8241fb828d8d0a6c9204c130bf030f3e3b2f",
     "dest": "goproxy/go.yaml.in/yaml/v3/@v"
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/go.yaml.in/yaml/v3/@v/v3.0.5.zip",
-    "sha256": "f2d70caa35f66283aec58b889af8c5f07c374c5934be27a738c1215263e19205",
+    "url": "https://proxy.golang.org/go.yaml.in/yaml/v3/@v/v3.0.6.zip",
+    "sha256": "5ec6b154ced05b5fe8b15aef1287d647a70c9a53f43aa14e42d2bb5aee6cffac",
     "dest": "goproxy/go.yaml.in/yaml/v3/@v"
   },
   {
@@ -385,14 +385,14 @@
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/modernc.org/libc/@v/v1.77.1.mod",
-    "sha256": "eeeb66d6d1e0bfd058a004b4a3f99827dee70c6d65e58e2bc9e8385c5bc362fd",
+    "url": "https://proxy.golang.org/modernc.org/libc/@v/v1.79.0.mod",
+    "sha256": "35b6b9e40a8d376e9262be30a07dfcc49621e3bbf4ce60f0f0aa9835790e1e5d",
     "dest": "goproxy/modernc.org/libc/@v"
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/modernc.org/libc/@v/v1.77.1.zip",
-    "sha256": "82bd4796a07426308b138699c1d1bfa0f47acd6b3ce91cf765bd21f2274e417b",
+    "url": "https://proxy.golang.org/modernc.org/libc/@v/v1.79.0.zip",
+    "sha256": "2768027590c0c1f798f2d02b478dc84a01d3ac9cd332d5fb34d47e826579b069",
     "dest": "goproxy/modernc.org/libc/@v"
   },
   {
@@ -421,14 +421,14 @@
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/modernc.org/sqlite/@v/v1.60.1.mod",
-    "sha256": "249a9230a78e49f8648b2f722371085b2b77505dc417e7e680824882a9e2b89b",
+    "url": "https://proxy.golang.org/modernc.org/sqlite/@v/v1.61.1.mod",
+    "sha256": "f2a6d9a713b1526ed469aabe6110d1de6ea9d7394b8d320138823ea34635552f",
     "dest": "goproxy/modernc.org/sqlite/@v"
   },
   {
     "type": "file",
-    "url": "https://proxy.golang.org/modernc.org/sqlite/@v/v1.60.1.zip",
-    "sha256": "60b6851c02b568c7ffb2b33599ef5a7e0ade9e48ebe1cf7265f1bfa831ab2ec0",
+    "url": "https://proxy.golang.org/modernc.org/sqlite/@v/v1.61.1.zip",
+    "sha256": "237eb215ed62c4a3ba65ddc8fd35a3f9b229ea2c7a49b3053c17e45b11496711",
     "dest": "goproxy/modernc.org/sqlite/@v"
   }
 ]
