@@ -231,12 +231,16 @@ describe("the components read the daemon's answers", () => {
   });
 });
 
+// A component that fails its render. It sits at module scope: a component
+// defined inside a function is a new type on each call (Biome's
+// noNestedComponentDefinitions).
+function Boom(): never {
+  throw new Error("the render failed");
+}
+
 describe("the error boundary", () => {
   it("shows the error and a Reload button instead of a blank page", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    function Boom(): never {
-      throw new Error("the render failed");
-    }
     render(
       <ErrorBoundary>
         <Boom />
