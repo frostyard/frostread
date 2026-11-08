@@ -227,11 +227,12 @@ svu-version-check:
 # line that names $(MAKE) runs even under make -n, and this one tags and
 # pushes.
 CANDIDATE ?=
+export CANDIDATE
 
 bump: ## Tag the next plain release, or the release tag of CANDIDATE=vX.Y.Z-rc.N
-	@if [ -n "$(CANDIDATE)" ]; then \
+	@if [ -n "$${CANDIDATE:-}" ]; then \
 		set -eu; \
-		candidate='$(CANDIDATE)'; \
+		candidate=$$CANDIDATE; \
 		printf '%s\n' "$$candidate" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+' || { \
 			echo "make bump needs CANDIDATE=vX.Y.Z-rc.N, the candidate that passed the gate"; exit 1; }; \
 		version=$${candidate%-rc.*}; \
@@ -253,8 +254,12 @@ bump: ## Tag the next plain release, or the release tag of CANDIDATE=vX.Y.Z-rc.N
 			fi; \
 		fi; \
 		dir=$$(mktemp -d); \
-		trap 'rm -rf "$$dir"; git worktree prune' EXIT; \
-		git worktree add --detach "$$dir" "$$commit" >/dev/null; \
+		if git worktree add --detach "$$dir" "$$commit" >/dev/null; then \
+			trap 'if git worktree remove "$$dir" >/dev/null 2>&1; then :; else echo "kept the worktree $$dir" >&2; fi' EXIT; \
+		else \
+			rmdir "$$dir" 2>/dev/null || true; \
+			exit 1; \
+		fi; \
 		MISE_TRUSTED_CONFIG_PATHS="$$dir$${MISE_TRUSTED_CONFIG_PATHS:+:$$MISE_TRUSTED_CONFIG_PATHS}" \
 			make -C "$$dir" --no-print-directory verify; \
 		test -z "$$(git -C "$$dir" status --porcelain)" || { \
