@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -157,8 +158,7 @@ func TestWorkflowsFollowADR0021(t *testing.T) {
 	}
 }
 
-// TestFlatpakWorkflow keeps the first Flatpak workflow build-only: it has
-// source and build jobs, but no tag or publish job yet.
+// TestFlatpakWorkflow holds the source, build and publish shape of flatpak.yml.
 func TestFlatpakWorkflow(t *testing.T) {
 	root, ok := workflows(t)["flatpak.yml"]
 	if !ok {
@@ -167,6 +167,11 @@ func TestFlatpakWorkflow(t *testing.T) {
 	read := map[string]string{"contents": "read"}
 	if got := permMap(get(root, "permissions")); !samePermissions(got, read) {
 		t.Errorf("top-level permissions = %v, want only contents: read", got)
+	}
+
+	push := get(get(get(root, "on"), "push"), "tags")
+	if got := values(push); !slices.Equal(got, []string{"v*"}) {
+		t.Errorf("flatpak push tags = %v, want [v*]", got)
 	}
 
 	jobs := get(root, "jobs")
@@ -194,14 +199,140 @@ func TestFlatpakWorkflow(t *testing.T) {
 		t.Errorf("flatpak container image = %v, want a ghcr.io image pinned by sha256", image)
 	}
 
+	publish := get(jobs, "publish")
+	if publish == nil {
+		t.Fatal("flatpak.yml has no publish job")
+	}
+	if name := get(publish, "name"); name == nil || name.Value != "Publish" {
+		t.Errorf("publish job name = %v, want Publish", name)
+	}
+	wantPublishPerm := map[string]string{"contents": "read", "packages": "write", "id-token": "write", "attestations": "write"}
+	if got := permMap(get(publish, "permissions")); !samePermissions(got, wantPublishPerm) {
+		t.Errorf("publish permissions = %v, want %v", got, wantPublishPerm)
+	}
+	if needs := values(get(publish, "needs")); !slices.Equal(needs, []string{"sources", "flatpak"}) {
+		t.Errorf("publish needs = %v, want [sources flatpak]", needs)
+	}
+	if got := get(publish, "runs-on"); got == nil || got.Value != "ubuntu-latest" {
+		t.Errorf("publish runs-on = %v, want ubuntu-latest", got)
+	}
+	if got := get(publish, "if"); got == nil || got.Value != "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')" {
+		t.Errorf("publish if = %v, want tag-only if", got)
+	}
+
+	steps := get(publish, "steps")
+	if steps == nil {
+		t.Fatal("publish has no steps")
+	}
+	walk(publish, func(m *yaml.Node) {
+		ref := get(m, "uses")
+		if ref != nil && strings.HasPrefix(ref.Value, "actions/checkout@") {
+			t.Errorf("publish uses actions/checkout@%s; publishing checks out no repository", ref.Value)
+		}
+		run := get(m, "run")
+		if run == nil {
+			return
+		}
+		if strings.Contains(run.Value, "${{") {
+			t.Errorf("publish run holds an expression; pass it through env: %s", strings.TrimSpace(run.Value))
+		}
+		for _, banned := range []string{"make ", "./", "sh ", "bash ", "go ", "scripts/"} {
+			if strings.Contains(run.Value, banned) {
+				t.Errorf("publish run calls %q: %s", banned, strings.TrimSpace(run.Value))
+			}
+		}
+	})
+
+	for _, jobName := range []string{"flatpak"} {
+		job := get(jobs, jobName)
+		walk(job, func(m *yaml.Node) {
+			name := get(m, "name")
+			if name == nil {
+				return
+			}
+			if name.Value == "Export the OCI image" || name.Value == "Keep the OCI image for publishing" {
+				ifStep := get(m, "if")
+				if ifStep == nil || ifStep.Value != "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')" {
+					t.Errorf("%s is not tag-only", name.Value)
+				}
+			}
+		})
+	}
+}
+
+// TestPromoteWorkflow holds promote.yml's dispatch-only shape.
+func TestPromoteWorkflow(t *testing.T) {
+	root, ok := workflows(t)["promote.yml"]
+	if !ok {
+		t.Fatal("no promote.yml")
+	}
+	if got := permMap(get(root, "permissions")); len(got) != 0 {
+		t.Errorf("top-level promote permissions = %v, want {}", got)
+	}
+	on := get(root, "on")
+	if on == nil || on.Kind != yaml.MappingNode {
+		t.Fatal("promote.yml has no on mapping")
+	}
+	keys := make([]string, 0, len(on.Content)/2)
+	for i := 0; i+1 < len(on.Content); i += 2 {
+		keys = append(keys, on.Content[i].Value)
+	}
+	if !slices.Equal(keys, []string{"workflow_dispatch"}) {
+		t.Errorf("promote triggers = %v, want only workflow_dispatch", keys)
+	}
+	dispatch := get(on, "workflow_dispatch")
+	inputs := get(get(dispatch, "inputs"), "candidate")
+	if inputs == nil {
+		t.Fatal("promote.yml has no candidate input")
+	}
+	inputs = get(get(dispatch, "inputs"), "version")
+	if inputs == nil {
+		t.Fatal("promote.yml has no version input")
+	}
+
+	job := get(get(root, "jobs"), "promote")
+	if job == nil {
+		t.Fatal("promote.yml has no promote job")
+	}
+	want := map[string]string{"contents": "read", "packages": "write", "attestations": "read"}
+	if got := permMap(get(job, "permissions")); !samePermissions(got, want) {
+		t.Errorf("promote permissions = %v, want %v", got, want)
+	}
+	walk(job, func(m *yaml.Node) {
+		if ref := get(m, "uses"); ref != nil {
+			t.Errorf("promote step uses %q; the job has no actions", ref.Value)
+		}
+		if run := get(m, "run"); run != nil && strings.Contains(run.Value, "${{") {
+			t.Errorf("promote run contains an expression: %s", strings.TrimSpace(run.Value))
+		}
+	})
+}
+
+// TestReleaseWorkflow keeps the exclusion of candidate tags.
+func TestReleaseWorkflow(t *testing.T) {
+	root, ok := workflows(t)["release.yml"]
+	if !ok {
+		t.Fatal("no release.yml")
+	}
 	push := get(get(get(root, "on"), "push"), "tags")
-	for _, tag := range values(push) {
-		if strings.HasPrefix(tag, "v") {
-			t.Errorf("flatpak workflow has tag trigger %q; v* tags are not part of Phase 4", tag)
+	if got := values(push); !slices.Equal(got, []string{"v*", "!v*-*"}) {
+		t.Errorf("release push tags = %v, want [v* !v*-*]", got)
+	}
+	build := get(get(root, "jobs"), "build")
+	if build == nil {
+		t.Fatal("release.yml has no build job")
+	}
+	needs := get(build, "needs")
+	var gotNeeds []string
+	if needs != nil {
+		if needs.Kind == yaml.ScalarNode {
+			gotNeeds = []string{needs.Value}
+		} else {
+			gotNeeds = values(needs)
 		}
 	}
-	if publish := get(jobs, "publish"); publish != nil {
-		t.Error("flatpak.yml has a publish job before the later Flatpak phase")
+	if !slices.Equal(gotNeeds, []string{"candidate"}) {
+		t.Errorf("release build needs = %v, want [candidate]", gotNeeds)
 	}
 }
 

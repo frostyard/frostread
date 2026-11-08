@@ -790,6 +790,11 @@ neither; readd's log names each skipped host and why.
 
 ## Phase 9 — A release candidate (Brian and Lucilla, small)
 
+**Status:** The CI part is built, in review, 2026-11-07. It is not merged.
+The staged-catalogue gate remains open: Lucilla names the staged catalogue,
+Brian makes the GHCR package public and pushes the 2 candidate tags, and the
+Done when stays pending.
+
 The gate tests a candidate, and the release promotes that same digest, as
 core ADR-0062 asks.
 
@@ -798,9 +803,10 @@ core ADR-0062 asks.
   not move `latest`; a promotion step later copies a tested digest to
   `vX.Y.Z` and `latest` and builds nothing. The publish job checks out
   nothing and runs no repository code.
-- `release.yml`, which builds lodge's `.deb` on `v*`, treats an `-rc.N`
-  tag as a pre-release, or skips it; `make bump` learns the candidate
-  tag.
+- `release.yml` skips `-rc.N` tags and refuses a `vX.Y.Z` tag that is not a
+  candidate's commit. `make bump` requires a published candidate.
+  Every release, including a `.deb`-only fix, needs a candidate first
+  ([frostmail ADR-0048](https://github.com/frostyard/frostmail/blob/main/docs/adr/0048-tag-each-release-on-its-tested-candidates-commit.md)).
 - Lucilla names the staged catalogue that lists a candidate's digest.
 - Brian pushes 2 candidate tags: a **baseline**, `vX.Y.Z-rc.1`, for the
   update check only, and the **release candidate**, `vX.Y.Z-rc.2`, which

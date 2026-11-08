@@ -360,12 +360,26 @@ saves.
 
 A release is a tag, and `make bump` is the only way to make one
 ([core ADR-0012](https://github.com/frostyard/core/blob/main/docs/adr/0012-svu-versioning-and-rolling-dev-prerelease.md)).
-It checks the pinned `svu`, that you are on `main` at `origin/main` with a
-clean tree, and that `make check` passes, then tags `svu next` and pushes
-the tag. The tag starts
-[`.github/workflows/release.yml`](../.github/workflows/release.yml): it builds
-`frostyard-readd_X.Y.Z_amd64.deb` with `make deb`, attests its provenance, and
-attaches it to the GitHub release.
+Every release `vX.Y.Z` is the commit of a tested candidate `vX.Y.Z-rc.N`, so
+the `.deb` and the Flatpak of one version hold the same code
+([frostmail ADR-0048](https://github.com/frostyard/frostmail/blob/main/docs/adr/0048-tag-each-release-on-its-tested-candidates-commit.md)).
+Brian pushes the candidate tag first (`svu next` names its version), and
+`flatpak.yml` publishes and attests the candidate Flatpak. After the gate,
+`make bump CANDIDATE=vX.Y.Z-rc.N` tags the release; without `CANDIDATE` it
+refuses. It checks that the candidate tag is on origin at the same commit
+and on `origin/main`, that `flatpak.yml` ran with success for that tag on
+that commit, and that `vX.Y.Z` is new and newer than the last release. It
+runs `make verify` in a temporary worktree of the candidate's commit, then
+tags `vX.Y.Z` on that commit and pushes the tag. Promote copies the
+candidate's digest to `vX.Y.Z` and `latest`. Agents never tag or run
+Promote.
+
+The matching `vX.Y.Z` tag starts
+[`.github/workflows/release.yml`](../.github/workflows/release.yml). The
+workflow refuses a tag on any other commit. It builds
+`frostyard-readd_X.Y.Z_amd64.deb` with `make deb`, attests its provenance,
+and attaches it to the GitHub release. Every release needs a candidate first,
+including a `.deb`-only fix.
 
 `make deb` builds the same package on a developer's machine, after the web
 bundle: `make web-build` (nsl), then `make deb`. It writes

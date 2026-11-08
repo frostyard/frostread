@@ -1,13 +1,20 @@
-# Builds and tests the standalone Frostread Flatpak on pull requests and push
-# to main (docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md).
-# The Flatpak build runs the launcher, Background helper and smoke test.
-# The sources job checks the offline Go, cargo and pnpm files. Tag and publish
-# steps belong to a later Flatpak phase.
+# Builds and tests the standalone Frostread Flatpak on pull requests, push
+# to main and v* tags (docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md).
+# The sources job checks the offline Go, cargo and pnpm files. A v* tag stamps
+# the X.Y.Z version, builds and exports the OCI image, and publishes the
+# candidate only. vX.Y.Z publishes no image here: Promote copies the tested
+# candidate digest to vX.Y.Z and latest (plan 0002, Phases 9 and 11).
+# A vX.Y.Z-rc.N tag publishes and attests ghcr.io/frostyard/frostread with the
+# version and sha- tags. Any other v* tag fails and publishes nothing.
+#
+# Every action is pinned to a commit SHA (core ADR-0021); Dependabot bumps the
+# SHA and the version comment together.
 name: Flatpak
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -18,6 +25,10 @@ permissions:
 concurrency:
   group: flatpak-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  APP_ID: org.frostyard.Frostread
+  IMAGE: ghcr.io/frostyard/frostread
 
 jobs:
   sources:
@@ -54,6 +65,28 @@ jobs:
       # (docs/specs/problem-records.md, Version stamping).
       - name: Write the release version
         run: sh scripts/release-version.sh > packaging/flatpak/release-version
+      # A tag run stamps X.Y.Z, without -rc.N, into the metainfo: a candidate
+      # vX.Y.Z-rc.N is the build that Promote releases as vX.Y.Z. readd gets
+      # the same version from release-version, and the shell from readd
+      # (packaging/flatpak/tauri-build.sh). The committed metainfo keeps
+      # only its 0.0.0 release, for builds of main.
+      - name: Stamp the release version
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! $TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]]; then
+            echo "tag $TAG is neither vX.Y.Z nor vX.Y.Z-rc.N" >&2
+            exit 1
+          fi
+          version=${BASH_REMATCH[1]}
+          held=$(cat packaging/flatpak/release-version)
+          if [[ $held != "$version" ]]; then
+            echo "release-version holds '$held', want '$version'" >&2
+            exit 1
+          fi
+          packaging/flatpak/stamp-metainfo.sh "$version"
       - name: Build and test
         uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
@@ -64,9 +97,90 @@ jobs:
           # A manifest or an offline source change starts the build cache afresh.
           cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/org.frostyard.Frostread.json', 'packaging/flatpak/cargo-sources.json', 'packaging/flatpak/node-sources.json', 'packaging/flatpak/go-sources.json') }}
 
+      - name: Export the OCI image
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: flatpak build-bundle --oci --arch=x86_64 repo frostread.oci "$APP_ID"
+
+      - name: Keep the OCI image for publishing
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frostread-oci
+          path: frostread.oci
+          retention-days: 1
+
       - name: Install the bundle and run readctl
         # Use the system installation in this container. A user installation
         # can exist without the GNOME runtime, which makes --user unreliable.
         run: |
           flatpak install --system --noninteractive -y frostread.flatpak
           flatpak run --command=readctl org.frostyard.Frostread --help
+
+  publish:
+    name: Publish
+    needs: [sources, flatpak]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # GitHub-hosted on purpose: flatpak-index rejects attestations from
+    # self-hosted runners. The job checks out nothing and runs no repository
+    # code: it holds the write token and the id-token (core ADR-0021,
+    # ADR-0053).
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      # A release candidate vX.Y.Z-rc.N publishes and attests its version and
+      # sha- tags. A release tag vX.Y.Z publishes nothing: the Promote workflow
+      # (.github/workflows/promote.yml) moves the version and latest tags to
+      # the digest the gate passed. Any other v* tag fails here and publishes
+      # nothing.
+      - name: Name the OCI tags
+        id: tags
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::the release $TAG publishes no image: Promote moves the version tag and latest"
+          elif [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag $TAG is neither vX.Y.Z nor vX.Y.Z-rc.N" >&2
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.tags.outputs.publish == 'true'
+        with:
+          name: frostread-oci
+          path: frostread.oci
+
+      - name: Log in to GHCR
+        if: steps.tags.outputs.publish == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$GITHUB_TOKEN" | skopeo login ghcr.io --username "$ACTOR" --password-stdin
+
+      # The version and commit tags of the candidate, in one push of the image
+      # the build made. The release tags come later, from the promotion, so
+      # the remote never serves a digest this workflow did not attest.
+      - name: Push the version to GHCR
+        id: push
+        if: steps.tags.outputs.publish == 'true'
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          skopeo copy --digestfile digest oci:frostread.oci "docker://$IMAGE:$VERSION"
+          digest=$(cat digest)
+          skopeo copy --preserve-digests "docker://$IMAGE@$digest" "docker://$IMAGE:sha-${GITHUB_SHA::12}"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Attest the image
+        if: steps.tags.outputs.publish == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
