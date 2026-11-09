@@ -1,120 +1,150 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "default_level": "L3",
   "paths": [
     {
       "glob": ".github/risk-paths.json",
+      "level": "L2",
       "why": "governance: the high-risk path list"
     },
     {
       "glob": ".github/workflows/**",
+      "level": "L2",
       "why": "governance: CI, the Flatpak build, the risk-paths caller and token permissions"
     },
     {
       "glob": ".github/workflows/{release,flatpak,promote}.yml",
+      "level": "L1",
       "why": "publication: the candidate OCI publish and attestation, the promotion to the release and latest tags, and the .deb release"
     },
     {
       "glob": "Makefile",
+      "level": "L2",
       "why": "governance: the verify, check and ci gate, make deb, and make bump, which tags a release"
     },
     {
       "glob": "{mise.toml,mise.lock}",
+      "level": "L2",
       "why": "governance: the checksummed pins of golangci-lint, svu and nFPM"
     },
     {
       "glob": ".svu.yml",
+      "level": "L1",
       "why": "publication: the version rule of frostread's vX.Y.Z tags"
     },
     {
       "glob": "internal/{workflowcheck,packagecheck}/**",
+      "level": "L2",
       "why": "governance: the tests that hold the workflows (ADR-0021), the baseline files, the staged tree, the .deb and the Flatpak's permissions"
     },
     {
       "glob": "packaging/{nfpm.yaml,deb-check.py}",
+      "level": "L1",
       "why": "publication: the contents of the .deb and its check"
     },
     {
       "glob": "packaging/lodge/**",
+      "level": "L1",
       "why": "publication: the app manifest, the socket and service units, the system user frostread, and stage.sh"
     },
     {
       "glob": "packaging/flatpak/{org.frostyard.Frostread.json,frostread.sh,request-background.py,tauri-build.sh,stamp-metainfo.sh}",
+      "level": "L1",
       "why": "publication: the Flatpak's manifest and sandbox permissions, its launcher, the Background portal helper and the version stamp"
     },
     {
       "glob": "scripts/release-version.sh",
+      "level": "L1",
       "why": "publication: the version a tag stamps into the Flatpak"
     },
     {
       "glob": "{scripts/flatpak-sources.sh,packaging/flatpak/generator-requirements.txt,packaging/flatpak/patches/**,tools/flatpakgo/**}",
+      "level": "L1",
       "why": "update verification: the generators of the Flatpak's offline sources and the checksums its build trusts"
     },
     {
       "glob": "packaging/flatpak/{go,cargo,node}-sources.json",
+      "level": "L1",
       "why": "update verification: the Flatpak's offline sources: the download URLs, commits and checksums its build trusts"
     },
     {
       "glob": "cmd/readd/{main,lock,logfile,main_test,desktop_test}.go",
+      "level": "L1",
       "why": "auth: readd's sockets and their rules (kittest), the desktop's private socket, the content secret's wiring, and the modes of the state directory, lock and log"
     },
     {
       "glob": "internal/config/{config,desktop}.go",
+      "level": "L1",
       "why": "secrets and credentials: the notes token, 0600 in a 0700 directory, and the desktop mode file that picks a lodge connection"
     },
     {
       "glob": "{api/api.go,api/daemon.go,api/events.go,api/rpc.go,api/read.go,internal/rpcserver/server.go,internal/readapi/readapi.go}",
+      "level": "L1",
       "why": "auth: the caller kind of each connection, the callers each method admits, and the write scope of each method"
     },
     {
       "glob": "{internal/engine/scope.go,internal/mcpserver/**}",
+      "level": "L1",
       "why": "auth: the agent token's scope, which the engine enforces, and the MCP tools"
     },
     {
       "glob": "internal/engine/engine.go",
+      "level": "L1",
       "why": "auth: the write scope that each engine method enforces, and the removal of a source"
     },
     {
       "glob": "internal/notes/**",
+      "level": "L1",
       "why": "secrets and credentials: the notes token, scoped to 1 folder, and the calls to notes' MCP"
     },
     {
       "glob": "internal/content/**",
+      "level": "L1",
       "why": "auth: the content URLs, MACs under the daemon's secret, and the article page's CSP"
     },
     {
       "glob": "internal/fetch/**",
+      "level": "L1",
       "why": "auth: the fetcher's address guard on kit/netguard (ADR-0003), and the devfetch exception"
     },
     {
       "glob": "internal/sanitize/**",
+      "level": "L1",
       "why": "auth: the sanitizer policy for untrusted article HTML (ADR-0005)"
     },
     {
       "glob": "{internal/engine/poll.go,internal/extract/extract.go}",
+      "level": "L1",
       "why": "auth: the sanitizer calls on feed and article HTML, and the image types an article keeps (no SVG)"
     },
     {
       "glob": "web/src-tauri/src/{main,bridge,remote,paths,files,portal,server}.rs",
+      "level": "L1",
       "why": "auth: the shell's navigation admission, link opener, bridge to readd or lodge and its socket path, lodge connection and file saves"
     },
     {
       "glob": "{web/src-tauri/tauri.conf.json,web/src-tauri/capabilities/**}",
+      "level": "L1",
       "why": "auth: the shell's CSP and its capabilities"
     },
     {
       "glob": "web/src/components/{Reader,RenderedArticle}.tsx",
+      "level": "L1",
       "why": "auth: the reader's frames in lodge and on the desktop: their sandbox and referrer policy"
     },
     {
       "glob": "{internal/store/store.go,internal/store/migrations/**}",
+      "level": "L1",
       "why": "destructive operations: the database schema, its migrations and the content secret"
     },
     {
       "glob": "internal/store/sources.go",
+      "level": "L1",
       "why": "destructive operations: source removal, which deletes a source and its items"
     },
     {
       "glob": "{internal/blobs/blobs.go,internal/engine/sweep.go,internal/store/blobrefs.go}",
+      "level": "L1",
       "why": "destructive operations: the blob sweep, and the reference checks that keep it from deleting blobs in use"
     }
   ]
