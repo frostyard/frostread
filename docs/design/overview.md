@@ -178,8 +178,9 @@ lodge's data. An owner who reads in Read on lodge today has 2 ways:
    that is already a source is skipped (`opml.import`,
    [specs/api.md](../specs/api.md#folders)), and so is a feed whose
    address this computer's fetcher refuses
-   ([ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md)):
-   readd's log names each skipped host. The sources poll from this
+   ([ADR-0003](../adr/0003-the-fetcher-reaches-only-public-addresses.md)).
+   After the import, the window says how many feeds were added and how
+   many were skipped, and readd's log names each skipped host. The sources poll from this
    computer, and their items come at the first poll: only the items that
    the feed still holds.
 

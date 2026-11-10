@@ -6,6 +6,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import { type Route, noteRoute as routeOfNote, UNREAD } from "./lib/routes.js";
 import type {
   Counts,
+  ImportResult,
   ItemDetail,
   ItemMarkdown,
   ItemSummary,
@@ -77,7 +78,9 @@ export interface ReadActions {
   addSource(url: string): Promise<void>;
   renameSource(id: number, title: string): Promise<void>;
   removeSource(id: number): Promise<void>;
-  importOPML(xml: string): Promise<number>;
+  /** importOPML answers the added and skipped counts, or null without an
+   * API or on failure; the error Sheet shows a failed call. */
+  importOPML(xml: string): Promise<ImportResult | null>;
   exportOPML(): Promise<string>;
   saveLater(url: string): Promise<void>;
   /** saveFromPage saves a page for later with its title, from the save page,
@@ -462,14 +465,14 @@ export function createReadStore(options?: { quietDisconnects?: boolean }): Store
 
     async importOPML(xml) {
       const { api } = get();
-      if (api === null) return 0;
+      if (api === null) return null;
       try {
         const result = await api.importOPML(xml);
         await Promise.all([get().loadSources(), get().loadCounts(), get().reload()]);
-        return result.added;
+        return result;
       } catch (err) {
         set({ error: message(err) });
-        return 0;
+        return null;
       }
     },
 

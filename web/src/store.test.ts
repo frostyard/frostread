@@ -132,6 +132,29 @@ describe("the store", () => {
   });
 });
 
+describe("OPML import", () => {
+  it("returns both added and skipped counts from the mock", async () => {
+    const store = await connected();
+    const source = store.getState().sources[0];
+    if (source === undefined) throw new Error("no source");
+    const xml = `<opml><body><outline xmlUrl="https://example.org/new.xml"/><outline xmlUrl="${source.url}"/></body></opml>`;
+    expect(await store.getState().importOPML(xml)).toEqual({ added: 1, skipped: 1 });
+  });
+
+  it("returns null on failure and keeps the error for the error Sheet", async () => {
+    const store = await connected();
+    const api = store.getState().api;
+    if (api === null) throw new Error("no API");
+    vi.spyOn(api, "importOPML").mockRejectedValue(new Error("Import failed"));
+    expect(await store.getState().importOPML("bad OPML")).toBeNull();
+    expect(store.getState().error).toBe("Import failed");
+  });
+
+  it("returns null without an API", async () => {
+    expect(await createReadStore().getState().importOPML("<opml/>")).toBeNull();
+  });
+});
+
 describe("a long list", () => {
   it("keeps the rows past the first page, the selection and j's place across a change", async () => {
     const store = createReadStore();
