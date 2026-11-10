@@ -1,5 +1,5 @@
 // Import OPML reports every count, including skipped feeds (frostread#64).
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { StoreProvider } from "./components/context.js";
 import { Sidebar } from "./components/Sidebar.js";
@@ -29,8 +29,13 @@ function choose(xml: string) {
 describe("the OPML import notice", () => {
   it.each([
     ["added only", 2, 0, "Imported 2 feeds."],
-    ["skipped only", 0, 2, "No feeds imported. Skipped 2: already a source, or an address Read cannot reach."],
-    ["both", 1, 1, "Imported 1 feed. Skipped 1: already a source, or an address Read cannot reach."],
+    [
+      "skipped only",
+      0,
+      2,
+      "No feeds imported. Skipped 2: already a source, an address Read cannot reach, or not a feed.",
+    ],
+    ["both", 1, 1, "Imported 1 feed. Skipped 1: already a source, an address Read cannot reach, or not a feed."],
     ["none", 0, 0, "No feeds imported. The file names no feeds."],
   ] as const)("shows %s and closes with OK", async (_name, added, skipped, message) => {
     const { store, api } = await connected();
@@ -42,7 +47,10 @@ describe("the OPML import notice", () => {
       ...Array.from({ length: skipped }, () => `<outline xmlUrl="${source.url}"/>`),
     ].join("");
     choose(`<opml><body>${outlines}</body></opml>`);
-    const dialog = await screen.findByRole("dialog", { name: "Import OPML" });
+    // The setup's asyncUtilTimeout equals the test timeout, so a missing
+    // notice would end as a timeout; a shorter wait fails on the query.
+    await screen.findByText(message, undefined, { timeout: 1000 });
+    const dialog = screen.getByRole("dialog", { name: "Import OPML" });
     expect(within(dialog).getByText(message)).toBeTruthy();
     expect(await imported.mock.results[0]?.value).toEqual({ added, skipped });
     fireEvent.click(within(dialog).getByRole("button", { name: "OK" }));
@@ -54,6 +62,8 @@ describe("the OPML import notice", () => {
     vi.spyOn(api, "importOPML").mockRejectedValue(new Error("Import failed"));
     choose("bad OPML");
     await waitFor(() => expect(store.getState().error).toBe("Import failed"));
+    // Let the sidebar's import finish, so a late notice would show here.
+    await act(async () => {});
     expect(screen.queryByRole("dialog", { name: "Import OPML" })).toBeNull();
   });
 });
