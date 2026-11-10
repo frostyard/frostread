@@ -1,9 +1,10 @@
 // The sidebar: the views with their counts, then the sources with theirs,
 // and the buttons that add, import, export and refresh. A source that
 // failed its last poll shows a warning, and its error in the tooltip.
-import { IconButton } from "@frostyard/lodge-ui/react";
+import { IconButton, Sheet } from "@frostyard/lodge-ui/react";
 import { AlertTriangle, ArrowLeft, Download, Ellipsis, Plus, RefreshCw, Upload } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
+import { importMessage } from "../lib/importmessage.js";
 import { BOOKMARKLET, type Route } from "../lib/routes.js";
 import { type Source, VIEW_TITLES, VIEWS } from "../rpc/api.js";
 import { useShell } from "../shell.js";
@@ -36,6 +37,7 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
   const [adding, setAdding] = useState(false);
   const [managingId, setManagingId] = useState<number | null>(null);
   const [serverOpen, setServerOpen] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const file = useRef<HTMLInputElement>(null);
 
   const go = (route: Route) => {
@@ -47,7 +49,8 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
     const chosen = event.target.files?.[0];
     event.target.value = ""; // the same file may be chosen again
     if (chosen === undefined) return;
-    await importOPML(await chosen.text());
+    const result = await importOPML(await chosen.text());
+    if (result !== null) setImportNotice(importMessage(result));
   };
 
   const exportAll = async () => {
@@ -144,6 +147,21 @@ export function Sidebar(props: { onNavigate?: () => void; onBack?: () => void })
 
       {serverOpen && shell.server !== undefined && (
         <ServerSheet server={shell.server} onClose={() => setServerOpen(false)} />
+      )}
+
+      {importNotice !== null && (
+        <Sheet title="Import OPML" onClose={() => setImportNotice(null)}>
+          <p className="text-reader-body text-primary">{importNotice}</p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setImportNotice(null)}
+              className="h-7 rounded-md bg-accent px-3 text-sidebar-row font-medium text-accent-contrast hover:opacity-90"
+            >
+              OK
+            </button>
+          </div>
+        </Sheet>
       )}
 
       {managing !== null && <SourceSheet source={managing} onClose={() => setManagingId(null)} />}
