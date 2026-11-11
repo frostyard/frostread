@@ -57,10 +57,12 @@ merged (frostread#61, 2026-11-06). Phase 6's Done when holds
 0002. Phase 7, "Export as Markdown…" in local mode, and Phase 8, the
 steps to move from lodge in docs/design/overview.md, are built in
 frostread#63 (2026-11-07), and both Done whens hold on the VM; their
-records are in plan 0002. The clean-install gate is not built yet. Phase
-9's CI part, the candidate publish and the promotion, is built and in
-review (2026-11-07); the staged catalogue and the candidate runs remain
-open.
+records are in plan 0002. Phase 9's CI part, the candidate publish and
+the promotion, is merged (frostread#65, 2026-11-08), and its candidates
+are `v0.6.0-rc.3` (the baseline) and `v0.6.0-rc.4`. Phase 10, the
+clean-install gate, passed all 7 items on `v0.6.0-rc.4`'s digest
+(2026-11-11); its record is in plan 0002. Phase 11, the release, waits
+for the owner's promotion.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
