@@ -63,8 +63,13 @@ jobs:
       # A release tag at HEAD stamps readd and the shell with its version;
       # any other commit gives an empty file, and the build stays "dev"
       # (docs/specs/problem-records.md, Version stamping).
+      # This job runs as root in a container on a workspace another user owns,
+      # and checkout's safe.directory entry is temporary: without the entry
+      # below git refuses the repository and the script prints nothing.
       - name: Write the release version
-        run: sh scripts/release-version.sh > packaging/flatpak/release-version
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sh scripts/release-version.sh > packaging/flatpak/release-version
       # A tag run stamps X.Y.Z, without -rc.N, into the metainfo: a candidate
       # vX.Y.Z-rc.N is the build that Promote releases as vX.Y.Z. readd gets
       # the same version from release-version, and the shell from readd

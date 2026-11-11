@@ -78,7 +78,9 @@ sh scripts/release-version.sh   # 1.2.3 at tag v1.2.3 or v1.2.3-rc.N; nothing on
   `git describe`, such as `v0.5.0` at a tag; readd removes 1 leading `v`.
 - The Flatpak's CI job writes `packaging/flatpak/release-version` with
   `scripts/release-version.sh` before the build. It prints `X.Y.Z` for both
-  `vX.Y.Z` and `vX.Y.Z-rc.N`. The tag run also stamps the metainfo with
+  `vX.Y.Z` and `vX.Y.Z-rc.N`. The job first adds the workspace to git's
+  global `safe.directory`, because it runs as root in a container on a
+  workspace another user owns. The tag run also stamps the metainfo with
   `packaging/flatpak/stamp-metainfo.sh X.Y.Z`. The `readd` module builds
   with `-X main.version=` that file's version, or `dev` when it is empty or
   absent. The `frostread` module runs `packaging/flatpak/tauri-build.sh`,
