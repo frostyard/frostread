@@ -260,6 +260,50 @@ func TestFlatpakWorkflow(t *testing.T) {
 	}
 }
 
+// TestFlatpakWorkflowMarksWorkspaceSafe holds the order of the version step:
+// the flatpak job runs as root in a container on a workspace the runner's
+// user owns, and checkout's safe.directory entry is temporary, so the step
+// marks the workspace safe before release-version runs its git command.
+func TestFlatpakWorkflowMarksWorkspaceSafe(t *testing.T) {
+	root, ok := workflows(t)["flatpak.yml"]
+	if !ok {
+		t.Fatal("no flatpak.yml")
+	}
+	steps := get(get(get(root, "jobs"), "flatpak"), "steps")
+	if steps == nil || steps.Kind != yaml.SequenceNode {
+		t.Fatal("flatpak job has no steps sequence")
+	}
+	var run *yaml.Node
+	for _, step := range steps.Content {
+		if name := get(step, "name"); name != nil && name.Value == "Write the release version" {
+			run = get(step, "run")
+			break
+		}
+	}
+	if run == nil {
+		t.Fatal(`flatpak job has no "Write the release version" step with a run`)
+	}
+
+	const safe = `git config --global --add safe.directory "$GITHUB_WORKSPACE"`
+	safeAt, scriptAt := -1, -1
+	for i, line := range strings.Split(run.Value, "\n") {
+		switch {
+		case strings.TrimSpace(line) == safe:
+			safeAt = i
+		case strings.Contains(line, "scripts/release-version.sh"):
+			scriptAt = i
+		}
+	}
+	if scriptAt < 0 {
+		t.Fatalf("the version step runs no scripts/release-version.sh: %s", strings.TrimSpace(run.Value))
+	}
+	if safeAt < 0 {
+		t.Errorf("the version step does not mark the workspace safe with %s before scripts/release-version.sh", safe)
+	} else if safeAt > scriptAt {
+		t.Errorf("the version step marks the workspace safe after scripts/release-version.sh, want before")
+	}
+}
+
 // TestPromoteWorkflow holds promote.yml's dispatch-only shape.
 func TestPromoteWorkflow(t *testing.T) {
 	root, ok := workflows(t)["promote.yml"]
