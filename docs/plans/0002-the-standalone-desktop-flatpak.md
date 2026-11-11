@@ -840,7 +840,10 @@ versions (GNOME, xdg-desktop-portal, Flatpak).
    `command -v readd readctl lodge tailscale` finds nothing; no
    `frostread*` or `lodge*` unit; no `~/.var/app/org.frostyard.Frostread`.
 2. **Install** from the staged catalogue; the app grid shows Frostread
-   with its icon and summary.
+   with its icon, and the installed desktop entry and metainfo carry its
+   summary. (Amended 2026-11-11: GNOME Shell 48 shows no summary in
+   the app grid or its search for any app, so the summary is checked
+   where the desktop reads it.)
 3. **The core local work, with no terminal:** add 2 public feeds and 1
    page whose feed is discovered; read an article with images; mark read,
    star, archive; save a link to read later; search; import and export
@@ -912,7 +915,7 @@ went back to its clean snapshot.
    `~/.var/app/org.frostyard.Frostread`. The permission store keeps a
    leftover `background` entry `yes` for `org.frostyard.Frostnotes`,
    which is not installed.
-2. **Install: pass, with a note.** `flatpak install` from
+2. **Install: pass, on the amended item.** `flatpak install` from
    `frostyard-staged`: `flatpak info` shows version 0.6.0, commit
    `b8cd1e13…`, "Built from c6feb67…", and Alt-id `69629c49…`, the
    release candidate's digest. The app grid shows Frostread with its
@@ -935,8 +938,8 @@ went back to its clean snapshot.
    - Import OPML: the FileChooser portal opened, and
      `~/Downloads/feeds.opml` added Debian News in its folder `News`
      ("Imported 1 feed."). Export OPML: the `SaveFile` portal wrote
-     `~/Documents/frostread.opml`, OPML 2.0 with a head, the 4 feeds
-     and the folder.
+     `~/Documents/frostread.opml`, 767 bytes: `<opml version="2.0">`
+     with a head, the 4 feeds, and Debian News in the folder `News`.
    - "Export as Markdown…" on "Go Turns 17": the `SaveFile` portal
      wrote `~/Documents/2026-11-11 Go Turns 17.md`, 21,186 bytes, with
      its frontmatter (`source`, `saved`, `author`, `site`) and the text.
@@ -945,7 +948,8 @@ went back to its clean snapshot.
      it polled The Go Blog at 15:06:55 and xkcd and the Rust Blog at
      15:07:54 with no window. The window opened again at 15:08 on the
      same readd, with every source and state.
-   - Allowed: the helper's `background.json` holds response 0, and
+   - Allowed: the permission store holds `background` `yes` for
+     `org.frostyard.Frostread`, with no dialog, and
      `~/.config/autostart/org.frostyard.Frostread.desktop` runs
      `frostread --background`. Hacker News: Newest
      (`https://hnrss.org/newest`) was added, and the window closed.
@@ -958,9 +962,9 @@ went back to its clean snapshot.
      `flatpak permission-set background background
      org.frostyard.Frostread no` before the first start. The helper got
      response 1 (`background` and `autostart` false) and wrote no
-     autostart entry. readd started with the first window. When the
-     window closed, readd ended within 10 s, and no readd started at
-     the next login.
+     autostart entry. readd started with the first window. The window
+     closed, and at the check 10 s later (15:41:49) no readd ran; no
+     readd started at the next login.
 5. **Update without loss: pass.** On the VM restored to its clean
    snapshot, the baseline `v0.6.0-rc.3` was installed (Alt-id
    `f2dd0a1d…`, Flatpak commit `f241080d…`) with 3 sources, 25 items,
