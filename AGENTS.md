@@ -417,4 +417,7 @@ links what each phase implements. A new doc gets a line in
 [docs/README.md](docs/README.md). Convert relative dates to absolute dates.
 A plan's record says a Done when holds only when the run showed every
 outcome it names; a partial or skipped result is recorded as such, and the
-Done when stays pending until a run shows it.
+Done when stays pending until a run shows it. When an outcome names where
+it is seen (lodge's web app, the app grid, a portal's dialog), the
+evidence comes from that place, not from the database or the log behind
+it.

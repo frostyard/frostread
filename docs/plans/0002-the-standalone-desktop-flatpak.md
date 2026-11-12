@@ -1154,8 +1154,8 @@ dev-lodge`: lodge `main` 0e4a5bd, Notes `main` 5fbd919, and Read from
 5. **Update without loss: pass.** On the VM restored to its clean
    snapshot, the baseline `v0.6.0-rc.5` was installed (Alt-id
    `939f747b…`, Flatpak commit `63abe9f3…`) with 3 sources, 25 items,
-   2 stars, 1 saved link, 1 archived item and 3 read items, and its
-   window open. By flatpak-index's runbook, section D, the catalogue
+   2 stars, 1 saved link, 1 archived item and 3 read feed items (the
+   saved link is read too), and its window open. By flatpak-index's runbook, section D, the catalogue
    was replaced with `v0.6.0-rc.6`'s, the cached
    `frostyard-staged.index.gz` and `frostyard-staged.summary` were
    removed, and `flatpak update` installed the release candidate
@@ -1173,11 +1173,24 @@ dev-lodge`: lodge `main` 0e4a5bd, Notes `main` 5fbd919, and Read from
    below), the Server sheet saved lodge at `http://127.0.0.1:8480`:
    `app.json` holds lodge, readd logged `readd stopped`, and no readd
    ran. The window showed lodge's 5 generated sources. "The garden in
-   November" (lodge's item 6) opened, and lodge's unread count went
-   from 6 to 5. "Save a link" saved `https://go.dev/doc/effective_go`
-   on lodge (Read later 1). "Save as note" wrote `Reading/2026-11-12
-   The garden in November.md` in lodge's vault, with `read_item:
-   /read/item/6`, and the button became "Open in Notes".
+   November" opened, "Save a link" saved
+   `https://go.dev/doc/effective_go` on lodge, and "Save as note" wrote
+   `Reading/2026-11-12 The garden in November.md` in lodge's vault, with
+   its `read_item` marker; the button became "Open in Notes". That run
+   checked the read state in lodge's database and with `readctl`, not in
+   lodge's web app, so item 6 ran again in full at 15:21 to 15:31, on
+   the VM restored to its clean snapshot, with rc.6 installed and The Go
+   Blog as a local source, and lodge's development build started again
+   from the same commits. Lodge's web app, in the host's browser at
+   `http://127.0.0.1:8480/read/`, showed "Read, 6 unread", Unread 6 and
+   All 6. After the switch to lodge, "The garden in November" opened in
+   the window. On a reload, the web app showed "Read, 5 unread" and
+   Unread 5 without it. All 6 showed its title in normal weight, the 5
+   unread titles in bold, and its own page offered "Mark unread". "Save
+   a link" with the same address showed in the web app's Read later 1,
+   "Saved link". "Save as note" wrote the note again with `read_item:
+   /read/item/2`, the item's id in that root, and the button became
+   "Open in Notes".
 7. **Disconnects and mode changes: pass.** At each switch an item was
    open, and the item with the same id in the other reader was unread.
    After each switch the window showed the other reader's unread view
