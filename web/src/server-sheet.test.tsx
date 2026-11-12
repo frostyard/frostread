@@ -36,7 +36,8 @@ describe("the Server sheet", () => {
         return { lodge: "https://lodge.example.ts.net", lastLodge: "", localData: true } as T;
       return undefined as T;
     }
-    const win = { location: { reload: vi.fn() } } as unknown as Window;
+    const location = { href: "tauri://localhost/desktop.html#/item/4", reload: vi.fn(), replace: vi.fn() };
+    const win = { location } as unknown as Window;
     const control = tauriServer(invoke, win, "https://lodge.example.ts.net", true);
     await expect(control.get()).resolves.toEqual({
       lodge: "https://lodge.example.ts.net",
@@ -49,7 +50,10 @@ describe("the Server sheet", () => {
       ["server_get", undefined],
       ["server_save", { lodge: "https://two.example" }],
     ]);
-    expect(win.location.reload).toHaveBeenCalledOnce();
+    // The reload loads the start address: the fragment's route belongs to the
+    // reader the window leaves.
+    expect(location.replace).toHaveBeenCalledExactlyOnceWith("tauri://localhost/desktop.html");
+    expect(location.reload).not.toHaveBeenCalled();
 
     const mock = mockServer("", false);
     await expect(mock.get()).resolves.toEqual({ lodge: "", lastLodge: "", localData: false });

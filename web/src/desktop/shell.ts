@@ -35,6 +35,56 @@ export function desktopRoute(hash: string): Route {
   return route.kind === "save" || route.kind === "bookmarklet" ? UNREAD : route;
 }
 
+/**
+ * startAddress is the window's address with no fragment: the address that
+ * starts the window at the unread view. A mode change loads it, so the
+ * route of the reader the window leaves never reaches the other reader. Item
+ * ids belong to one reader: the fragment `#/item/4` of one reader opens an
+ * unrelated item 4 of the other, and opening an item marks it read.
+ */
+export function startAddress(win: Window): string {
+  const url = new URL(win.location.href);
+  url.hash = "";
+  return url.href;
+}
+
+/**
+ * startHash is the fragment the window starts at. Only a new load of the
+ * window's address starts at its fragment. A reload, or Back or Forward into
+ * an earlier document, keeps a fragment from an earlier document, and a mode
+ * change between them makes it a route of the other reader (see
+ * startAddress). Those loads start at the unread view.
+ */
+export function startHash(win: Window): string {
+  const timing = win.performance;
+  const entries = typeof timing?.getEntriesByType === "function" ? timing.getEntriesByType("navigation") : [];
+  const type = (entries[0] as PerformanceNavigationTiming | undefined)?.type;
+  return type === "reload" || type === "back_forward" ? "" : win.location.hash;
+}
+
+/** START_KEY names the window's start in the state of each history entry it writes. */
+const START_KEY = "frostreadStart";
+
+/**
+ * newStart names one start of the window. Each document has its own, and its
+ * shell writes it in the state of each history entry. Entries of earlier
+ * documents stay in the window's history after a mode change, and their
+ * routes can belong to the other reader (see startAddress).
+ */
+export function newStart(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** startState is the history state of an entry that the start writes. */
+export function startState(start: string): Record<string, string> {
+  return { [START_KEY]: start };
+}
+
+/** ownsEntry says whether a history entry's state is the start's own. */
+export function ownsEntry(state: unknown, start: string): boolean {
+  return typeof state === "object" && state !== null && (state as Record<string, unknown>)[START_KEY] === start;
+}
+
 /** SaveFile saves text at a place the user picks: true when saved, false when the user cancels. */
 export type SaveFile = (name: string, text: string, type: string) => Promise<boolean>;
 
@@ -53,6 +103,7 @@ export function createDesktopShell(
   now: () => number = () => win.performance.now(),
   saveFile: SaveFile = noSaveFile,
   server?: ServerControl,
+  start: string = newStart(),
 ): Shell {
   // The first report is the start route, which is already the window's
   // address: it replaces, so a start adds no history entry.
@@ -127,8 +178,8 @@ export function createDesktopShell(
     written.push(t);
     if (push) lastPush = t;
     try {
-      if (push) win.history.pushState(null, "", hash);
-      else win.history.replaceState(null, "", hash);
+      if (push) win.history.pushState(startState(start), "", hash);
+      else win.history.replaceState(startState(start), "", hash);
     } catch (err) {
       // A refused call loses the entry, but it never reaches the app: this
       // runs inside an effect, and a throw there shows the error page.
