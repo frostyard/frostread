@@ -21,7 +21,7 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-11): **Phases 3 to 10 are done.**
+Status (2026-11-12): **Phases 3 to 10 are done.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
@@ -61,15 +61,16 @@ Status (2026-11-11): **Phases 3 to 10 are done.**
 - **Phase 9,** the release candidate, is done (2026-11-11): the CI part
   is merged in frostread#65, and the candidates `v0.6.0-rc.3` and
   `v0.6.0-rc.4` installed from the staged catalogue.
-- **Phase 10,** the clean-install gate, passed all 7 items on
-  `v0.6.0-rc.4` (2026-11-11, [its record](#record)). The gate on
-  `v0.6.0-rc.5`, which carries frostread#72's fixes, stopped at item 7
+- **Phase 10,** the clean-install gate, is done (2026-11-12): all 7
+  items pass on the release candidate `v0.6.0-rc.6`
+  ([its record](#the-gate-on-v060-rc6)). The gate passed on
+  `v0.6.0-rc.4` first (2026-11-11, [its record](#record)), and stopped
+  at item 7 on `v0.6.0-rc.5`, which carries frostread#72's fixes
   (2026-11-12, [its record](#the-gate-on-v060-rc5)): a mode change
   with an item open marked an unrelated item of the other reader read,
-  and `v0.6.0-rc.4` has the same code. frostread#78 fixes it, and a
-  full gate on `v0.6.0-rc.6` decides the release candidate. **Phase
-  11,** the release, waits for that gate, Brian's promotion and
-  Lucilla's listing.
+  and `v0.6.0-rc.4` has the same code. frostread#78 fixes it in
+  `v0.6.0-rc.6`. **Phase 11,** the release, waits for Brian's
+  promotion of `v0.6.0-rc.6` and Lucilla's listing.
 
 ## Who helps
 
@@ -880,7 +881,10 @@ versions (GNOME, xdg-desktop-portal, Flatpak).
 
 Phase 10's Done when holds (2026-11-11): all 7 items pass for the
 release candidate `v0.6.0-rc.4`. There are 4 findings below, and none
-blocks the release.
+blocks the release. (2026-11-12: the gate on `v0.6.0-rc.5` found that
+item 7 did not cover a switch with an item open, and `v0.6.0-rc.4` has
+that fault. The gate of the release is
+[the gate on v0.6.0-rc.6](#the-gate-on-v060-rc6).)
 
 The 2 candidates, each built and published by `flatpak.yml` on its tag
 and attested by it (`gh attestation verify` with the signer workflow
@@ -1081,6 +1085,144 @@ checks that the other reader marks nothing read, and
 open and checks that lodge's unread count stays. Phase 10's Done when
 waits for a full gate on `v0.6.0-rc.6`, with `v0.6.0-rc.5` as item
 5's baseline.
+
+### The gate on v0.6.0-rc.6
+
+Phase 10's Done when holds (2026-11-12): all 7 items pass for the
+release candidate `v0.6.0-rc.6`. Item 7 ran with an item open at each
+of its 3 Server switches, the case that failed on `v0.6.0-rc.5`. This
+record replaces the record of `v0.6.0-rc.4` as the gate of the release:
+Phase 11 promotes `v0.6.0-rc.6`'s digest.
+
+| Candidate | Role | Commit | Flatpak run | Digest | Flatpak commit |
+| --- | --- | --- | --- | --- | --- |
+| `v0.6.0-rc.5` | baseline, item 5 only | `9eaa3b0`, frostread#72's merge on `main` | [43244057427](https://github.com/frostyard/frostread/actions/runs/43244057427) | `sha256:939f747b20daf19091cda96406778e715dd45964ac0a8ce0901c6b72e3280674` | `63abe9f3…` |
+| `v0.6.0-rc.6` | release candidate | `fb0ba06`, frostread#78's merge on `main` | [43278771641](https://github.com/frostyard/frostread/actions/runs/43278771641) | `sha256:20c4f3e7595e107663ecf821e8b61c9df891ef8a9fa06335756b894d96dbb886` | `b15ea974…` |
+
+Both are attested by `flatpak.yml` at their tags (`gh attestation
+verify` with the signer workflow `flatpak.yml` at
+`refs/tags/v0.6.0-rc.N`), and both pull with `skopeo inspect
+--no-creds`. Each came from flatpak-index's staged catalogue
+(flatpak-index `7b6a068`), which names only its own digest, served on
+the VM at `127.0.0.1:8765` as the user remote `frostyard-staged`. The
+VM is the same as for `v0.6.0-rc.4`, restored to its clean snapshot
+before each part and after the last: Snow `20261028172907` (Debian
+13), GNOME Shell 48.7 on Wayland, xdg-desktop-portal 1.20.3 with
+xdg-desktop-portal-gnome 48.0, and Flatpak 1.16.6, as the user `tester`
+in a real GDM login. Lodge is lodge's development build (`make
+dev-lodge`: lodge `main` 0e4a5bd, Notes `main` 5fbd919, and Read from
+`fb0ba06`), on the host's loopback, which the VM reached as
+`http://127.0.0.1:8480` through an SSH tunnel to its own loopback.
+
+1. **Nothing else is there: pass.** No frostyard app in `flatpak
+   list`; `command -v readd readctl lodge tailscale` found nothing; no
+   unit file or unit, system or user, matched `frostread` or `lodge`;
+   no sysext and no `~/.var/app/org.frostyard.Frostread`.
+2. **Install: pass.** `flatpak info` shows version 0.6.0, commit
+   `b15ea974…`, "Built from fb0ba06…", and Alt-id `20c4f3e7…`. The app
+   grid shows Frostread with its icon; the installed desktop entry's
+   `Comment`, the metainfo's `<summary>` and `flatpak info`'s title
+   line carry "Feeds and a reading list on your own computer".
+3. **The core local work: pass.** Through the window, which asked for
+   no lodge, Notes or account: The Go Blog and xkcd added as feeds, and
+   `https://blog.rust-lang.org/`'s feed discovered (24 items); "Go
+   Turns 17" with its image inlined; read, unread and read again; a
+   star; an archive; "Save a link" to Read later; a search for
+   `rustup` (6 Rust Blog items); Import OPML through the FileChooser
+   portal, whose filter GNOME's chooser names "OPML" (finding 1's fix
+   holds), which added Debian News in its folder `News`; Export OPML,
+   767 bytes, and "Export as Markdown…", 21,186 bytes with its
+   frontmatter, through the `SaveFile` portal. `readctl status` gives
+   `build b15ea974…`.
+4. **Restart and login: pass.**
+   - The window closed at 14:00; readd polled every source with no
+     window (14:15:31 to 14:20:32), and the window opened again at
+     14:21 on the same readd, with every source and state.
+   - Allowed: the permission store holds `background` `yes` with no
+     dialog, and the autostart entry runs `frostread --background`.
+     Hacker News: Newest was added, and the window closed. After the
+     logout at 14:22:01, readd stopped at 14:22:26. The login at 14:28
+     started readd at 14:29:00 with no window, and its polls brought
+     15 new items to Hacker News: Newest.
+   - Refused, on the VM restored to its clean snapshot: `flatpak
+     permission-set background background org.frostyard.Frostread no`
+     before the first start. The helper got response 1 (`background`
+     and `autostart` false) and wrote no autostart entry. readd started
+     with the first window at 15:00:02. The window closed at 15:00:32,
+     and 10 s later no readd ran; no readd started at the next login
+     (15:02).
+5. **Update without loss: pass.** On the VM restored to its clean
+   snapshot, the baseline `v0.6.0-rc.5` was installed (Alt-id
+   `939f747b…`, Flatpak commit `63abe9f3…`) with 3 sources, 25 items,
+   2 stars, 1 saved link, 1 archived item and 3 read feed items (the
+   saved link is read too), and its window open. By flatpak-index's runbook, section D, the catalogue
+   was replaced with `v0.6.0-rc.6`'s, the cached
+   `frostyard-staged.index.gz` and `frostyard-staged.summary` were
+   removed, and `flatpak update` installed the release candidate
+   (Alt-id `20c4f3e7…`, commit `b15ea974…`) at 15:09:07. The old
+   window kept working on the old readd. The app's "New Window" in the
+   overview started the launcher: it logged `readd stops`, the old
+   readd logged `readd stopped` at 15:11:00.212, and the new one served
+   the socket at 15:11:00.335 with `build b15ea974…`. The old window
+   reconnected: a star on it reached the new readd. A hash of the data
+   differs from the one before the update by that star alone, and
+   `user_version` is 3 before and after. 60 s after the windows closed
+   and a new one opened, the only readd was the new one, and its log
+   has no other start.
+6. **Opt into lodge: pass.** With a local item open (switch A, item 7
+   below), the Server sheet saved lodge at `http://127.0.0.1:8480`:
+   `app.json` holds lodge, readd logged `readd stopped`, and no readd
+   ran. The window showed lodge's 5 generated sources. "The garden in
+   November" opened, "Save a link" saved
+   `https://go.dev/doc/effective_go` on lodge, and "Save as note" wrote
+   `Reading/2026-11-12 The garden in November.md` in lodge's vault, with
+   its `read_item` marker; the button became "Open in Notes". That run
+   checked the read state in lodge's database and with `readctl`, not in
+   lodge's web app, so item 6 ran again in full at 15:21 to 15:31, on
+   the VM restored to its clean snapshot, with rc.6 installed and The Go
+   Blog as a local source, and lodge's development build started again
+   with lodge 0e4a5bd and Notes 5fbd919, and Read from rc.6's code
+   (this branch's `b47de86`, whose change from `fb0ba06` is
+   documentation only). Lodge's web app, in the host's browser at
+   `http://127.0.0.1:8480/read/`, showed "Read, 6 unread", Unread 6 and
+   All 6. After the switch to lodge, "The garden in November" opened in
+   the window. On a reload, the web app showed "Read, 5 unread" and
+   Unread 5 without it. All 6 showed its title in normal weight, the 5
+   unread titles in bold, and its own page offered "Mark unread". "Save
+   a link" with the same address showed in the web app's Read later 1,
+   "Saved link". "Save as note" wrote the note again with `read_item:
+   /read/item/2`, the item's id in that root, and the button became
+   "Open in Notes".
+7. **Disconnects and mode changes: pass.** At each switch an item was
+   open, and the item with the same id in the other reader was unread.
+   After each switch the window showed the other reader's unread view
+   with no item open ("Select an item to read"). A hash of the local
+   data (the sources, and each item's id, source, URL, title, read,
+   star, archive and saved state) and the same hash of lodge's data
+   were each the same before and after each switch:
+
+   | Switch | Item open | Same id in the other reader | Local hash | Lodge hash |
+   | --- | --- | --- | --- | --- |
+   | A: local to lodge | local 1, read | lodge 1, unread | `6db39e2f…`, unchanged | `84b0849f…`, unchanged |
+   | B: lodge to local, lodge stopped | lodge 6, read | local 6, unread | `6db39e2f…`, unchanged | `b60e12fa…`, unchanged |
+   | C: local to lodge | local 2, read | lodge 2, unread | `6db39e2f…`, unchanged | `b60e12fa…`, unchanged |
+
+   Switch B is `v0.6.0-rc.5`'s failed case. Lodge's hash changed only
+   between A and B, by item 6's own steps. With lodge's process
+   stopped, the window said "Frostread cannot reach lodge at
+   http://127.0.0.1:8480." and "It tries again every 10 seconds.", and
+   showed no local data in its place. After switch B readd started,
+   and `app.json` held `{"lastLodge":"http://127.0.0.1:8480"}`. Lodge
+   started again on the same root; before switch C the sheet already
+   held lodge's address, and it switched with no typing: readd logged
+   `readd stopped`, and no readd ran. Lodge kept its note, its saved
+   link and its read item.
+
+Findings 3 and 4 of `v0.6.0-rc.4` hold as recorded: readd stopped
+26 s after the logout, with no other session that kept the user's
+systemd instance, and after the logout of item 4's allowed part the
+GDM greeter took no key until `systemctl restart gdm` (after the
+refused part's logout, it took the key). Neither blocks the release.
 
 ## Phase 11 — Release (Brian and Lucilla, small)
 
