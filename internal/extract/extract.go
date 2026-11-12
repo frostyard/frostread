@@ -60,20 +60,25 @@ var ErrNoArticle = fmt.Errorf("extract: no article on the page")
 func (e *Extractor) Extract(ctx context.Context, body []byte, pageURL string) (Article, error) {
 	u, err := url.Parse(pageURL)
 	if err != nil {
-		return Article{}, fmt.Errorf("extract %s: %w", pageURL, err)
+		// url.Parse's error repeats the whole URL, which can hold a key:
+		// keep only its reason.
+		if ue, ok := err.(*url.Error); ok {
+			err = ue.Err
+		}
+		return Article{}, fmt.Errorf("extract %s: %w", fetch.Host(pageURL), err)
 	}
 	art, err := readability.FromReader(bytes.NewReader(body), u)
 	if err != nil {
-		return Article{}, fmt.Errorf("extract %s: %w: %v", pageURL, ErrNoArticle, err)
+		return Article{}, fmt.Errorf("extract %s: %w: %v", fetch.Host(pageURL), ErrNoArticle, err)
 	}
 	var buf bytes.Buffer
 	if err := art.RenderHTML(&buf); err != nil {
-		return Article{}, fmt.Errorf("extract %s: render: %w", pageURL, err)
+		return Article{}, fmt.Errorf("extract %s: render: %w", fetch.Host(pageURL), err)
 	}
 	clean := sanitize.HTML(Absolutize(buf.String(), pageURL))
 	text := sanitize.PlainText(clean)
 	if len([]rune(text)) < MinText {
-		return Article{}, fmt.Errorf("extract %s: %d characters: %w", pageURL, len([]rune(text)), ErrNoArticle)
+		return Article{}, fmt.Errorf("extract %s: %d characters: %w", fetch.Host(pageURL), len([]rune(text)), ErrNoArticle)
 	}
 	title := strings.TrimSpace(art.Title())
 	// The heading readability keeps in the text is the title the reader
@@ -242,11 +247,11 @@ func (e *Extractor) fetchImage(ctx context.Context, src string) (store.Blob, err
 		return store.Blob{}, err
 	}
 	if res.Status != http.StatusOK {
-		return store.Blob{}, fmt.Errorf("image %s answers %d", src, res.Status)
+		return store.Blob{}, fmt.Errorf("image %s answers %d", fetch.Host(src), res.Status)
 	}
 	mime := Sniff(res.Body)
 	if mime == "" {
-		return store.Blob{}, fmt.Errorf("image %s is not an image the reader shows", src)
+		return store.Blob{}, fmt.Errorf("image %s is not an image the reader shows", fetch.Host(src))
 	}
 	hash, err := e.Blobs.Put(ctx, bytes.NewReader(res.Body), mime)
 	if err != nil {

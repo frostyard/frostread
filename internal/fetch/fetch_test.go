@@ -2,13 +2,18 @@ package fetch
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -224,5 +229,220 @@ func TestRefusalSentence(t *testing.T) {
 	sentence, ok = Refusal(err)
 	if !ok || sentence != "Read fetches only public http and https addresses (file:///etc/passwd)." {
 		t.Fatalf("file: refusal = %q, %v", sentence, ok)
+	}
+}
+
+// secret is the made-up key a feed's URL carries below: a private feed's
+// URL can hold one, in its path or its query, and no error text may name
+// it.
+const secret = "s3cret"
+
+const secretURL = "http://feeds.example.com/feeds/s3cret-path/rss?key=s3cret-key"
+
+// namesNoSecret fails when err's text carries the secret, and when it
+// should name a host and does not.
+func namesNoSecret(t *testing.T, err error, host string) {
+	t.Helper()
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("the error names the URL: %v", err)
+	}
+	if host != "" && !strings.Contains(err.Error(), host) {
+		t.Fatalf("the error names no host, want %s: %v", host, err)
+	}
+}
+
+// Every error Get makes names a URL by its host alone, and errors.Is still
+// finds the sentinel under it.
+func TestErrorsNameOnlyTheHost(t *testing.T) {
+	t.Run("a network fault", func(t *testing.T) {
+		// The server takes the connection and closes it: the client's
+		// *url.Error would repeat the whole URL, query included.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			_ = conn.Close()
+		}))
+		defer srv.Close()
+		c := New("test")
+		dialTo(c, srv)
+		_, err := c.Get(t.Context(), secretURL, Options{})
+		if err == nil {
+			t.Fatal("a closed connection was fetched")
+		}
+		namesNoSecret(t, err, "feeds.example.com")
+	})
+	t.Run("a body over the cap", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(strings.Repeat("x", 100)))
+		}))
+		defer srv.Close()
+		c := New("test")
+		dialTo(c, srv)
+		_, err := c.Get(t.Context(), secretURL, Options{MaxBytes: 10})
+		if !errors.Is(err, ErrTooLarge) {
+			t.Fatalf("an over-cap body = %v, want ErrTooLarge", err)
+		}
+		namesNoSecret(t, err, "feeds.example.com")
+	})
+	t.Run("a redirect with a Location that does not parse", func(t *testing.T) {
+		// The client repeats the Location header's text when it cannot
+		// parse it, and Unwrap cannot reach that: it is formatted into a
+		// new error, not wrapped.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header()["Location"] = []string{"/feeds/s3cret-path/%zz?key=s3cret-key"}
+			w.WriteHeader(http.StatusFound)
+		}))
+		defer srv.Close()
+		c := New("test")
+		dialTo(c, srv)
+		_, err := c.Get(t.Context(), secretURL, Options{})
+		if err == nil {
+			t.Fatal("a redirect with a bad Location was followed")
+		}
+		namesNoSecret(t, err, "feeds.example.com")
+	})
+	t.Run("a redirect the client refuses", func(t *testing.T) {
+		// checkRedirect's refusal keeps its reason and names the
+		// redirect's host alone.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "ftp://other.example.com/s3cret-path?key=s3cret-key", http.StatusFound)
+		}))
+		defer srv.Close()
+		c := New("test")
+		dialTo(c, srv)
+		_, err := c.Get(t.Context(), secretURL, Options{})
+		if !errors.Is(err, ErrRefused) {
+			t.Fatalf("a redirect to ftp: = %v, want ErrRefused", err)
+		}
+		namesNoSecret(t, err, "feeds.example.com")
+		for _, want := range []string{"is not http or https", "other.example.com"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("the error does not hold %q: %v", want, err)
+			}
+		}
+		if _, ok := Refusal(err); !ok {
+			t.Fatalf("a refused redirect is not a refusal: %v", err)
+		}
+	})
+	t.Run("a timeout", func(t *testing.T) {
+		canceled, cancel := context.WithCancel(t.Context())
+		cancel()
+		late, cancelLate := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+		defer cancelLate()
+		for _, tc := range []struct {
+			name string
+			ctx  context.Context
+			want error
+		}{
+			{"a canceled request", canceled, context.Canceled},
+			{"a request past its deadline", late, context.DeadlineExceeded},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					_, _ = w.Write([]byte("x"))
+				}))
+				defer srv.Close()
+				c := New("test")
+				dialTo(c, srv)
+				_, err := c.Get(tc.ctx, secretURL, Options{})
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("%s = %v, want %v", tc.name, err, tc.want)
+				}
+				namesNoSecret(t, err, "feeds.example.com")
+			})
+		}
+	})
+	t.Run("a refused address", func(t *testing.T) {
+		c := New("test")
+		_, err := c.Get(t.Context(), "http://127.0.0.1:9/s3cret-path?key=s3cret-key", Options{})
+		if !errors.Is(err, netguard.ErrInside) {
+			t.Fatalf("an inside address = %v, want ErrInside", err)
+		}
+		namesNoSecret(t, err, "127.0.0.1")
+	})
+	t.Run("a refused scheme", func(t *testing.T) {
+		c := New("test")
+		_, err := c.Get(t.Context(), "ftp://feeds.example.com/s3cret-path?key=s3cret-key", Options{})
+		if !errors.Is(err, ErrRefused) {
+			t.Fatalf("an ftp: URL = %v, want ErrRefused", err)
+		}
+		namesNoSecret(t, err, "feeds.example.com")
+	})
+}
+
+// Host is the host name alone, and "" for a URL that does not parse.
+func TestHost(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		{"https://feeds.example.com/a/b?key=1#frag", "feeds.example.com"},
+		{"https://alice:pass@feeds.example.com:8443/x", "feeds.example.com"},
+		{"http://127.0.0.1:9/x", "127.0.0.1"},
+		{"file:///etc/passwd", ""},
+		{"not a url", ""},
+		{"", ""},
+	} {
+		if got := Host(tc.raw); got != tc.want {
+			t.Errorf("Host(%q) = %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}
+
+// reason names a failure from a fixed list, whatever the cause's own text
+// holds.
+func TestReason(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Net: "tcp",
+		Err: &os.SyscallError{Syscall: "connect", Err: syscall.ECONNREFUSED}}
+	reset := &net.OpError{Op: "read", Net: "tcp",
+		Err: &os.SyscallError{Syscall: "read", Err: syscall.ECONNRESET}}
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"a past deadline", context.DeadlineExceeded, "the request timed out"},
+		{"a net timeout", &net.OpError{Op: "dial", Err: os.ErrDeadlineExceeded}, "the request timed out"},
+		{"a canceled request", context.Canceled, "the request was canceled"},
+		{"a name that does not resolve", &net.DNSError{Err: "no such host", Name: "feeds.example.com"},
+			"the name does not resolve"},
+		{"a certificate the client does not trust", &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}},
+			"the certificate is not valid"},
+		{"an unknown authority", x509.UnknownAuthorityError{}, "the certificate is not valid"},
+		{"a name that does not match", x509.HostnameError{Host: "example.com"}, "the certificate is not valid"},
+		{"an invalid certificate", x509.CertificateInvalidError{Detail: "expired"}, "the certificate is not valid"},
+		{"a connection the server closed", io.EOF, "the server closed the connection"},
+		{"a body cut short", fmt.Errorf("read: %w", io.ErrUnexpectedEOF), "the server closed the connection"},
+		{"a refused connection", refused, "the connection was refused"},
+		{"a reset connection", reset, "the connection was reset"},
+		{"a connection that failed", &net.OpError{Op: "dial", Err: errors.New("boom")}, "the connection failed"},
+		{"something else", errors.New("https://example.com/x?key=s3cret-key"), "the request failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reason(tc.err)
+			if got != tc.want {
+				t.Fatalf("reason(%v) = %q, want %q", tc.err, got, tc.want)
+			}
+			if strings.Contains(got, secret) {
+				t.Fatalf("the reason names the URL: %q", got)
+			}
+		})
+	}
+}
+
+// A fetch error keeps its cause for errors.Is and errors.As, and its text
+// is the host and the reason alone.
+func TestFetchErrorKeepsTheCause(t *testing.T) {
+	cause := &net.OpError{Op: "dial", Err: &os.SyscallError{Syscall: "connect", Err: syscall.ECONNREFUSED}}
+	err := &fetchError{host: "feeds.example.com", reason: "the connection was refused", err: cause}
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		t.Fatalf("errors.Is(err, syscall.ECONNREFUSED) is false: %v", err)
+	}
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) {
+		t.Fatalf("errors.As(err, *net.OpError) is false: %v", err)
+	}
+	if want := "fetch feeds.example.com: the connection was refused"; err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
 	}
 }

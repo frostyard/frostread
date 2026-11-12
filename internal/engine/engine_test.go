@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -190,6 +192,13 @@ var png = []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 'I'
 
 func setup(t *testing.T) (*Engine, *net, *saver, *[]string) {
 	t.Helper()
+	return setupLogging(t, nil)
+}
+
+// setupLogging is setup, with the engine's log written to w when w is not
+// nil, so a test can read what the log carries.
+func setupLogging(t *testing.T, w io.Writer) (*Engine, *net, *saver, *[]string) {
+	t.Helper()
 	dir := t.TempDir()
 	db, err := store.Open(t.Context(), filepath.Join(dir, "read.db"))
 	if err != nil {
@@ -208,7 +217,7 @@ func setup(t *testing.T) (*Engine, *net, *saver, *[]string) {
 	s := &saver{}
 	var changes []string
 	var mu sync.Mutex
-	e := New(Options{
+	o := Options{
 		Store: db, Blobs: b, Fetch: n, Extractor: &extract.Extractor{Fetch: n, Blobs: b},
 		Config:   config.Config{PollInterval: "20m", NotesFolder: "Reading/", NotesVault: 1},
 		Interval: 20 * time.Minute, Version: "test", Notes: s,
@@ -219,8 +228,11 @@ func setup(t *testing.T) (*Engine, *net, *saver, *[]string) {
 			mu.Unlock()
 		},
 		Now: func() time.Time { return now },
-	})
-	return e, n, s, &changes
+	}
+	if w != nil {
+		o.Log = slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+	return New(o), n, s, &changes
 }
 
 func itoa(n int64) string {
@@ -1086,5 +1098,81 @@ func TestExcerptDropsTheTitle(t *testing.T) {
 	}
 	if !strings.HasPrefix(items[0].Excerpt, "Pears by the wall") {
 		t.Fatalf("excerpt = %q", items[0].Excerpt)
+	}
+}
+
+// A feed's URL can carry a key, so a poll's log line and the source's
+// stored last error name the URL by its host alone.
+func TestAFailedPollNamesOnlyTheHost(t *testing.T) {
+	const secret = "s3cret"
+	const page = "https://example.com/feeds/s3cret-path/rss?key=s3cret-key"
+	var logs strings.Builder
+	e, n, _, _ := setupLogging(t, &logs)
+	n.pages[page] = answer{body: feedXML()}
+	src, err := e.AddSource(t.Context(), page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.URL != page {
+		t.Fatalf("source url = %q, want %q", src.URL, page)
+	}
+	logs.Reset()
+	// The feed answers with a page now, which is not a feed.
+	n.pages[page] = answer{body: "<html><body>not a feed</body></html>"}
+	if err := e.Refresh(t.Context(), nil); err == nil {
+		t.Fatal("a poll of a body that is not a feed succeeded")
+	}
+	got := logs.String()
+	if strings.Contains(got, secret) {
+		t.Fatalf("the log names the URL:\n%s", got)
+	}
+	if !strings.Contains(got, "example.com") {
+		t.Fatalf("the log names no host:\n%s", got)
+	}
+	s, err := e.o.Store.Source(t.Context(), src.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.LastError == "" {
+		t.Fatal("the source records no last error")
+	}
+	if strings.Contains(s.LastError, secret) {
+		t.Fatalf("the source's last error names the URL: %s", s.LastError)
+	}
+}
+
+// An OPML import logs a skipped feed by its host alone, whether the feed
+// is already a source or its fetch failed.
+func TestAnOPMLImportNamesOnlyTheHost(t *testing.T) {
+	const secret = "s3cret"
+	const known = "https://example.com/feeds/s3cret-path/rss?key=s3cret-key"
+	const broken = "https://example.com/other/s3cret-path?key=s3cret-key"
+	var logs strings.Builder
+	e, n, _, _ := setupLogging(t, &logs)
+	n.pages[known] = answer{body: feedXML()}
+	n.pages[broken] = answer{status: http.StatusInternalServerError}
+	if _, err := e.AddSource(t.Context(), known); err != nil {
+		t.Fatal(err)
+	}
+	logs.Reset()
+	doc := `<?xml version="1.0"?><opml version="2.0"><body>
+	<outline text="A known feed" xmlUrl="` + known + `"/>
+	<outline text="A broken feed" xmlUrl="` + broken + `"/>
+	</body></opml>`
+	added, skipped, err := e.ImportOPML(t.Context(), doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added != 0 || skipped != 2 {
+		t.Fatalf("import = %d added, %d skipped; want 0 and 2", added, skipped)
+	}
+	got := logs.String()
+	if strings.Contains(got, secret) {
+		t.Fatalf("the log names the URL:\n%s", got)
+	}
+	for _, want := range []string{"an opml feed was skipped", "example.com"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the log does not hold %q:\n%s", want, got)
+		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -490,5 +491,21 @@ func TestUpgradeFromVersion2(t *testing.T) {
 	}
 	if err := up.SetSourceFolder(t.Context(), src.ID, "Garden"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A feed's URL can carry a key, so a conflict names no address.
+func TestAConflictNamesNoURL(t *testing.T) {
+	d, now := open(t)
+	const url = "https://example.com/feeds/s3cret-path/rss?key=s3cret-key"
+	if _, err := d.AddSource(t.Context(), Source{URL: url, Title: "Example"}, now); err != nil {
+		t.Fatal(err)
+	}
+	_, err := d.AddSource(t.Context(), Source{URL: url, Title: "Example"}, now)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("adding the same source = %v, want a conflict", err)
+	}
+	if strings.Contains(err.Error(), "s3cret") {
+		t.Fatalf("the error names the URL: %v", err)
 	}
 }

@@ -220,7 +220,7 @@ func (e *Engine) subscribe(ctx context.Context, rawurl, title, folder string) (s
 		return store.Source{}, err
 	}
 	if res.Status >= 400 {
-		return store.Source{}, fmt.Errorf("%s answers %d", rawurl, res.Status)
+		return store.Source{}, fmt.Errorf("%s answers %d", host(rawurl), res.Status)
 	}
 	feedURL, f, err := e.parseFeed(ctx, res.Body, res.URL)
 	if err != nil {
@@ -772,11 +772,8 @@ func (e *Engine) change(views ...string) {
 	}
 }
 
-// host is a URL's host, for a log: never the whole URL.
+// host is a URL's host name, the only part of a URL a log line or an
+// error message may carry.
 func host(rawurl string) string {
-	u, err := url.Parse(rawurl)
-	if err != nil {
-		return ""
-	}
-	return u.Hostname()
+	return fetch.Host(rawurl)
 }

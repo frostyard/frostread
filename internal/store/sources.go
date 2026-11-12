@@ -114,7 +114,7 @@ func (d *DB) AddSource(ctx context.Context, s Source, next time.Time) (Source, e
 	})
 	if err != nil {
 		if isUnique(err) {
-			return Source{}, fmt.Errorf("%s is already a source: %w", s.URL, ErrConflict)
+			return Source{}, fmt.Errorf("the feed is already a source: %w", ErrConflict)
 		}
 		return Source{}, err
 	}

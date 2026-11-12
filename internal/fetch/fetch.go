@@ -9,13 +9,17 @@ package fetch
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/frostyard/lodge/kit/netguard"
@@ -57,11 +61,104 @@ type Refused struct {
 	Err error
 }
 
-func (e *Refused) Error() string { return e.Err.Error() + " (" + e.URL + ")" }
+// Error is the reason, and the host of the refused URL. The host alone:
+// the path or the query of a URL can carry a key, and this text reaches
+// the log.
+func (e *Refused) Error() string {
+	if h := Host(e.URL); h != "" {
+		return e.Err.Error() + " (" + h + ")"
+	}
+	return e.Err.Error()
+}
 
 // Unwrap returns the reason, so errors.Is finds ErrRefused or
 // netguard.ErrInside.
 func (e *Refused) Unwrap() error { return e.Err }
+
+// Host is the form of rawurl that a log line or an error message may
+// carry: its host name alone, never its path, query, fragment or userinfo,
+// because a feed's URL can hold a key. It is "" when rawurl does not
+// parse, so a caller names no address rather than the wrong one.
+func Host(rawurl string) string {
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// unwrapURLError returns err without the *url.Error wrappers the http
+// client adds. A *url.Error repeats the whole request URL, or the URL a
+// redirect went to, in its text, so only its own error may be wrapped and
+// logged.
+func unwrapURLError(err error) error {
+	for {
+		ue, ok := err.(*url.Error)
+		if !ok {
+			return err
+		}
+		err = ue.Err
+	}
+}
+
+// fetchError is a failed request: its text names the host and a reason
+// from a fixed list, never the cause's own text, which can repeat a URL (a
+// request's, a redirect's or a Location header's). Unwrap keeps the cause
+// for errors.Is and errors.As.
+type fetchError struct {
+	host   string
+	reason string
+	err    error
+}
+
+func (e *fetchError) Error() string { return "fetch " + e.host + ": " + e.reason }
+
+// Unwrap returns the cause, so errors.Is finds a sentinel such as
+// netguard.ErrInside or context.Canceled.
+func (e *fetchError) Unwrap() error { return e.err }
+
+// reason names a failed request's cause from a fixed list. The cause's own
+// text may repeat a URL, so it is classified and never formatted.
+func reason(err error) string {
+	var (
+		refused   *Refused
+		netErr    net.Error
+		dnsErr    *net.DNSError
+		opErr     *net.OpError
+		certErr   *tls.CertificateVerificationError
+		unknownCA x509.UnknownAuthorityError
+		badHost   x509.HostnameError
+		badCert   x509.CertificateInvalidError
+	)
+	// A timeout from the network carries the same meaning as the
+	// context's own deadline.
+	timedOut := errors.As(err, &netErr) && netErr.Timeout()
+	switch {
+	case errors.As(err, &refused):
+		// A redirect checkRedirect refused: its text is this package's,
+		// and names the redirect's host alone.
+		return refused.Error()
+	case errors.Is(err, ErrRefused):
+		return "a redirect was refused"
+	case errors.Is(err, context.DeadlineExceeded), timedOut:
+		return "the request timed out"
+	case errors.Is(err, context.Canceled):
+		return "the request was canceled"
+	case errors.As(err, &dnsErr):
+		return "the name does not resolve"
+	case errors.As(err, &certErr), errors.As(err, &unknownCA), errors.As(err, &badHost), errors.As(err, &badCert):
+		return "the certificate is not valid"
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return "the server closed the connection"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "the connection was refused"
+	case errors.Is(err, syscall.ECONNRESET):
+		return "the connection was reset"
+	case errors.As(err, &opErr):
+		return "the connection failed"
+	}
+	return "the request failed"
+}
 
 // Refusal returns the one sentence a caller shows for err when it is a
 // refusal, and whether it is one. The sentence names the address in the
@@ -197,7 +294,7 @@ func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", rawurl, err)
+		return nil, fmt.Errorf("fetch %s: %w", Host(rawurl), err)
 	}
 	req.Header.Set("User-Agent", c.ua)
 	if o.Accept != "" {
@@ -213,10 +310,11 @@ func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, 
 	if err != nil {
 		// A dial the guard refused, after DNS: the address is public in
 		// name only. The URL that failed is the request's.
+		err = unwrapURLError(err)
 		if errors.Is(err, netguard.ErrInside) {
 			return nil, &Refused{URL: rawurl, Err: err}
 		}
-		return nil, fmt.Errorf("fetch %s: %w", rawurl, err)
+		return nil, &fetchError{host: Host(rawurl), reason: reason(err), err: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	out := &Response{
@@ -235,10 +333,10 @@ func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, 
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if err != nil {
-		return nil, fmt.Errorf("fetch %s: read body: %w", rawurl, err)
+		return nil, &fetchError{host: Host(rawurl), reason: "read body: " + reason(err), err: err}
 	}
 	if int64(len(body)) > max {
-		return nil, fmt.Errorf("fetch %s: over %d bytes: %w", rawurl, max, ErrTooLarge)
+		return nil, fmt.Errorf("fetch %s: over %d bytes: %w", Host(rawurl), max, ErrTooLarge)
 	}
 	out.Body = body
 	out.RetryAfter = retryAfter(resp.Header.Get("Retry-After"), time.Now())

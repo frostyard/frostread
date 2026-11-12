@@ -199,3 +199,55 @@ func TestExtractDropsTheHeading(t *testing.T) {
 		t.Fatalf("excerpt = %q", got.Excerpt)
 	}
 }
+
+// statusFetcher answers every request with one status.
+type statusFetcher int
+
+func (s statusFetcher) Get(_ context.Context, rawurl string, _ fetch.Options) (*fetch.Response, error) {
+	return &fetch.Response{Status: int(s), URL: rawurl}, nil
+}
+
+// A page's or an image's URL can carry a key, so an extraction's error
+// names its host alone.
+func TestErrorsNameOnlyTheHost(t *testing.T) {
+	const secret = "s3cret"
+	t.Run("a page with no article", func(t *testing.T) {
+		x := &Extractor{Blobs: blobs.New(t.TempDir()), Fetch: pages{}}
+		_, err := x.Extract(t.Context(), []byte("<html><body><p>tiny</p></body></html>"),
+			"https://example.com/pages/s3cret-path?key=s3cret-key")
+		if !errors.Is(err, ErrNoArticle) {
+			t.Fatalf("a page with no article = %v, want ErrNoArticle", err)
+		}
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("the error names the URL: %v", err)
+		}
+		if !strings.Contains(err.Error(), "example.com") {
+			t.Fatalf("the error names no host: %v", err)
+		}
+	})
+	t.Run("a page URL that does not parse", func(t *testing.T) {
+		x := &Extractor{Blobs: blobs.New(t.TempDir()), Fetch: pages{}}
+		_, err := x.Extract(t.Context(), []byte("<html><body><p>tiny</p></body></html>"),
+			"https://example.com/pages/s3cret-path/%zz?key=s3cret-key")
+		if err == nil {
+			t.Fatal("a page URL with a bad escape was extracted")
+		}
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("the error names the URL: %v", err)
+		}
+	})
+	t.Run("an image that is not there", func(t *testing.T) {
+		x := &Extractor{Blobs: blobs.New(t.TempDir()), Fetch: statusFetcher(http.StatusNotFound)}
+		_, err := x.fetchImage(t.Context(),
+			"https://example.com/img/s3cret-path/pic.png?key=s3cret-key")
+		if err == nil {
+			t.Fatal("a 404 image was fetched")
+		}
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("the error names the URL: %v", err)
+		}
+		if !strings.Contains(err.Error(), "example.com") {
+			t.Fatalf("the error names no host: %v", err)
+		}
+	})
+}
