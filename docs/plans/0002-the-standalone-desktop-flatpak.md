@@ -1012,10 +1012,15 @@ went back to its clean snapshot.
 Findings, left open:
 
 1. The import chooser's filter still has no name: GNOME's chooser shows
-   `[Invalid UTF-8]` (Phase 5's record). The filter works.
+   `[Invalid UTF-8]` (Phase 5's record). The filter works. Fixed for
+   v0.6.1 by this PR: the shell names the filter "OPML" in WebKitGTK's
+   `run-file-chooser` signal, so the chooser shows that name.
 2. The Server sheet forgets lodge's address after a switch to this
    computer: `app.json` becomes `{}`, and on the way back the address
-   field is empty and must be typed again.
+   field is empty and must be typed again. Fixed for v0.6.1 by this PR:
+   a local save keeps the address it leaves in `app.json` as
+   `lastLodge`, and `server_get` answers it, so the sheet offers it and
+   a switch back needs no typing.
 3. readd lives as long as the user's session bus, not the graphical
    session. While the test's own SSH session kept the user's systemd
    instance, readd kept running after the logout; it stopped when that

@@ -35,6 +35,12 @@
     "error": false
   },
   {
+    "name": "lastLodge alone is local",
+    "file": "{\"lastLodge\":\"https://lodge.example.ts.net\"}",
+    "lodge": "",
+    "error": false
+  },
+  {
     "name": "unknown member beside lodge",
     "file": "{\"lodge\":\"https://lodge.example.ts.net\",\"theme\":\"dark\"}",
     "lodge": "https://lodge.example.ts.net",

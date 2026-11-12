@@ -85,7 +85,10 @@ elsewhere. `server.rs` serves the Server sheet: `server_get` gives the
 mode and whether a local database exists, and `server_save` writes
 `app.json` and then stops this computer's readd in ADR-0008's order,
 writing local back when its lock stays held after 30 s, or starts readd
-through `frostread --start` when the user saves local. The capabilities
+through `frostread --start` when the user saves local. A local save keeps
+the address it leaves in `app.json` as `lastLodge`, and `server_get`
+answers its origin in local mode, so that the sheet offers the address
+again; readd and the window read `lodge` only. The capabilities
 grant only `allow-readd-connect`, `allow-readd-send`, `allow-save-file`,
 `allow-server-get` and `allow-server-save`.
 
@@ -143,7 +146,10 @@ checked it on a Snow VM:
   an OPML filter. The reader's "Export as Markdown…" takes the same
   path: it offers `items.exportMarkdown`'s name, `<YYYY-MM-DD> <title>.md`,
   with an MD filter, and the file holds the note's frontmatter and the
-  article's text.
+  article's text. The import's filter is named "OPML" in WebKitGTK's
+  `run-file-chooser` signal: WebKitGTK gives the file input's filter no
+  name, and GTK sends an unnamed filter to the FileChooser portal, where
+  GNOME's chooser shows it as `[Invalid UTF-8]`.
 - **Links.** `on_new_window` gives `http`, `https` and `mailto` links to
   the opener, which uses OpenURI: the article's open button and a link
   in the reader's frame open in the default browser.
@@ -151,10 +157,6 @@ checked it on a Snow VM:
   the logs (`readd.log`, `background.log`, `background.json`) in
   `~/.var/app/org.frostyard.Frostread/.local/state/frostread`, and the
   socket is `$XDG_RUNTIME_DIR/app/org.frostyard.Frostread/frostread/readd.sock`.
-- **Known.** The import chooser's filter has no name, so GNOME's
-  chooser shows `[Invalid UTF-8]` for it and GTK logs a
-  `g_variant_new_string` assertion: WebKitGTK gives the file input's
-  filter no name. The filter itself works.
 
 **Moving from lodge.** The move is optional, and the user makes it
 ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),

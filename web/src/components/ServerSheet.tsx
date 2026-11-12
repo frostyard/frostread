@@ -46,7 +46,9 @@ export function ServerSheet(props: { server: ServerControl; onClose: () => void 
         if (!live) return;
         setInfo(answer);
         setLodgeMode(answer.lodge !== "");
-        setAddress(answer.lodge);
+        // Local mode offers the address the last lodge mode used, so that a
+        // switch back needs no typing.
+        setAddress(answer.lodge !== "" ? answer.lodge : answer.lastLodge);
         setLoading(false);
       })
       .catch((err) => {

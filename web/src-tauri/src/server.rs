@@ -26,6 +26,10 @@ const LOCAL_START_ERROR: &str = "Frostread now uses this computer's reader, but 
 pub struct ServerInfo {
     lodge: String,
     local_data: bool,
+    /// last_lodge is the address the last lodge mode used, so that the sheet
+    /// can offer it again after a switch to this computer; "" in lodge mode
+    /// and when no usable address is kept.
+    last_lodge: String,
 }
 
 /// Read the Server sheet's local facts.
@@ -40,7 +44,8 @@ pub(crate) async fn server_get_inner(
 ) -> Result<ServerInfo, String> {
     let _mode_read = mode_gate.read().await;
     let mode = remote::load_from(&getenv)?;
-    let lodge = if mode.lodge.is_empty() {
+    let local = mode.lodge.is_empty();
+    let lodge = if local {
         String::new()
     } else {
         match remote::Lodge::parse(&mode.lodge) {
@@ -48,11 +53,39 @@ pub(crate) async fn server_get_inner(
             Err(_) => mode.lodge,
         }
     };
+    // The remembered address belongs to local mode alone: in lodge mode the
+    // sheet already has the address it uses.
+    let last_lodge = if local {
+        match remote::Lodge::parse(&last_lodge(&remote::mode_path_from(&getenv)?)) {
+            Ok(lodge) => lodge.origin().to_string(),
+            Err(_) => String::new(),
+        }
+    } else {
+        String::new()
+    };
     let state = remote::desktop_state_dir_from(&getenv)?;
     Ok(ServerInfo {
         lodge,
         local_data: state.join("frostread.db").is_file(),
+        last_lodge,
     })
+}
+
+/// last_lodge reads app.json's lastLodge member: the address the last lodge
+/// mode used. A missing file or member, a member that is not a string, and a
+/// file that does not parse are all "".
+fn last_lodge(path: &Path) -> String {
+    let Ok(data) = std::fs::read(path) else {
+        return String::new();
+    };
+    let Ok(object) = serde_json::from_slice::<BTreeMap<String, Box<RawValue>>>(&data) else {
+        return String::new();
+    };
+    object
+        .get("lastLodge")
+        .and_then(|raw| serde_json::from_str::<String>(raw.get()).ok())
+        .map(|lodge| lodge.trim().to_string())
+        .unwrap_or_default()
 }
 
 /// Save one Server sheet change, and hold the save lock for the whole operation.
@@ -164,8 +197,20 @@ async fn start_local_readd_inner() -> Result<(), String> {
     .unwrap_or_else(|_| Err(LOCAL_START_ERROR.to_string()))
 }
 
+/// encode_string is value as one JSON string, ready to keep as a raw member
+/// of app.json.
+fn encode_string(value: &str, path: &Path) -> Result<Box<RawValue>, String> {
+    RawValue::from_string(
+        serde_json::to_string(value)
+            .map_err(|e| format!("encode a mode member for {}: {e}", path.display()))?,
+    )
+    .map_err(|e| format!("encode a mode member for {}: {e}", path.display()))
+}
+
 /// Set or remove lodge in app.json without losing other object members.
 /// The replacement is temporary, synced, renamed, and directory-synced.
+/// A local save keeps the address it leaves in lastLodge, and a lodge save
+/// drops lastLodge; readd and the window read only lodge.
 pub(crate) fn write_mode(path: &Path, lodge: Option<&str>) -> Result<(), String> {
     let dir = path
         .parent()
@@ -189,15 +234,23 @@ pub(crate) fn write_mode(path: &Path, lodge: Option<&str>) -> Result<(), String>
 
     match lodge {
         Some(lodge) => {
-            let raw = RawValue::from_string(
-                serde_json::to_string(lodge)
-                    .map_err(|e| format!("encode lodge for {}: {e}", path.display()))?,
-            )
-            .map_err(|e| format!("encode lodge for {}: {e}", path.display()))?;
-            object.insert("lodge".to_string(), raw);
+            object.insert("lodge".to_string(), encode_string(lodge, path)?);
+            // Lodge mode is the address the next local save would keep; a
+            // stale lastLodge must not outlive it.
+            object.remove("lastLodge");
         }
         None => {
-            object.remove("lodge");
+            // The address this save leaves stays in lastLodge, so that the
+            // Server sheet offers it when the user picks Lodge again. A
+            // member that is not a non-empty string is no address.
+            let left = object
+                .remove("lodge")
+                .and_then(|raw| serde_json::from_str::<String>(raw.get()).ok())
+                .map(|lodge| lodge.trim().to_string())
+                .filter(|lodge| !lodge.is_empty());
+            if let Some(left) = left {
+                object.insert("lastLodge".to_string(), encode_string(&left, path)?);
+            }
         }
     }
 
@@ -342,6 +395,7 @@ mod tests {
         let value = read_lodge(&path);
         assert_eq!(value["theme"], "dark");
         assert!(value.get("lodge").is_none());
+        assert_eq!(value["lastLodge"], "https://lodge.example.ts.net");
 
         let mode_dir = dir.join("config/frostread");
         assert_eq!(
@@ -419,6 +473,10 @@ mod tests {
         .unwrap_err();
         assert_eq!(error, STOP_ERROR);
         assert!(read_lodge(&mode).get("lodge").is_none());
+        assert_eq!(
+            read_lodge(&mode)["lastLodge"],
+            "https://lodge.example.ts.net"
+        );
     }
 
     #[test]
@@ -453,6 +511,10 @@ mod tests {
         .unwrap_err();
         assert_eq!(error, STOP_ERROR);
         assert!(read_lodge(&mode).get("lodge").is_none());
+        assert_eq!(
+            read_lodge(&mode)["lastLodge"],
+            "https://lodge.example.ts.net"
+        );
 
         lock.unlock().unwrap();
     }
@@ -477,6 +539,10 @@ mod tests {
                 let mode = mode_for_start.clone();
                 async move {
                     assert!(read_lodge(&mode).get("lodge").is_none());
+                    assert_eq!(
+                        read_lodge(&mode)["lastLodge"],
+                        "https://lodge.example.ts.net"
+                    );
                     Err("missing launcher".to_string())
                 }
             },
@@ -524,10 +590,12 @@ mod tests {
         std::fs::write(&mode, r#"{"lodge":"https://lodge.example.ts.net"}"#).unwrap();
         let info = block_on(server_get_inner(&getenv, &RwLock::new(()))).unwrap();
         assert_eq!(info.lodge, "https://lodge.example.ts.net");
+        assert_eq!(info.last_lodge, "");
         assert!(!info.local_data);
         let json = serde_json::to_value(&info).unwrap();
         assert_eq!(json["lodge"], "https://lodge.example.ts.net");
         assert_eq!(json["localData"], false);
+        assert_eq!(json["lastLodge"], "");
 
         let state = remote::desktop_state_dir_from(&getenv).unwrap();
         std::fs::create_dir_all(&state).unwrap();
@@ -588,6 +656,12 @@ mod tests {
                     assert_eq!(read_lodge(&path)["lodge"], "https://lodge.example.ts.net");
                     write_mode(&path, None).unwrap();
                     assert!(read_lodge(&path).get("lodge").is_none(), "{}", case.name);
+                    assert_eq!(
+                        read_lodge(&path)["lastLodge"],
+                        "https://lodge.example.ts.net",
+                        "{}",
+                        case.name
+                    );
                     continue;
                 }
                 let parsed: Result<BTreeMap<String, Box<RawValue>>, _> =
@@ -600,16 +674,33 @@ mod tests {
                         .into_iter()
                         .map(|(name, value)| (name, value.get().to_string()))
                         .collect();
+                    // Lodge's own members are the mode's; every other member
+                    // of the table keeps its raw JSON through both saves.
                     original.remove("lodge");
+                    original.remove("lastLodge");
 
                     write_mode(&path, Some("https://lodge.example.ts.net")).unwrap();
-                    let mut lodge_members = raw_members(&std::fs::read(&path).unwrap());
+                    let lodge_file = raw_members(&std::fs::read(&path).unwrap());
+                    assert!(
+                        !lodge_file.contains_key("lastLodge"),
+                        "{}: a lodge save drops lastLodge",
+                        case.name
+                    );
+                    let mut lodge_members = lodge_file;
                     lodge_members.remove("lodge");
+                    lodge_members.remove("lastLodge");
                     assert_eq!(lodge_members, original, "{}: lodge save", case.name);
 
                     write_mode(&path, None).unwrap();
-                    let mut local_members = raw_members(&std::fs::read(&path).unwrap());
+                    let local_file = raw_members(&std::fs::read(&path).unwrap());
+                    assert!(
+                        !local_file.contains_key("lodge"),
+                        "{}: a local save drops lodge",
+                        case.name
+                    );
+                    let mut local_members = local_file;
                     local_members.remove("lodge");
+                    local_members.remove("lastLodge");
                     assert_eq!(local_members, original, "{}: local save", case.name);
                 } else {
                     let before = std::fs::read(&path).unwrap();
@@ -624,7 +715,110 @@ mod tests {
                 write_mode(&path, Some("https://lodge.example.ts.net")).unwrap();
                 write_mode(&path, None).unwrap();
                 assert!(read_lodge(&path).get("lodge").is_none(), "{}", case.name);
+                assert_eq!(
+                    read_lodge(&path)["lastLodge"],
+                    "https://lodge.example.ts.net",
+                    "{}",
+                    case.name
+                );
             }
+        }
+    }
+
+    // A switch to this computer keeps the address it leaves, so that the
+    // Server sheet offers it again, and keeps every other member.
+    #[test]
+    fn local_save_keeps_the_lodge_address_as_last_lodge() {
+        let guard = TempGuard::new("last-lodge");
+        let config = guard.path().join("config/frostread");
+        std::fs::create_dir_all(&config).unwrap();
+        let path = config.join("app.json");
+
+        std::fs::write(
+            &path,
+            r#"{"lodge":"https://lodge.example.ts.net","theme":"dark"}"#,
+        )
+        .unwrap();
+        write_mode(&path, None).unwrap();
+        let value = read_lodge(&path);
+        assert_eq!(value["lastLodge"], "https://lodge.example.ts.net");
+        assert!(value.get("lodge").is_none());
+        assert_eq!(value["theme"], "dark");
+
+        // A second local save has no lodge to leave, and keeps the address.
+        write_mode(&path, None).unwrap();
+        assert_eq!(
+            read_lodge(&path)["lastLodge"],
+            "https://lodge.example.ts.net"
+        );
+
+        // Spaces around the address are no part of it.
+        std::fs::write(&path, r#"{"lodge":"  https://lodge.example.ts.net  "}"#).unwrap();
+        write_mode(&path, None).unwrap();
+        assert_eq!(
+            read_lodge(&path)["lastLodge"],
+            "https://lodge.example.ts.net"
+        );
+
+        // Lodge mode is the address the next local save keeps.
+        write_mode(&path, Some("https://two.example.ts.net")).unwrap();
+        let value = read_lodge(&path);
+        assert_eq!(value["lodge"], "https://two.example.ts.net");
+        assert!(
+            value.get("lastLodge").is_none(),
+            "a lodge save drops lastLodge: {value}"
+        );
+
+        // An empty member, or one that is no string, is no address to keep.
+        for no_address in [r#"{"lodge":"   "}"#, r#"{"lodge":5}"#, r#"{"lodge":null}"#] {
+            std::fs::write(&path, no_address).unwrap();
+            write_mode(&path, None).unwrap();
+            let value = read_lodge(&path);
+            assert!(value.get("lodge").is_none(), "{no_address}");
+            assert!(value.get("lastLodge").is_none(), "{no_address}: {value}");
+        }
+    }
+
+    // Local mode answers the kept address, and lodge mode answers "".
+    #[test]
+    fn server_get_answers_last_lodge_in_local_mode() {
+        let guard = TempGuard::new("server-get-last");
+        let dir = guard.path();
+        let getenv = env(dir);
+        let mode = remote::mode_path_from(&getenv).unwrap();
+        std::fs::create_dir_all(mode.parent().unwrap()).unwrap();
+
+        std::fs::write(&mode, r#"{"lastLodge":"https://lodge.example.ts.net"}"#).unwrap();
+        let info = block_on(server_get_inner(&getenv, &RwLock::new(()))).unwrap();
+        assert_eq!(info.lodge, "");
+        assert_eq!(info.last_lodge, "https://lodge.example.ts.net");
+        assert_eq!(
+            serde_json::to_value(&info).unwrap()["lastLodge"],
+            "https://lodge.example.ts.net"
+        );
+
+        std::fs::write(
+            &mode,
+            r#"{"lodge":"https://lodge.example.ts.net","lastLodge":"https://old.example.ts.net"}"#,
+        )
+        .unwrap();
+        let info = block_on(server_get_inner(&getenv, &RwLock::new(()))).unwrap();
+        assert_eq!(info.lodge, "https://lodge.example.ts.net");
+        assert_eq!(
+            info.last_lodge, "",
+            "lodge mode answers the address it uses"
+        );
+
+        for no_address in [
+            r#"{"lastLodge":"example.test"}"#,
+            r#"{"lastLodge":""}"#,
+            r#"{"lastLodge":5}"#,
+            r#"{"lastLodge":null}"#,
+            r#"{"theme":"dark"}"#,
+        ] {
+            std::fs::write(&mode, no_address).unwrap();
+            let info = block_on(server_get_inner(&getenv, &RwLock::new(()))).unwrap();
+            assert_eq!(info.last_lodge, "", "{no_address}");
         }
     }
 
@@ -670,7 +864,10 @@ mod tests {
         assert_eq!(read_lodge(&path)["lodge"], "https://lodge.example.ts.net");
 
         write_mode(&path, None).unwrap();
-        assert_eq!(std::fs::read(&path).unwrap(), b"{}");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"{\"lastLodge\":\"https://lodge.example.ts.net\"}"
+        );
     }
 
     #[tokio::test(start_paused = true, flavor = "current_thread")]

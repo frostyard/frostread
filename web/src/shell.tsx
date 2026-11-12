@@ -7,6 +7,11 @@ import { lodgeShell } from "./lodge.js";
 /** ServerInfo is the computer's and lodge's server facts the Server sheet reads. */
 export interface ServerInfo {
   lodge: string;
+  /**
+   * lastLodge is the address the last lodge mode used: local mode offers it
+   * again, and lodge mode answers "".
+   */
+  lastLodge: string;
   localData: boolean;
 }
 

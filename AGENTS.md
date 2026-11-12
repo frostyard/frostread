@@ -117,13 +117,17 @@ counterpart of something those repositories do, read their file.
   `org.frostyard.Frostread`; `bridge.rs` moves lines between the window
   and readd's private socket, or lodge's `/app/read/api` in lodge mode,
   and never parses them; `server.rs` serves the Server sheet: it writes
-  `app.json` and stops or starts this computer's readd; `remote.rs`
+  `app.json` and stops or starts this computer's readd, and keeps the
+  address a local save leaves as `lastLodge`, which only the sheet
+  reads; `remote.rs`
   reads `app.json` and lodge's address, and stops a local readd before
   a lodge connection, from 2 tables of cases it shares with `internal/config`
   (`testdata/desktop-mode.json`, `testdata/desktop-dirs.json`); `paths.rs` derives
   the socket as `internal/config` does, from a test data table both
   share; `files.rs` and `portal.rs` save a file the user picks, through
-  the FileChooser portal in a Flatpak and the dialog plugin elsewhere;
+  the FileChooser portal in a Flatpak and the dialog plugin elsewhere,
+  and `files.rs` names the import chooser's filter in WebKitGTK's
+  `run-file-chooser` signal;
   `main.rs` admits only the app in the main frame, opens `http`, `https`
   and `mailto` links with the opener and denies every new window, and
   keeps a single instance; `capabilities/default.json` grants only the

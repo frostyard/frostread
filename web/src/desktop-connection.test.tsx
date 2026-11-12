@@ -37,7 +37,7 @@ function control(lodge: string): ServerControl {
   return {
     lodge,
     known: true,
-    get: async () => ({ lodge, localData: true }),
+    get: async () => ({ lodge, lastLodge: "", localData: true }),
     save: async () => {},
     reload: () => {},
   };
@@ -62,7 +62,7 @@ function onlineTransport(): Transport {
 
 describe("the connection banner", () => {
   it("reloads once after an unknown start mode becomes readable", async () => {
-    const get = vi.fn(async () => ({ lodge: "", localData: true }));
+    const get = vi.fn(async () => ({ lodge: "", lastLodge: "", localData: true }));
     const reload = vi.fn();
     const server: ServerControl = { lodge: "", known: false, get, save: vi.fn(async () => {}), reload };
 
@@ -87,7 +87,7 @@ describe("the connection banner", () => {
 
   it("reloads once when unknown mode becomes readable after a failed first connect", async () => {
     let up = false;
-    const get = vi.fn(async () => ({ lodge: "", localData: true }));
+    const get = vi.fn(async () => ({ lodge: "", lastLodge: "", localData: true }));
     const reload = vi.fn();
     const server: ServerControl = { lodge: "", known: false, get, save: vi.fn(async () => {}), reload };
     const transport: Transport = {
@@ -116,7 +116,7 @@ describe("the connection banner", () => {
   });
 
   it("does not reread a known mode at start", async () => {
-    const get = vi.fn(async () => ({ lodge: "", localData: true }));
+    const get = vi.fn(async () => ({ lodge: "", lastLodge: "", localData: true }));
     const reload = vi.fn();
     const server: ServerControl = { lodge: "", known: true, get, save: vi.fn(async () => {}), reload };
 
