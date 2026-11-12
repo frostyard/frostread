@@ -61,8 +61,12 @@ records are in plan 0002. Phase 9's CI part, the candidate publish and
 the promotion, is merged (frostread#65, 2026-11-08), and its candidates
 are `v0.6.0-rc.3` (the baseline) and `v0.6.0-rc.4`. Phase 10, the
 clean-install gate, passed all 7 items on `v0.6.0-rc.4`'s digest
-(2026-11-11); its record is in plan 0002. Phase 11, the release, waits
-for the owner's promotion.
+(2026-11-11). The gate on `v0.6.0-rc.5` stopped at item 7 (2026-11-12):
+a mode change with an item open marked an unrelated item of the other
+reader read, and rc.4 has the same code. frostread#78 fixes it, and a
+full gate on `v0.6.0-rc.6` decides the release candidate; both records
+are in plan 0002. Phase 11, the release, waits for that gate and the
+owner's promotion.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.

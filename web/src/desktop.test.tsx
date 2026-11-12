@@ -4,8 +4,17 @@ import type { Transport } from "@frostyard/lodge-client/rpc";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tauriSaveFile } from "./desktop/save.js";
-import { BUDGET, BUDGET_WINDOW_MS, createDesktopShell, desktopRoute, type SaveFile } from "./desktop/shell.js";
+import { tauriServer } from "./desktop/server.js";
+import {
+  BUDGET,
+  BUDGET_WINDOW_MS,
+  createDesktopShell,
+  desktopRoute,
+  type SaveFile,
+  startAddress,
+} from "./desktop/shell.js";
 import { type Desktop, startDesktop } from "./desktop/start.js";
+import { UNREAD } from "./lib/routes.js";
 import { createMockTransport } from "./rpc/mock.js";
 import type { ServerControl } from "./shell.js";
 
@@ -489,5 +498,115 @@ describe("the desktop shell", () => {
     expect(desktopRoute("#/item/4")).toEqual({ kind: "item", id: 4 });
     expect(desktopRoute("")).toEqual({ kind: "view", view: "unread" });
     expect(desktopRoute("#/bookmarklet")).toEqual({ kind: "view", view: "unread" });
+  });
+});
+
+/** reader is one mock reader, and the items.setRead calls the window makes to it. */
+function reader(): { transport: Transport; setRead: unknown[] } {
+  const mock = createMockTransport();
+  const setRead: unknown[] = [];
+  const transport: Transport = {
+    call: async <T,>(method: string, params: unknown): Promise<T> => {
+      if (method === "items.setRead") setRead.push(params);
+      return mock.call<T>(method, params);
+    },
+    onEvent: (handler) => mock.onEvent(handler),
+    onClose: (handler) => mock.onClose(handler),
+  };
+  return { transport, setRead };
+}
+
+/** connected is a known local mode whose reload the test reads. */
+function connected(reload: () => void): ServerControl {
+  return {
+    lodge: "",
+    known: true,
+    get: async () => ({ lodge: "", lastLodge: "", localData: true }),
+    save: async () => {},
+    reload,
+  };
+}
+
+// Item ids belong to one reader: a route of the reader the window leaves must
+// never open, and mark read, an item of the other reader (plan 0002, Phase 10,
+// item 7).
+describe("a mode change", () => {
+  it("starts the other reader at the unread view and marks nothing read", async () => {
+    // Reader A shows its item 31, so the fragment is #/item/31.
+    const a = reader();
+    window.history.replaceState(null, "", "#/item/31");
+    const first = await startDesktop({ root, transport: a.transport });
+    started = first;
+    await waitFor(() => expect(first.store.getState().item?.id).toBe(31));
+    expect(window.location.hash).toBe("#/item/31");
+
+    // The Server sheet saved the other mode, and reloads the real window.
+    const location = {
+      href: window.location.href,
+      reload: vi.fn(),
+      replace: vi.fn((url: string) => {
+        location.href = url;
+      }),
+    };
+    const control = tauriServer(async <T,>() => undefined as T, { location } as unknown as Window, "", true);
+    control.reload();
+    first.stop();
+    started = null;
+
+    // The new document starts at the address the window loaded, on reader B.
+    window.history.replaceState(null, "", location.href);
+    const b = reader();
+    const desktop = await startDesktop({ root, transport: b.transport });
+    started = desktop;
+    await waitFor(() => expect(desktop.store.getState().items.length).toBeGreaterThan(0));
+    expect(b.setRead).toEqual([]);
+    expect(desktop.store.getState().route).toEqual(UNREAD);
+    expect(desktop.store.getState().selectedId).toBeNull();
+    expect(desktop.store.getState().item).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe("#/"));
+    expect(location.reload).not.toHaveBeenCalled();
+    expect(new URL(location.href).hash).toBe("");
+  });
+
+  it("gives the start address without the fragment", () => {
+    const win = { location: { href: "tauri://localhost/desktop.html?x=1#/item/4" } } as unknown as Window;
+    expect(startAddress(win)).toBe("tauri://localhost/desktop.html?x=1");
+  });
+
+  it.each(["reload", "back_forward"])("starts a %s at the unread view and marks nothing read", async (type) => {
+    vi.spyOn(window.performance, "getEntriesByType").mockReturnValue([{ type } as unknown as PerformanceEntry]);
+    const b = reader();
+    window.history.replaceState(null, "", "#/item/31");
+    const desktop = await startDesktop({ root, transport: b.transport });
+    started = desktop;
+    await waitFor(() => expect(desktop.store.getState().items.length).toBeGreaterThan(0));
+    expect(b.setRead).toEqual([]);
+    expect(desktop.store.getState().route).toEqual(UNREAD);
+    expect(desktop.store.getState().selectedId).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe("#/"));
+  });
+
+  it("starts a new load at the fragment's item", async () => {
+    vi.spyOn(window.performance, "getEntriesByType").mockReturnValue([
+      { type: "navigate" } as unknown as PerformanceEntry,
+    ]);
+    const desktop = await start("#/item/31");
+    await waitFor(() => expect(desktop.store.getState().item?.id).toBe(31));
+  });
+
+  it("starts again when Back restores a document from the back-forward cache", async () => {
+    const reload = vi.fn();
+    const desktop = await startDesktop({ root, transport: createMockTransport(), server: connected(reload) });
+    started = desktop;
+    window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: false }));
+    expect(reload).not.toHaveBeenCalled();
+    window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
+    expect(reload).toHaveBeenCalledOnce();
+
+    // A stopped window no longer listens.
+    desktop.stop();
+    started = null;
+    window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
+    expect(reload).toHaveBeenCalledOnce();
   });
 });

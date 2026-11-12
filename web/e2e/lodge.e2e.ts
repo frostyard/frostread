@@ -127,6 +127,21 @@ async function markerVisible(s: Session, visible: boolean): Promise<boolean> {
     .then(() => true);
 }
 
+/** lodgeUnread is the sum of the unread counts of lodge's sources, as its readctl prints them. */
+function lodgeUnread(env: NodeJS.ProcessEnv): number {
+  const out = execFileSync(
+    join(ROOT, "build", "e2e", "readctl"),
+    ["--socket", `${lodgeRoot}/run/frostread/readctl.sock`, "sources"],
+    { env, timeout: 30_000, encoding: "utf8" },
+  );
+  let total = 0;
+  for (const line of out.split("\n")) {
+    const match = /^\d+\t(\d+) unread\t/.exec(line);
+    if (match?.[1] !== undefined) total += Number(match[1]);
+  }
+  return total;
+}
+
 function markdownFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const found: string[] = [];
@@ -175,6 +190,14 @@ describe.skipIf(!origin)("the desktop lodge connection", () => {
     const localReadd = app.readdPids().find(processAlive);
     expect(localReadd).toBeGreaterThan(0);
 
+    // The switch happens with a local item open (plan 0002, Phase 10, item
+    // 7): item ids belong to one reader, so lodge must start at the unread
+    // view and mark none of its own items read.
+    await showTomatoes(s);
+    expect(await s.execute<string>("return window.location.hash")).toMatch(/^#\/item\/\d+$/);
+    const unreadBefore = lodgeUnread(app.env);
+    expect(unreadBefore).toBeGreaterThan(0);
+
     await openServer(s, "Connect to lodge…");
     await setRadio(s, "lodge");
     await setLodgeAddress(s, origin);
@@ -199,7 +222,9 @@ describe.skipIf(!origin)("the desktop lodge connection", () => {
       async () => (await pageText(s)).includes("Lodge: 127.0.0.1:8480"),
       45_000,
     );
+    expect(["", "#/"]).toContain(await s.execute<string>("return window.location.hash"));
     await markerVisible(s, true);
+    expect(lodgeUnread(app.env)).toBe(unreadBefore);
   });
 
   it("c. saves as a note and opens the new Notes page", async () => {

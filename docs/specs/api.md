@@ -607,7 +607,8 @@ the shell, `web/src-tauri/src/server.rs`:
   it writes `app.json` back
   without `lodge` and fails with `This computer's reader did not stop.
   Frostread still uses it.` A stop that succeeds closes the window's
-  connection, and the window reloads.
+  connection, and the window reloads at the unread view: the route it
+  showed belongs to the reader it leaves.
 - `server_save {lodge: ""}` saves local mode: it writes `app.json`
   without `lodge`, keeps the address it removed as `lastLodge` when that
   member was a non-empty string, closes the window's connection, and

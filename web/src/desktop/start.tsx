@@ -14,7 +14,7 @@ import type { ServerControl } from "../shell.js";
 import { ShellProvider } from "../shell.js";
 import { createReadStore } from "../store.js";
 import { ConnectionBanner } from "./ConnectionBanner.js";
-import { createDesktopShell, desktopRoute, type SaveFile } from "./shell.js";
+import { createDesktopShell, desktopRoute, type SaveFile, startHash } from "./shell.js";
 
 /** DESKTOP_RETRY_MS is the desktop's 10 second connection retry. */
 export const DESKTOP_RETRY_MS = 10_000;
@@ -66,8 +66,10 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   // setRoute sets the route synchronously and loads nothing while there is
   // no API. The app takes navigation from the render on, so after connect
   // the store's CURRENT route loads, not the start route: a view the person
-  // chose while the transport opened must stay.
-  const startRoute = desktopRoute(win.location.hash);
+  // chose while the transport opened must stay. A reload or a Back into an
+  // earlier document starts at the unread view: its fragment can be a route
+  // of the other reader (startHash).
+  const startRoute = desktopRoute(startHash(win));
   void store.getState().setRoute(startRoute);
 
   const root = createRoot(options.root);
@@ -95,6 +97,13 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
 
   const onPop = () => void store.getState().setRoute(desktopRoute(win.location.hash));
   win.addEventListener("popstate", onPop);
+  // A document that Back or Forward restores from the back-forward cache
+  // runs no start: it keeps the items of the reader it showed, while the
+  // bridge can reach the other reader after a mode change. It starts again.
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) options.server?.reload();
+  };
+  win.addEventListener("pageshow", onPageShow);
 
   // The mock when the caller names no transport: a test, or a browser on
   // Vite's development server. desktop.tsx passes the shell's bridge when
@@ -146,6 +155,7 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
     store,
     stop() {
       win.removeEventListener("popstate", onPop);
+      win.removeEventListener("pageshow", onPageShow);
       query.removeEventListener("change", onScheme);
       unwatch();
       unclose();

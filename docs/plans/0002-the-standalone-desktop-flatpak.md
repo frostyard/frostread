@@ -62,8 +62,14 @@ Status (2026-11-11): **Phases 3 to 10 are done.**
   is merged in frostread#65, and the candidates `v0.6.0-rc.3` and
   `v0.6.0-rc.4` installed from the staged catalogue.
 - **Phase 10,** the clean-install gate, passed all 7 items on
-  `v0.6.0-rc.4` (2026-11-11, [its record](#record)). **Phase 11,** the
-  release, waits for Brian's promotion and Lucilla's listing.
+  `v0.6.0-rc.4` (2026-11-11, [its record](#record)). The gate on
+  `v0.6.0-rc.5`, which carries frostread#72's fixes, stopped at item 7
+  (2026-11-12, [its record](#the-gate-on-v060-rc5)): a mode change
+  with an item open marked an unrelated item of the other reader read,
+  and `v0.6.0-rc.4` has the same code. frostread#78 fixes it, and a
+  full gate on `v0.6.0-rc.6` decides the release candidate. **Phase
+  11,** the release, waits for that gate, Brian's promotion and
+  Lucilla's listing.
 
 ## Who helps
 
@@ -1030,6 +1036,48 @@ Findings, left open:
    readd polling after a logout.
 4. The VM, not Frostread: after a logout, the GDM greeter took no key
    until `systemctl restart gdm`; both logins of item 4 came after one.
+
+### The gate on v0.6.0-rc.5
+
+`v0.6.0-rc.5` carries frostread#72's fixes of findings 1 and 2: commit
+`9eaa3b0`, frostread#72's merge on `main`; Flatpak run
+[43244057427](https://github.com/frostyard/frostread/actions/runs/43244057427);
+digest
+`sha256:939f747b20daf19091cda96406778e715dd45964ac0a8ce0901c6b72e3280674`;
+Flatpak commit `63abe9f3…`. It is attested and pulls with no
+credentials. Its gate ran on 2026-11-12 on the same VM, from the same
+staged catalogue, and stopped at item 7:
+
+- Items 1, 2, 3 and 6: pass. Item 4: the allowed part passed, and the
+  refused part did not run. Item 5: not run.
+- Finding 1: GNOME's chooser names the import filter "OPML". Finding
+  2: after a switch to this computer, `app.json` holds
+  `{"lastLodge":"http://127.0.0.1:8480"}`, and the sheet offers that
+  address.
+- Item 7: **fail.** In lodge mode the window showed lodge's item 4, so
+  its address ended in `#/item/4`. The switch to this computer reloaded
+  the window, and the reload kept the fragment. The window started at
+  that route: the local reader opened its own item 4, an unrelated and
+  unread article, and marked it read. A hash of the local data changed
+  by that `read_at` alone. The same code marks lodge's item with the
+  same id read, in lodge's shared data, after a switch to lodge with a
+  local item open (not seen on the VM). Item ids belong to one reader.
+  `v0.6.0-rc.4` has the same code; its run had no item open at a
+  switch, so its item 7 did not cover this. The rest of item 7 held:
+  the stopped-lodge texts, no local data in lodge mode, the sheet's
+  texts, no readd in lodge mode, and lodge's read item, saved link and
+  note.
+
+frostread#78 fixes item 7. A mode change loads the window's start
+address with no fragment. A reload, or Back or Forward into an earlier
+document, starts at the unread view. A document that Back or Forward
+restores from the back-forward cache starts again.
+`web/src/desktop.test.tsx` switches readers with an item open and
+checks that the other reader marks nothing read, and
+`web/e2e/lodge.e2e.ts` (test b) switches to lodge with a local item
+open and checks that lodge's unread count stays. Phase 10's Done when
+waits for a full gate on `v0.6.0-rc.6`, with `v0.6.0-rc.5` as item
+5's baseline.
 
 ## Phase 11 — Release (Brian and Lucilla, small)
 

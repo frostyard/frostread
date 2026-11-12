@@ -22,6 +22,7 @@ export interface ServerControl {
   readonly known: boolean;
   get(): Promise<ServerInfo>;
   save(lodge: string): Promise<void>;
+  /** reload loads the window again at the unread view: never at the route it shows. */
   reload(): void;
 }
 
