@@ -9,13 +9,17 @@ package fetch
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/frostyard/lodge/kit/netguard"
@@ -95,6 +99,65 @@ func unwrapURLError(err error) error {
 		}
 		err = ue.Err
 	}
+}
+
+// fetchError is a failed request: its text names the host and a reason
+// from a fixed list, never the cause's own text, which can repeat a URL (a
+// request's, a redirect's or a Location header's). Unwrap keeps the cause
+// for errors.Is and errors.As.
+type fetchError struct {
+	host   string
+	reason string
+	err    error
+}
+
+func (e *fetchError) Error() string { return "fetch " + e.host + ": " + e.reason }
+
+// Unwrap returns the cause, so errors.Is finds a sentinel such as
+// netguard.ErrInside or context.Canceled.
+func (e *fetchError) Unwrap() error { return e.err }
+
+// reason names a failed request's cause from a fixed list. The cause's own
+// text may repeat a URL, so it is classified and never formatted.
+func reason(err error) string {
+	var (
+		refused   *Refused
+		netErr    net.Error
+		dnsErr    *net.DNSError
+		opErr     *net.OpError
+		certErr   *tls.CertificateVerificationError
+		unknownCA x509.UnknownAuthorityError
+		badHost   x509.HostnameError
+		badCert   x509.CertificateInvalidError
+	)
+	// A timeout from the network carries the same meaning as the
+	// context's own deadline.
+	timedOut := errors.As(err, &netErr) && netErr.Timeout()
+	switch {
+	case errors.As(err, &refused):
+		// A redirect checkRedirect refused: its text is this package's,
+		// and names the redirect's host alone.
+		return refused.Error()
+	case errors.Is(err, ErrRefused):
+		return "a redirect was refused"
+	case errors.Is(err, context.DeadlineExceeded), timedOut:
+		return "the request timed out"
+	case errors.Is(err, context.Canceled):
+		return "the request was canceled"
+	case errors.As(err, &dnsErr):
+		return "the name does not resolve"
+	case errors.As(err, &certErr), errors.As(err, &unknownCA), errors.As(err, &badHost), errors.As(err, &badCert):
+		return "the certificate is not valid"
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return "the server closed the connection"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "the connection was refused"
+	case errors.Is(err, syscall.ECONNRESET):
+		return "the connection was reset"
+	case errors.As(err, &opErr):
+		return "the connection failed"
+	}
+	return "the request failed"
 }
 
 // Refusal returns the one sentence a caller shows for err when it is a
@@ -251,7 +314,7 @@ func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, 
 		if errors.Is(err, netguard.ErrInside) {
 			return nil, &Refused{URL: rawurl, Err: err}
 		}
-		return nil, fmt.Errorf("fetch %s: %w", Host(rawurl), err)
+		return nil, &fetchError{host: Host(rawurl), reason: reason(err), err: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	out := &Response{
@@ -270,7 +333,7 @@ func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, 
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if err != nil {
-		return nil, fmt.Errorf("fetch %s: read body: %w", Host(rawurl), unwrapURLError(err))
+		return nil, &fetchError{host: Host(rawurl), reason: "read body: " + reason(err), err: err}
 	}
 	if int64(len(body)) > max {
 		return nil, fmt.Errorf("fetch %s: over %d bytes: %w", Host(rawurl), max, ErrTooLarge)

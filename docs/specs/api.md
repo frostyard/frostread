@@ -727,9 +727,11 @@ The packaging test, `internal/packagecheck`, checks it.
   MCP with frostread's token.
 - No log line, and no error message, may contain a token, a note's text or
   an article's text.
-- A log line or an error message names a URL by its host alone, never its
-  path, query, fragment or user info: a feed's URL can carry a key.
-  `Source.lastError` follows the same rule.
+- A log line, a fetch, a poll or an extraction error, and
+  `Source.lastError` name a URL by its host alone, never its path, query,
+  fragment or userinfo, because a feed's URL can carry a key. The one
+  exception is the refusal sentence to the owner (the rule above it),
+  which names a URL with no host as the owner gave it.
 - A release build MUST NOT admit a loopback or inside address.
 
 ### Development-only
