@@ -1181,7 +1181,9 @@ dev-lodge`: lodge `main` 0e4a5bd, Notes `main` 5fbd919, and Read from
    lodge's web app, so item 6 ran again in full at 15:21 to 15:31, on
    the VM restored to its clean snapshot, with rc.6 installed and The Go
    Blog as a local source, and lodge's development build started again
-   from the same commits. Lodge's web app, in the host's browser at
+   with lodge 0e4a5bd and Notes 5fbd919, and Read from rc.6's code
+   (this branch's `b47de86`, whose change from `fb0ba06` is
+   documentation only). Lodge's web app, in the host's browser at
    `http://127.0.0.1:8480/read/`, showed "Read, 6 unread", Unread 6 and
    All 6. After the switch to lodge, "The garden in November" opened in
    the window. On a reload, the web app showed "Read, 5 unread" and
