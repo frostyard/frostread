@@ -62,6 +62,29 @@ export function startHash(win: Window): string {
   return type === "reload" || type === "back_forward" ? "" : win.location.hash;
 }
 
+/** START_KEY names the window's start in the state of each history entry it writes. */
+const START_KEY = "frostreadStart";
+
+/**
+ * newStart names one start of the window. Each document has its own, and its
+ * shell writes it in the state of each history entry. Entries of earlier
+ * documents stay in the window's history after a mode change, and their
+ * routes can belong to the other reader (see startAddress).
+ */
+export function newStart(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** startState is the history state of an entry that the start writes. */
+export function startState(start: string): Record<string, string> {
+  return { [START_KEY]: start };
+}
+
+/** ownsEntry says whether a history entry's state is the start's own. */
+export function ownsEntry(state: unknown, start: string): boolean {
+  return typeof state === "object" && state !== null && (state as Record<string, unknown>)[START_KEY] === start;
+}
+
 /** SaveFile saves text at a place the user picks: true when saved, false when the user cancels. */
 export type SaveFile = (name: string, text: string, type: string) => Promise<boolean>;
 
@@ -80,6 +103,7 @@ export function createDesktopShell(
   now: () => number = () => win.performance.now(),
   saveFile: SaveFile = noSaveFile,
   server?: ServerControl,
+  start: string = newStart(),
 ): Shell {
   // The first report is the start route, which is already the window's
   // address: it replaces, so a start adds no history entry.
@@ -154,8 +178,8 @@ export function createDesktopShell(
     written.push(t);
     if (push) lastPush = t;
     try {
-      if (push) win.history.pushState(null, "", hash);
-      else win.history.replaceState(null, "", hash);
+      if (push) win.history.pushState(startState(start), "", hash);
+      else win.history.replaceState(startState(start), "", hash);
     } catch (err) {
       // A refused call loses the entry, but it never reaches the app: this
       // runs inside an effect, and a throw there shows the error page.

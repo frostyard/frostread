@@ -594,6 +594,36 @@ describe("a mode change", () => {
     await waitFor(() => expect(desktop.store.getState().item?.id).toBe(31));
   });
 
+  it("follows Back to an entry that this start wrote", async () => {
+    const desktop = await start("#/view/starred");
+    fireEvent.click(await screen.findByRole("button", { name: /^Read later/ }));
+    await waitFor(() => expect(window.location.hash).toBe("#/view/later"));
+    act(() => window.history.back());
+    await waitFor(() => expect(desktop.store.getState().route).toEqual({ kind: "view", view: "starred" }));
+    expect(window.location.hash).toBe("#/view/starred");
+  });
+
+  it("takes Back to an entry of an earlier document to the unread view and marks nothing read", async () => {
+    // An earlier document, maybe of the other reader, wrote an item entry.
+    // After a reload, this document took over that entry's history.
+    window.history.replaceState({ frostreadStart: "earlier" }, "", "#/item/31");
+    window.history.pushState(null, "", "/");
+    const b = reader();
+    const desktop = await startDesktop({ root, transport: b.transport });
+    started = desktop;
+    await waitFor(() => expect(desktop.store.getState().items.length).toBeGreaterThan(0));
+    await waitFor(() => expect(window.location.hash).toBe("#/"));
+
+    const popped = new Promise((resolve) => window.addEventListener("popstate", resolve, { once: true }));
+    act(() => window.history.back());
+    await popped;
+    await act(async () => {});
+    expect(desktop.store.getState().route).toEqual(UNREAD);
+    expect(desktop.store.getState().selectedId).toBeNull();
+    expect(b.setRead).toEqual([]);
+    await waitFor(() => expect(window.location.hash).toBe("#/"));
+  });
+
   it("starts again when Back restores a document from the back-forward cache", async () => {
     const reload = vi.fn();
     const desktop = await startDesktop({ root, transport: createMockTransport(), server: connected(reload) });

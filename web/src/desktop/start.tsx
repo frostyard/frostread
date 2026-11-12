@@ -8,13 +8,22 @@ import { createRoot } from "react-dom/client";
 import { App } from "../components/App.js";
 import { StoreProvider } from "../components/context.js";
 import { ErrorBoundary } from "../components/ErrorBoundary.js";
+import { UNREAD } from "../lib/routes.js";
 import { readAPI } from "../rpc/api.js";
 import { watchChanges } from "../rpc/events.js";
 import type { ServerControl } from "../shell.js";
 import { ShellProvider } from "../shell.js";
 import { createReadStore } from "../store.js";
 import { ConnectionBanner } from "./ConnectionBanner.js";
-import { createDesktopShell, desktopRoute, type SaveFile, startHash } from "./shell.js";
+import {
+  createDesktopShell,
+  desktopRoute,
+  newStart,
+  ownsEntry,
+  type SaveFile,
+  startHash,
+  startState,
+} from "./shell.js";
 
 /** DESKTOP_RETRY_MS is the desktop's 10 second connection retry. */
 export const DESKTOP_RETRY_MS = 10_000;
@@ -73,7 +82,8 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
   void store.getState().setRoute(startRoute);
 
   const root = createRoot(options.root);
-  const shell = createDesktopShell(win, () => win.performance.now(), options.saveFile, options.server);
+  const start = newStart();
+  const shell = createDesktopShell(win, () => win.performance.now(), options.saveFile, options.server, start);
   root.render(
     <StrictMode>
       <ShellProvider shell={shell}>
@@ -95,7 +105,22 @@ export async function startDesktop(options: DesktopOptions): Promise<Desktop> {
     </StrictMode>,
   );
 
-  const onPop = () => void store.getState().setRoute(desktopRoute(win.location.hash));
+  // Back or Forward within the document follows the entry's route only when
+  // this start wrote the entry. An entry of an earlier document, which this
+  // document took over after a reload, can hold a route of the other reader:
+  // it becomes the unread view.
+  const onPop = (event: PopStateEvent) => {
+    if (ownsEntry(event.state, start)) {
+      void store.getState().setRoute(desktopRoute(win.location.hash));
+      return;
+    }
+    try {
+      win.history.replaceState(startState(start), "", "#/");
+    } catch {
+      // A refused call keeps the old address; the route below still holds.
+    }
+    void store.getState().setRoute(UNREAD);
+  };
   win.addEventListener("popstate", onPop);
   // A document that Back or Forward restores from the back-forward cache
   // runs no start: it keeps the items of the reader it showed, while the
