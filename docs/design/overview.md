@@ -97,8 +97,8 @@ the system's color scheme. It keeps its route in the URL fragment and
 the window's own history, with a budget of 50 history calls in 10 s,
 below WebKit's limit. Item ids belong to one reader, so a route never
 crosses a mode change: the change loads the window at the unread view,
-and a reload, or Back or Forward into an earlier document, starts there
-too ([plan 0002, Phase 10](../plans/0002-the-standalone-desktop-flatpak.md#the-gate-on-v060-rc5)).
+and a reload, Back or Forward into an earlier document, or Back or
+Forward to an entry that an earlier document wrote, goes there too ([plan 0002, Phase 10](../plans/0002-the-standalone-desktop-flatpak.md#the-gate-on-v060-rc5)).
 It has no save page and no bookmarklet. OPML
 export goes through `save_file`; the lodge entry keeps its download.
 The sidebar's `Connect to lodge…` (or `Lodge: HOST`) opens the Server

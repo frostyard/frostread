@@ -1070,8 +1070,11 @@ staged catalogue, and stopped at item 7:
 
 frostread#78 fixes item 7. A mode change loads the window's start
 address with no fragment. A reload, or Back or Forward into an earlier
-document, starts at the unread view. A document that Back or Forward
-restores from the back-forward cache starts again.
+document, starts at the unread view. Each start marks the history
+entries it writes, and Back or Forward to an entry without its mark
+goes to the unread view: an earlier document's entries stay in the
+window's history. A document that Back or Forward restores from the
+back-forward cache starts again.
 `web/src/desktop.test.tsx` switches readers with an item open and
 checks that the other reader marks nothing read, and
 `web/e2e/lodge.e2e.ts` (test b) switches to lodge with a local item
