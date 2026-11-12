@@ -140,6 +140,9 @@ function markdownFiles(dir: string): string[] {
 
 describe.skipIf(!origin)("the desktop lodge connection", () => {
   let app: App | undefined;
+  // stopped is the address test d saves: an address that answers nothing,
+  // so that lodge mode shows its banner instead of lodge's list.
+  let stopped = "";
 
   beforeAll(async () => {
     app = await launch({ launcher: true });
@@ -237,7 +240,7 @@ describe.skipIf(!origin)("the desktop lodge connection", () => {
     if (!app) throw new Error("not started");
     const s = app.session;
     const port = await freePort();
-    const stopped = `http://127.0.0.1:${port}`;
+    stopped = `http://127.0.0.1:${port}`;
 
     await openServer(s, "Lodge: 127.0.0.1:8480");
     await setLodgeAddress(s, stopped);
@@ -278,6 +281,20 @@ describe.skipIf(!origin)("the desktop lodge connection", () => {
     await waitSources(s, 45_000);
     await until("the stand-in to start readd", () => running.readdPids().some(processAlive), 45_000);
     await markerVisible(s, false);
+
+    // The switch to this computer keeps the address it leaves, so that the
+    // next lodge mode needs no typing.
+    const mode = JSON.parse(readFileSync(join(app.dir, "config", "frostread", "app.json"), "utf8"));
+    expect(mode.lodge).toBeUndefined();
+    expect(mode.lastLodge).toBe(stopped);
+
+    await openServer(s, "Connect to lodge…");
+    const shown = await s.execute<string>(
+      `const input=document.querySelector('input[placeholder="https://lodge.example.ts.net"]');
+       return input === null ? "" : input.value;`,
+    );
+    expect(shown).toBe(stopped);
+    await s.click(await findButton(s, "Cancel"));
   });
 
   it("f. rolls lodge back to local when readd does not stop", async () => {

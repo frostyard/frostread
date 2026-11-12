@@ -34,7 +34,7 @@ async function connectDesktop(): Promise<{ transport: Transport; saveFile: SaveF
   let lodge = "";
   let known = false;
   try {
-    const answer = await core.invoke<{ lodge: string; localData: boolean }>("server_get");
+    const answer = await core.invoke<{ lodge: string; lastLodge: string; localData: boolean }>("server_get");
     lodge = answer.lodge;
     known = true;
   } catch {

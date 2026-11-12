@@ -8,11 +8,14 @@ import { mockServer, tauriServer } from "./desktop/server.js";
 import { type ServerControl, ShellProvider } from "./shell.js";
 import { createReadStore } from "./store.js";
 
-function server(answer: { lodge: string; localData: boolean }, overrides: Partial<ServerControl> = {}): ServerControl {
+function server(
+  answer: { lodge: string; lastLodge?: string; localData: boolean },
+  overrides: Partial<ServerControl> = {},
+): ServerControl {
   return {
     lodge: answer.lodge,
     known: true,
-    get: vi.fn(async () => answer),
+    get: vi.fn(async () => ({ lastLodge: "", ...answer })),
     save: vi.fn(async () => {}),
     reload: vi.fn(),
     ...overrides,
@@ -29,12 +32,17 @@ describe("the Server sheet", () => {
     const calls: Array<[string, Record<string, unknown> | undefined]> = [];
     async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
       calls.push([command, args]);
-      if (command === "server_get") return { lodge: "https://lodge.example.ts.net", localData: true } as T;
+      if (command === "server_get")
+        return { lodge: "https://lodge.example.ts.net", lastLodge: "", localData: true } as T;
       return undefined as T;
     }
     const win = { location: { reload: vi.fn() } } as unknown as Window;
     const control = tauriServer(invoke, win, "https://lodge.example.ts.net", true);
-    await expect(control.get()).resolves.toEqual({ lodge: "https://lodge.example.ts.net", localData: true });
+    await expect(control.get()).resolves.toEqual({
+      lodge: "https://lodge.example.ts.net",
+      lastLodge: "",
+      localData: true,
+    });
     await control.save("https://two.example");
     control.reload();
     expect(calls).toEqual([
@@ -44,43 +52,74 @@ describe("the Server sheet", () => {
     expect(win.location.reload).toHaveBeenCalledOnce();
 
     const mock = mockServer("", false);
-    await expect(mock.get()).resolves.toEqual({ lodge: "", localData: false });
+    await expect(mock.get()).resolves.toEqual({ lodge: "", lastLodge: "", localData: false });
     await mock.save("https://lodge.example.ts.net");
-    await expect(mock.get()).resolves.toEqual({ lodge: "https://lodge.example.ts.net", localData: false });
+    await expect(mock.get()).resolves.toEqual({
+      lodge: "https://lodge.example.ts.net",
+      lastLodge: "",
+      localData: false,
+    });
+    // A switch to local keeps the address it leaves, as app.json does.
+    await mock.save("");
+    await expect(mock.get()).resolves.toEqual({
+      lodge: "",
+      lastLodge: "https://lodge.example.ts.net",
+      localData: false,
+    });
+  });
+
+  it("offers the last lodge address in local mode, and saves it after the Lodge radio", async () => {
+    const local = server({ lodge: "", lastLodge: "https://lodge.example.ts.net", localData: true });
+    renderSheet(local);
+    await screen.findByRole("radiogroup", { name: "Reader" });
+
+    const input = screen.getByLabelText("Lodge's address") as HTMLInputElement;
+    expect(input.value).toBe("https://lodge.example.ts.net");
+    expect(input.disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("Lodge"));
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(local.save).toHaveBeenCalledWith("https://lodge.example.ts.net"));
   });
 
   it("shows Loading and the loading facts, then the exact change texts", async () => {
-    let resolve: (answer: { lodge: string; localData: boolean }) => void = () => {};
-    const pending = new Promise<{ lodge: string; localData: boolean }>((r) => {
+    let resolve: (answer: { lodge: string; lastLodge: string; localData: boolean }) => void = () => {};
+    const pending = new Promise<{ lodge: string; lastLodge: string; localData: boolean }>((r) => {
       resolve = r;
     });
-    renderSheet({ ...server({ lodge: "", localData: true }), get: vi.fn(() => pending) });
+    renderSheet({ ...server({ lodge: "", lastLodge: "", localData: true }), get: vi.fn(() => pending) });
     expect(screen.getByText("Loading…")).toBeTruthy();
-    resolve({ lodge: "", localData: true });
+    resolve({ lodge: "", lastLodge: "", localData: true });
     await screen.findByRole("radiogroup", { name: "Reader" });
 
-    expect(serverChangeText({ lodge: "", localData: true }, false, "")).toBe("Frostread uses this computer's reader.");
-    expect(serverChangeText({ lodge: "https://lodge.example.ts.net", localData: true }, false, "")).toBe(
+    expect(serverChangeText({ lodge: "", lastLodge: "", localData: true }, false, "")).toBe(
+      "Frostread uses this computer's reader.",
+    );
+    expect(serverChangeText({ lodge: "https://lodge.example.ts.net", lastLodge: "", localData: true }, false, "")).toBe(
       "This computer's reader starts again with the sources and articles it had. Nothing moves from lodge.",
     );
-    expect(serverChangeText({ lodge: "https://lodge.example.ts.net", localData: false }, false, "")).toBe(
+    expect(
+      serverChangeText({ lodge: "https://lodge.example.ts.net", lastLodge: "", localData: false }, false, ""),
+    ).toBe(
       "This computer starts an empty reader. Your list on lodge stays there. To bring your subscriptions, export OPML from Read in lodge and import it here.",
     );
-    expect(serverChangeText({ lodge: "", localData: true }, true, "https://lodge.example.ts.net")).toBe(
+    expect(serverChangeText({ lodge: "", lastLodge: "", localData: true }, true, "https://lodge.example.ts.net")).toBe(
       "This computer's reader stops polling. Its sources and saved articles stay on this computer, not synced, until you switch back. Nothing moves to lodge.",
     );
-    expect(serverChangeText({ lodge: "https://one.example", localData: true }, true, "https://one.example/")).toBe(
-      "Frostread uses the lodge at https://one.example.",
-    );
-    expect(serverChangeText({ lodge: "https://one.example", localData: true }, true, "https://two.example")).toBe(
-      "Frostread uses the lodge at https://two.example instead. Nothing moves between the two.",
-    );
+    expect(
+      serverChangeText({ lodge: "https://one.example", lastLodge: "", localData: true }, true, "https://one.example/"),
+    ).toBe("Frostread uses the lodge at https://one.example.");
+    expect(
+      serverChangeText({ lodge: "https://one.example", lastLodge: "", localData: true }, true, "https://two.example"),
+    ).toBe("Frostread uses the lodge at https://two.example instead. Nothing moves between the two.");
   });
 
   it("shows get failure in place", async () => {
     renderSheet(
       server(
-        { lodge: "", localData: true },
+        { lodge: "", lastLodge: "", localData: true },
         {
           get: vi.fn(async () => {
             throw new Error("cannot read mode");
@@ -96,7 +135,7 @@ describe("the Server sheet", () => {
   });
 
   it("disables Save for no change and an empty Lodge address", async () => {
-    renderSheet(server({ lodge: "", localData: true }));
+    renderSheet(server({ lodge: "", lastLodge: "", localData: true }));
     await screen.findByRole("radiogroup", { name: "Reader" });
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
 
@@ -105,7 +144,7 @@ describe("the Server sheet", () => {
     fireEvent.change(screen.getByLabelText("Lodge's address"), { target: { value: "https://lodge.example.ts.net" } });
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
 
-    const lodge = server({ lodge: "https://lodge.example.ts.net", localData: true });
+    const lodge = server({ lodge: "https://lodge.example.ts.net", lastLodge: "", localData: true });
     renderSheet(lodge);
     await screen.findAllByRole("radiogroup", { name: "Reader" });
     const saves = screen.getAllByRole("button", { name: "Save" });
@@ -113,7 +152,7 @@ describe("the Server sheet", () => {
   });
 
   it("saves local mode and a Lodge address, and reloads after success", async () => {
-    const toLocal = server({ lodge: "https://lodge.example.ts.net", localData: true });
+    const toLocal = server({ lodge: "https://lodge.example.ts.net", lastLodge: "", localData: true });
     renderSheet(toLocal);
     await screen.findByRole("radiogroup", { name: "Reader" });
     fireEvent.click(screen.getByLabelText("This computer"));
@@ -121,7 +160,7 @@ describe("the Server sheet", () => {
     await waitFor(() => expect(toLocal.save).toHaveBeenCalledWith(""));
     expect(toLocal.reload).toHaveBeenCalledOnce();
 
-    const toLodge = server({ lodge: "", localData: true });
+    const toLodge = server({ lodge: "", lastLodge: "", localData: true });
     renderSheet(toLodge);
     await screen.findAllByRole("radiogroup", { name: "Reader" });
     const lodgeRadios = screen.getAllByLabelText("Lodge");
@@ -151,8 +190,8 @@ describe("the Server sheet", () => {
       get: vi.fn(async () => {
         reads++;
         return reads === 1
-          ? { lodge: "https://lodge.example.ts.net", localData: true }
-          : { lodge: "", localData: true };
+          ? { lodge: "https://lodge.example.ts.net", lastLodge: "", localData: true }
+          : { lodge: "", lastLodge: "", localData: true };
       }),
       save: vi.fn(() => pending),
       reload: vi.fn(),
@@ -188,8 +227,8 @@ describe("the Server sheet", () => {
       get: vi.fn(async () => {
         reads++;
         return reads === 1
-          ? { lodge: "", localData: true }
-          : { lodge: "https://lodge.example.ts.net", localData: true };
+          ? { lodge: "", lastLodge: "", localData: true }
+          : { lodge: "https://lodge.example.ts.net", lastLodge: "", localData: true };
       }),
       save: vi.fn(async () => {
         throw new Error("the lock stayed held");
@@ -212,7 +251,7 @@ describe("the Server sheet", () => {
 
   it("shows the server footer only with a server and its local or Lodge label", () => {
     const store = createReadStore();
-    const local = server({ lodge: "", localData: true });
+    const local = server({ lodge: "", lastLodge: "", localData: true });
     const { rerender } = render(
       <ShellProvider
         shell={{
@@ -239,7 +278,7 @@ describe("the Server sheet", () => {
         shell={{
           savePages: false,
           exportsMarkdown: false,
-          server: server({ lodge: "https://lodge.example.ts.net", localData: true }),
+          server: server({ lodge: "https://lodge.example.ts.net", lastLodge: "", localData: true }),
           reportRoute: () => {},
           openRoute: () => {},
           openOutside: () => {},
@@ -258,7 +297,7 @@ describe("the Server sheet", () => {
 
   it("opens the Server sheet from the sidebar button", async () => {
     const store = createReadStore();
-    const control = server({ lodge: "", localData: true });
+    const control = server({ lodge: "", lastLodge: "", localData: true });
     render(
       <ShellProvider
         shell={{

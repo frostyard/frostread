@@ -16,16 +16,24 @@ export function tauriServer(invoke: ServerInvoke, win: Window, lodge: string, kn
   };
 }
 
-/** mockServer keeps one in-memory mode for the Vite desktop browser. */
+/** mockServer keeps one in-memory mode for the Vite desktop browser. It keeps
+ * lastLodge as the shell does: a local save moves the address it leaves there,
+ * and a lodge save clears it. */
 export function mockServer(lodge = "", localData = true, known = true): ServerControl {
   let current = lodge;
+  let last = "";
   return {
     lodge,
     known,
     async get() {
-      return { lodge: current, localData };
+      return { lodge: current, lastLodge: last, localData };
     },
     async save(next) {
+      if (next === "") {
+        if (current !== "") last = current;
+      } else {
+        last = "";
+      }
       current = next;
     },
     reload() {},

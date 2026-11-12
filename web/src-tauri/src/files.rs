@@ -12,6 +12,56 @@ const MAX_NAME: usize = 255;
 /// MAX_TEXT is the maximum text size in bytes: 16 MiB.
 const MAX_TEXT: usize = 16 * 1024 * 1024;
 
+/// IMPORT_FILTER_NAME names the filter of the web view's file input, which
+/// is OPML import. WebKitGTK builds that filter with no name, and GTK sends
+/// an unnamed filter to the FileChooser portal, where the chooser shows it
+/// as `[Invalid UTF-8]`; GTK also logs a `g_variant_new_string` assertion
+/// (plan 0002, Phase 5's record).
+pub(crate) const IMPORT_FILTER_NAME: &str = "OPML";
+
+/// ChooserFilter is one filter of a file chooser, as naming it needs it.
+pub(crate) trait ChooserFilter {
+    fn name(&self) -> Option<String>;
+    fn set_name(&self, name: &str);
+}
+
+/// name_import_filter names the import filter, so that the chooser shows
+/// "OPML" rather than an unnamed filter. A filter that already has a name
+/// keeps it: the name it has is the one its caller chose.
+pub(crate) fn name_import_filter(filter: &impl ChooserFilter) {
+    if filter.name().is_none_or(|name| name.is_empty()) {
+        filter.set_name(IMPORT_FILTER_NAME);
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl ChooserFilter for gtk::FileFilter {
+    fn name(&self) -> Option<String> {
+        gtk::FileFilter::name(self).map(|name| name.to_string())
+    }
+
+    fn set_name(&self, name: &str) {
+        gtk::FileFilter::set_name(self, Some(name));
+    }
+}
+
+/// name_chooser_filters names the filter of every chooser the web view opens.
+/// WebKitGTK emits run-file-chooser with the request whose MIME filter it
+/// passes to GTK, and the request owns that one filter, so naming it here
+/// names the filter the chooser shows. The answer false leaves the chooser to
+/// WebKit's own handler, which opens the same filter.
+#[cfg(target_os = "linux")]
+pub(crate) fn name_chooser_filters(webview: &webkit2gtk::WebView) {
+    use webkit2gtk::{FileChooserRequestExt, WebViewExt};
+
+    webview.connect_run_file_chooser(|_, request| {
+        if let Some(filter) = request.mime_types_filter() {
+            name_import_filter(&filter);
+        }
+        false
+    });
+}
+
 /// Picker asks the platform for one place to save a file.
 pub(crate) trait Picker {
     fn pick(
@@ -134,7 +184,61 @@ pub(crate) async fn save_file(
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use super::{MAX_TEXT, Picker, save_text};
+    use super::{
+        ChooserFilter, IMPORT_FILTER_NAME, MAX_TEXT, Picker, name_import_filter, save_text,
+    };
+
+    /// StandInFilter is a chooser filter whose name a test sets and reads.
+    struct StandInFilter {
+        name: std::sync::Mutex<Option<String>>,
+    }
+
+    impl StandInFilter {
+        fn named(name: Option<&str>) -> Self {
+            Self {
+                name: std::sync::Mutex::new(name.map(str::to_string)),
+            }
+        }
+
+        fn name_now(&self) -> Option<String> {
+            self.name.lock().unwrap().clone()
+        }
+    }
+
+    impl ChooserFilter for StandInFilter {
+        fn name(&self) -> Option<String> {
+            self.name_now()
+        }
+
+        fn set_name(&self, name: &str) {
+            *self.name.lock().unwrap() = Some(name.to_string());
+        }
+    }
+
+    // An unnamed import filter gets a name, so the chooser has one to show
+    // where WebKitGTK gave none.
+    #[test]
+    fn an_unnamed_import_filter_is_named() {
+        let filter = StandInFilter::named(None);
+        name_import_filter(&filter);
+        assert_eq!(filter.name_now().as_deref(), Some(IMPORT_FILTER_NAME));
+    }
+
+    // An empty name is as unusable to the chooser as no name.
+    #[test]
+    fn an_import_filter_with_an_empty_name_is_named() {
+        let filter = StandInFilter::named(Some(""));
+        name_import_filter(&filter);
+        assert_eq!(filter.name_now().as_deref(), Some(IMPORT_FILTER_NAME));
+    }
+
+    // A filter that names itself keeps its own name.
+    #[test]
+    fn a_named_import_filter_keeps_its_name() {
+        let filter = StandInFilter::named(Some("Feed files"));
+        name_import_filter(&filter);
+        assert_eq!(filter.name_now().as_deref(), Some("Feed files"));
+    }
 
     struct StandIn {
         path: Option<std::path::PathBuf>,

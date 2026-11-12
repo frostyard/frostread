@@ -591,25 +591,35 @@ does not parse is an error, never local mode. In lodge mode
 **The Server sheet** (plan 0002, Phase 6, part 2) calls 2 commands of
 the shell, `web/src-tauri/src/server.rs`:
 
-- `server_get` answers `{"lodge": "…", "localData": true}`. `lodge` is
-  lodge's origin in lodge mode (the trimmed text when it is no valid
-  address), and `""` in local mode. `localData` is true when
-  `<state>/frostread.db` is a file. A mode file that does not parse is
-  an error.
+- `server_get` answers `{"lodge": "…", "lastLodge": "…", "localData":
+  true}`. `lodge` is lodge's origin in lodge mode (the trimmed text when
+  it is no valid address), and `""` in local mode. `lastLodge` is the
+  address the last lodge mode used: its origin when it is a valid
+  address, in local mode, and `""` in lodge mode and when no member is
+  a valid address. `localData` is true when `<state>/frostread.db` is a
+  file. A mode file that does not parse is an error.
 - `server_save {lodge}` with an address saves lodge mode. It checks the
   address first, and a bad one writes nothing. Then, in order (ADR-0008,
   steps 1 to 4): it writes `app.json` with lodge's origin (a temporary
-  file, synced, renamed, and the directory synced); it stops this
-  computer's readd as the window in lodge mode does (step 2 above), for
-  up to 30 s; when the lock is still held, it writes `app.json` back
+  file, synced, renamed, and the directory synced), and removes
+  `lastLodge`; it stops this computer's readd as the window in lodge
+  mode does (step 2 above), for up to 30 s; when the lock is still held,
+  it writes `app.json` back
   without `lodge` and fails with `This computer's reader did not stop.
   Frostread still uses it.` A stop that succeeds closes the window's
   connection, and the window reloads.
 - `server_save {lodge: ""}` saves local mode: it writes `app.json`
-  without `lodge`, closes the window's connection, and runs `frostread
-  --start` for up to 30 s. A start that fails keeps local mode and fails
-  with `Frostread now uses this computer's reader, but it did not start.
-  See readd.log in ~/.var/app/org.frostyard.Frostread/.local/state/frostread.`
+  without `lodge`, keeps the address it removed as `lastLodge` when that
+  member was a non-empty string, closes the window's connection, and
+  runs `frostread --start` for up to 30 s. A start that fails keeps local
+  mode and fails with `Frostread now uses this computer's reader, but it
+  did not start. See readd.log in
+  ~/.var/app/org.frostyard.Frostread/.local/state/frostread.`
+  The rollback above writes local the same way, so the address it asked
+  for stays in `lastLodge`.
+- `lastLodge` is the Server sheet's memory alone: readd and the window
+  read `lodge` only, so a file with `lastLodge` and no `lodge` is local
+  mode, and starts no lodge connection.
 - One mode gate orders the shell's reads and writes of the mode: a save
   holds it for writing from its first step to its last, and a window's
   connect and `server_get` hold it for reading. So a connect that starts

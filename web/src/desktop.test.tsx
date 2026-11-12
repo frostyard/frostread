@@ -64,7 +64,7 @@ describe("the desktop entry", () => {
     const lodge: ServerControl = {
       lodge: "https://lodge.example.ts.net/",
       known: true,
-      get: async () => ({ lodge: "https://lodge.example.ts.net/", localData: true }),
+      get: async () => ({ lodge: "https://lodge.example.ts.net/", lastLodge: "", localData: true }),
       save: async () => {},
       reload: () => {},
     };
@@ -456,7 +456,7 @@ describe("the desktop shell", () => {
     const lodge: ServerControl = {
       lodge: "http://127.0.0.1:8480",
       known: true,
-      get: async () => ({ lodge: "http://127.0.0.1:8480", localData: true }),
+      get: async () => ({ lodge: "http://127.0.0.1:8480", lastLodge: "", localData: true }),
       save: async () => {},
       reload: () => {},
     };
@@ -471,7 +471,7 @@ describe("the desktop shell", () => {
     const unknown: ServerControl = {
       lodge: "",
       known: false,
-      get: async () => ({ lodge: "", localData: true }),
+      get: async () => ({ lodge: "", lastLodge: "", localData: true }),
       save: async () => {},
       reload: () => {},
     };

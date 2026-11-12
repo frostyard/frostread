@@ -23,6 +23,10 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 frostyard-problems = { git = "https://github.com/frostyard/std", tag = "v0.5.0" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# The webview's own libraries, at the versions wry's lock already holds: the
+# shell names the file input's chooser filter through them (files.rs).
+gtk = "0.18"
+webkit2gtk = "2.0.2"
 zbus = "5.13"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

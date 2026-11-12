@@ -66,17 +66,22 @@ fn main() {
             let handle = app.handle().clone();
             // The desktop entry's own page: vite builds desktop.html into
             // build/desktop (web/vite.config.ts).
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("desktop.html".into()))
-                .title("Read")
-                .inner_size(1100.0, 760.0)
-                .min_inner_size(640.0, 400.0)
-                .on_navigation(allowed_navigation)
-                // A link clicked in the reader arrives as a new-window
-                // request: it opens in the browser, and no window is made.
-                .on_new_window(move |url, _| open_new_window(&handle, &url))
-                // The window downloads nothing either.
-                .on_download(|_, _| false)
-                .build()?;
+            let window =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("desktop.html".into()))
+                    .title("Read")
+                    .inner_size(1100.0, 760.0)
+                    .min_inner_size(640.0, 400.0)
+                    .on_navigation(allowed_navigation)
+                    // A link clicked in the reader arrives as a new-window
+                    // request: it opens in the browser, and no window is made.
+                    .on_new_window(move |url, _| open_new_window(&handle, &url))
+                    // The window downloads nothing either.
+                    .on_download(|_, _| false)
+                    .build()?;
+            // The webview's own file chooser: the import filter needs a name
+            // before GTK passes it to the platform's chooser (files.rs).
+            #[cfg(target_os = "linux")]
+            window.with_webview(|webview| files::name_chooser_filters(&webview.inner()))?;
             Ok(())
         })
         .run(context)
