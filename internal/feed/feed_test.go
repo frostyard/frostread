@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -121,4 +122,28 @@ func TestPublishedDate(t *testing.T) {
 	if !f.Items[0].Published.Equal(want) {
 		t.Fatalf("published = %v, want %v", f.Items[0].Published, want)
 	}
+}
+
+// A feed's URL can carry a key, so a parse error names no address at all.
+func TestParseErrorsNameNoURL(t *testing.T) {
+	const secret = "s3cret"
+	const base = "https://example.com/feeds/s3cret-path/rss?key=s3cret-key"
+	t.Run("a body that is not a feed", func(t *testing.T) {
+		_, err := Parse([]byte("<html><body>not a feed</body></html>"), base)
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("garbage = %v, want ErrInvalid", err)
+		}
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("the error names the URL: %v", err)
+		}
+	})
+	t.Run("a base URL that does not parse", func(t *testing.T) {
+		_, err := Parse(read(t, "rss.xml"), "https://example.com/feeds/s3cret-path/%zz?key=s3cret-key")
+		if err == nil {
+			t.Fatal("a base URL with a bad escape parsed")
+		}
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("the error names the URL: %v", err)
+		}
+	})
 }

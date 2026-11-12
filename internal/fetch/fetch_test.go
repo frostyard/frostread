@@ -226,3 +226,92 @@ func TestRefusalSentence(t *testing.T) {
 		t.Fatalf("file: refusal = %q, %v", sentence, ok)
 	}
 }
+
+// secret is the made-up key a feed's URL carries below: a private feed's
+// URL can hold one, in its path or its query, and no error text may name
+// it.
+const secret = "s3cret"
+
+const secretURL = "http://feeds.example.com/feeds/s3cret-path/rss?key=s3cret-key"
+
+// namesNoSecret fails when err's text carries the secret, and when it
+// should name a host and does not.
+func namesNoSecret(t *testing.T, err error, host string) {
+	t.Helper()
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("the error names the URL: %v", err)
+	}
+	if host != "" && !strings.Contains(err.Error(), host) {
+		t.Fatalf("the error names no host, want %s: %v", host, err)
+	}
+}
+
+// Every error Get makes names a URL by its host alone, and errors.Is still
+// finds the sentinel under it.
+func TestErrorsNameOnlyTheHost(t *testing.T) {
+	t.Run("a network fault", func(t *testing.T) {
+		// The server takes the connection and closes it: the client's
+		// *url.Error would repeat the whole URL, query included.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			_ = conn.Close()
+		}))
+		defer srv.Close()
+		c := New("test")
+		dialTo(c, srv)
+		_, err := c.Get(t.Context(), secretURL, Options{})
+		if err == nil {
+			t.Fatal("a closed connection was fetched")
+		}
+		namesNoSecret(t, err, "feeds.example.com")
+	})
+	t.Run("a body over the cap", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(strings.Repeat("x", 100)))
+		}))
+		defer srv.Close()
+		c := New("test")
+		dialTo(c, srv)
+		_, err := c.Get(t.Context(), secretURL, Options{MaxBytes: 10})
+		if !errors.Is(err, ErrTooLarge) {
+			t.Fatalf("an over-cap body = %v, want ErrTooLarge", err)
+		}
+		namesNoSecret(t, err, "feeds.example.com")
+	})
+	t.Run("a refused address", func(t *testing.T) {
+		c := New("test")
+		_, err := c.Get(t.Context(), "http://127.0.0.1:9/s3cret-path?key=s3cret-key", Options{})
+		if !errors.Is(err, netguard.ErrInside) {
+			t.Fatalf("an inside address = %v, want ErrInside", err)
+		}
+		namesNoSecret(t, err, "127.0.0.1")
+	})
+	t.Run("a refused scheme", func(t *testing.T) {
+		c := New("test")
+		_, err := c.Get(t.Context(), "ftp://feeds.example.com/s3cret-path?key=s3cret-key", Options{})
+		if !errors.Is(err, ErrRefused) {
+			t.Fatalf("an ftp: URL = %v, want ErrRefused", err)
+		}
+		namesNoSecret(t, err, "feeds.example.com")
+	})
+}
+
+// Host is the host name alone, and "" for a URL that does not parse.
+func TestHost(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		{"https://feeds.example.com/a/b?key=1#frag", "feeds.example.com"},
+		{"https://alice:pass@feeds.example.com:8443/x", "feeds.example.com"},
+		{"http://127.0.0.1:9/x", "127.0.0.1"},
+		{"file:///etc/passwd", ""},
+		{"not a url", ""},
+		{"", ""},
+	} {
+		if got := Host(tc.raw); got != tc.want {
+			t.Errorf("Host(%q) = %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}

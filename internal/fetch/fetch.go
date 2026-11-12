@@ -57,11 +57,45 @@ type Refused struct {
 	Err error
 }
 
-func (e *Refused) Error() string { return e.Err.Error() + " (" + e.URL + ")" }
+// Error is the reason, and the host of the refused URL. The host alone:
+// the path or the query of a URL can carry a key, and this text reaches
+// the log.
+func (e *Refused) Error() string {
+	if h := Host(e.URL); h != "" {
+		return e.Err.Error() + " (" + h + ")"
+	}
+	return e.Err.Error()
+}
 
 // Unwrap returns the reason, so errors.Is finds ErrRefused or
 // netguard.ErrInside.
 func (e *Refused) Unwrap() error { return e.Err }
+
+// Host is the form of rawurl that a log line or an error message may
+// carry: its host name alone, never its path, query, fragment or userinfo,
+// because a feed's URL can hold a key. It is "" when rawurl does not
+// parse, so a caller names no address rather than the wrong one.
+func Host(rawurl string) string {
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// unwrapURLError returns err without the *url.Error wrappers the http
+// client adds. A *url.Error repeats the whole request URL, or the URL a
+// redirect went to, in its text, so only its own error may be wrapped and
+// logged.
+func unwrapURLError(err error) error {
+	for {
+		ue, ok := err.(*url.Error)
+		if !ok {
+			return err
+		}
+		err = ue.Err
+	}
+}
 
 // Refusal returns the one sentence a caller shows for err when it is a
 // refusal, and whether it is one. The sentence names the address in the
@@ -197,7 +231,7 @@ func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", rawurl, err)
+		return nil, fmt.Errorf("fetch %s: %w", Host(rawurl), err)
 	}
 	req.Header.Set("User-Agent", c.ua)
 	if o.Accept != "" {
@@ -213,10 +247,11 @@ func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, 
 	if err != nil {
 		// A dial the guard refused, after DNS: the address is public in
 		// name only. The URL that failed is the request's.
+		err = unwrapURLError(err)
 		if errors.Is(err, netguard.ErrInside) {
 			return nil, &Refused{URL: rawurl, Err: err}
 		}
-		return nil, fmt.Errorf("fetch %s: %w", rawurl, err)
+		return nil, fmt.Errorf("fetch %s: %w", Host(rawurl), err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	out := &Response{
@@ -235,10 +270,10 @@ func (c *Client) Get(ctx context.Context, rawurl string, o Options) (*Response, 
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if err != nil {
-		return nil, fmt.Errorf("fetch %s: read body: %w", rawurl, err)
+		return nil, fmt.Errorf("fetch %s: read body: %w", Host(rawurl), unwrapURLError(err))
 	}
 	if int64(len(body)) > max {
-		return nil, fmt.Errorf("fetch %s: over %d bytes: %w", rawurl, max, ErrTooLarge)
+		return nil, fmt.Errorf("fetch %s: over %d bytes: %w", Host(rawurl), max, ErrTooLarge)
 	}
 	out.Body = body
 	out.RetryAfter = retryAfter(resp.Header.Get("Retry-After"), time.Now())

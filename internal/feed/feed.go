@@ -48,11 +48,17 @@ func Parse(body []byte, baseURL string) (Feed, error) {
 	p := gofeed.NewParser()
 	f, err := p.ParseString(string(body))
 	if err != nil {
-		return Feed{}, fmt.Errorf("parse %s: %w: %v", baseURL, ErrInvalid, err)
+		return Feed{}, fmt.Errorf("parse feed: %w: %v", ErrInvalid, err)
 	}
 	base, err := url.Parse(baseURL)
 	if err != nil {
-		return Feed{}, fmt.Errorf("parse base %q: %w", baseURL, err)
+		// The URL is the caller's, and it can hold a key: the error names
+		// no address.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			return Feed{}, fmt.Errorf("parse the feed's base url: %w", ue.Err)
+		}
+		return Feed{}, fmt.Errorf("parse the feed's base url: %w", err)
 	}
 	out := Feed{Title: strings.TrimSpace(f.Title), SiteURL: resolve(base, f.Link)}
 	for _, it := range f.Items {
