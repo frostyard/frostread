@@ -21,7 +21,8 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-13): **Phases 3 to 10 are done; Phase 11 is open.**
+Status (2026-11-13): **Phases 3 to 10 are done; Phase 11 waits for
+the Read row of core's plan 0010.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
@@ -77,9 +78,12 @@ Status (2026-11-13): **Phases 3 to 10 are done; Phase 11 is open.**
   moved `v0.6.0` and `latest` to `v0.6.0-rc.6`'s digest
   `sha256:20c4f3e7…b886`, which an anonymous `skopeo inspect` reads;
   and [flatpak-index#16](https://github.com/frostyard/flatpak-index/pull/16)
-  lists `org.frostyard.Frostread` (merged 2026-11-13). Its Done when
-  has no record yet: an install from the `frostyard` remote on a fresh
-  VM, and the Read row of core's plan 0010.
+  lists `org.frostyard.Frostread` (merged 2026-11-13). The first half
+  of its Done when holds (2026-11-13): a fresh VM installed that digest
+  from the `frostyard` remote, and the app started and added a feed
+  ([Phase 11's record](#phase-11s-record)). The second half, the Read
+  row of core's plan 0010, is not recorded yet, so the Done when stays
+  pending.
 
 ## Who helps
 
@@ -1242,6 +1246,82 @@ refused part's logout, it took the key). Neither blocks the release.
 - **Done when:** `flatpak install frostyard org.frostyard.Frostread` on a
   fresh VM installs the digest that passed Phase 10, and plan 0010's Read
   row records it.
+
+### Phase 11's record
+
+The first half of Phase 11's Done when holds (2026-11-13): `flatpak
+install` from the public `frostyard` remote on a fresh VM installed
+`v0.6.0-rc.6`'s digest, the digest that passed Phase 10. The second
+half does not hold yet: core's plan 0010 (core `main` `c5a7f2b`) has no
+record of Read's install. Its Read row still says the desktop design is
+"not designed yet", and its Phase 5c has no record. The Done when stays
+pending until that row records it.
+
+The release, before the install:
+
+- The tag `v0.6.0` is commit `fb0ba06`, `v0.6.0-rc.6`'s commit, and
+  [Release](https://github.com/frostyard/frostread/actions/runs/43448954167)
+  made the [v0.6.0 release](https://github.com/frostyard/frostread/releases/tag/v0.6.0)
+  from it.
+- [Promote](https://github.com/frostyard/frostread/actions/runs/43450798973)
+  copied the candidate's digest to `v0.6.0` and `latest`. An anonymous
+  `skopeo inspect --no-creds` of `ghcr.io/frostyard/frostread` gives
+  `sha256:20c4f3e7595e107663ecf821e8b61c9df891ef8a9fa06335756b894d96dbb886`
+  for `latest`, `v0.6.0` and `v0.6.0-rc.6`.
+- The public catalogue,
+  `https://frostyard.github.io/flatpak-index/index/static`, lists
+  `app/org.frostyard.Frostread/x86_64/master` at that digest
+  ([flatpak-index#16](https://github.com/frostyard/flatpak-index/pull/16)).
+
+The VM is Duncan's Snow desktop VM, restored to its clean snapshot
+before the run and after it: Snow `20261028172907` (Debian 13), GNOME
+Shell 48.7 on Wayland, xdg-desktop-portal 1.20.3 and Flatpak 1.16.6, as
+the user `tester` in a real GDM login. Before the install, `flatpak
+list` showed no frostyard app, `command -v readd readctl lodge
+tailscale` found nothing, and `~/.var/app/org.frostyard.Frostread` did
+not exist.
+
+The install follows flatpak-index's README, section Install, at
+16:00 EST:
+
+```sh
+flatpak remote-add --user --if-not-exists frostyard https://frostyard.github.io/flatpak-index/frostyard.flatpakrepo
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user -y --noninteractive frostyard org.frostyard.Frostread
+```
+
+The clean image already has the user remotes `frostyard`
+(`oci+https://frostyard.github.io/flatpak-index`) and `flathub`, so the 2 `remote-add` commands changed nothing, as
+frostmail's install of 2026-10-29 found. `flatpak remote-ls --user
+frostyard` listed Frostmail, Frostnotes, Frostread and Igloo. The
+install updated `org.gnome.Platform//51` and installed
+`app/org.frostyard.Frostread/x86_64/master`. `flatpak info --user
+org.frostyard.Frostread`:
+
+```text
+Frostread - Feeds and a reading list on your own computer
+
+     Version: 0.6.0
+      Origin: frostyard
+Installation: user
+     Runtime: org.gnome.Platform/x86_64/51
+      Commit: b15ea974b980fc20189a52ddf69764d0c37b61106750f6821d6298463f455501
+     Subject: Built from fb0ba067bdf4de5510e9d02fcf349f35f2977caf
+      Alt-id: 20c4f3e7595e107663ecf821e8b61c9df891ef8a9fa06335756b894d96dbb886
+```
+
+The Alt-id is the digest of `v0.6.0-rc.6`, and the commit is the
+Flatpak commit that Phase 10's gate installed from the staged
+catalogue. The permissions are those of the gate: `shared=network;ipc;`,
+`sockets=wayland;fallback-x11;` and `devices=dri;`.
+
+The app, from the overview's search, with no terminal:
+
+| Step | What the VM showed |
+| --- | --- |
+| Start | The search for "Frostread" showed Frostread with its icon. Return opened the window "Read" at 16:01 with no dialog: Unread, Starred, Read later, Archive and All, no sources, "No unread items", and "Connect to lodge…" |
+| Add 1 feed | "+" opened "Add a source". `https://go.dev/blog/feed.atom` and Add put The Go Blog under Sources with 10 unread items, from "Go Turns 17" down; Unread 10 and All 10 |
+| readd | 1 `readd -desktop` ran beside `frostread-app`. Its log has "serving the desktop's private socket" with version 0.6.0 and build `b15ea974…` at 16:01:52, and "new items" for source 1, host `go.dev`, count 10, at 16:02:36. `flatpak run --command=readctl org.frostyard.Frostread -desktop status` gives `readd 0.6.0`, `build b15ea974…` and "save as a note: not configured"; `sources` gives `1  10 unread  The Go Blog  https://go.dev/blog/feed.atom`. The mode file `app.json` does not exist: the app runs local |
 
 ## Later / ideas
 

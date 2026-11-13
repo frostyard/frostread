@@ -25,8 +25,10 @@ connection and its Server sheet (Phase 6, 2026-11-06), "Export as
 Markdown…" in local mode (Phase 7, 2026-11-07), the steps to move from
 lodge (Phase 8, 2026-11-07), the candidate publish and the promotion
 in CI (Phase 9, 2026-11-08), and the clean-install gate, which passed
-on `v0.6.0-rc.6` (Phase 10, 2026-11-12). Not done yet: the release
-(Phase 11). This document changes with each phase.
+on `v0.6.0-rc.6` (Phase 10, 2026-11-12). The release, Phase 11:
+`v0.6.0` is that candidate's digest, and a fresh VM installed it from
+the `frostyard` remote (2026-11-13); its Done when waits for the Read
+row of core's plan 0010. This document changes with each phase.
 
 ```
  feeds, pages, images ──▶ internal/fetch (kit/netguard) ──▶ poller, extract
