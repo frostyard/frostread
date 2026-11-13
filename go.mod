@@ -9,6 +9,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
 	github.com/frostyard/lodge/kit v0.4.0
 	github.com/frostyard/std v0.5.0
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mmcdole/gofeed v1.5.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0

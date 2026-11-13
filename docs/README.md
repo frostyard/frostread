@@ -30,6 +30,7 @@ An ADR marked (Proposed) waits for the owner; the others are Accepted.
 - [0006 — Save from another page through a confirm page a bookmarklet opens](adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
 - [0007 — A daily mark-and-scan sweep removes orphaned blobs after a grace period](adr/0007-a-daily-mark-and-scan-sweep-removes-orphaned-blobs-after-a-grace-period.md)
 - [0008 — The desktop Flatpak carries its own readd; lodge is a connection the user chooses](adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)
+- [0009 — readd stops when the GNOME session ends](adr/0009-readd-stops-when-the-gnome-session-ends.md)
 
 ### Design
 

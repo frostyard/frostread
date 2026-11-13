@@ -49,6 +49,7 @@ import (
 	"github.com/frostyard/frostread/internal/engine"
 	"github.com/frostyard/frostread/internal/extract"
 	"github.com/frostyard/frostread/internal/fetch"
+	"github.com/frostyard/frostread/internal/gnomesession"
 	"github.com/frostyard/frostread/internal/mcpserver"
 	"github.com/frostyard/frostread/internal/notes"
 	"github.com/frostyard/frostread/internal/poller"
@@ -344,6 +345,11 @@ func run(ctx context.Context, args []string, o options) error {
 		defer rec.RecoverPanic()
 		eng.RunBlobSweep(runCtx)
 	})
+	// The desktop's readd belongs to the graphical session: when the session
+	// ends, readd stops in order (frostread#81).
+	if *desktop {
+		watchSession(runCtx, o, log, &workers, stop)
+	}
 
 	ra := readapi.New(eng, log)
 	if *desktop {
@@ -424,6 +430,41 @@ func run(ctx context.Context, args []string, o options) error {
 		}
 	}
 	return first
+}
+
+// watchSession stops readd when the GNOME session that started it ends. The
+// session bus's owner of org.gnome.SessionManager is the session; when it
+// leaves the bus, or the bus ends, readd stops as daemon.shutdown stops it,
+// so its work ends in order and the state directory's lock is released
+// (docs/adr/0009-readd-stops-when-the-gnome-session-ends.md).
+//
+// A session that cannot be watched is no fault of readd's: it logs why and
+// keeps serving until something else stops it. The bus address is never
+// logged.
+func watchSession(ctx context.Context, o options, log *slog.Logger, workers *sync.WaitGroup, stop context.CancelFunc) {
+	address := o.getenv("DBUS_SESSION_BUS_ADDRESS")
+	if address == "" {
+		log.Info("no session bus: readd does not stop at logout")
+		return
+	}
+	ended, err := gnomesession.Watch(ctx, address)
+	if err != nil {
+		if errors.Is(err, gnomesession.ErrNoSession) {
+			log.Info("no GNOME session on the session bus: readd does not stop at logout")
+			return
+		}
+		log.Warn("the session bus could not be watched: readd does not stop at logout", "err", err)
+		return
+	}
+	workers.Go(func() {
+		defer o.problems.RecoverPanic()
+		select {
+		case <-ended:
+			log.Info("the GNOME session ended; readd stops")
+			stop()
+		case <-ctx.Done():
+		}
+	})
 }
 
 // noteClient builds save-as-note's client, or nil when it is not

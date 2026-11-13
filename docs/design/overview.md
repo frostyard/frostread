@@ -127,8 +127,14 @@ is built from `packaging/flatpak/` offline
 `/app/bin/frostread` is the launcher (`frostread.sh`), beside `readd`,
 `readctl` and `frostread-request-background`; the Tauri binary is
 `/app/libexec/frostread-app`. The `finish-args` are Wayland, X11 as a
-fallback, IPC, DRI and the network: no file system, no Secret Service
-and no notifications. This is how it runs on a real GNOME desktop, as
+fallback, IPC, DRI, the network, and talk to gnome-session's
+`org.gnome.SessionManager` on the session bus: no file system, no
+Secret Service and no notifications. readd in local mode watches that
+name's owner, through `internal/gnomesession`, and stops when it leaves
+the bus: on GNOME, readd stops at logout also while lingering or
+another session keeps the user's systemd instance
+([ADR-0009](../adr/0009-readd-stops-when-the-gnome-session-ends.md)).
+This is how it runs on a real GNOME desktop, as
 [Phase 5's record](../plans/0002-the-standalone-desktop-flatpak.md#phase-5s-record)
 checked it on a Snow VM:
 
