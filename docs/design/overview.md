@@ -27,8 +27,9 @@ lodge (Phase 8, 2026-11-07), the candidate publish and the promotion
 in CI (Phase 9, 2026-11-08), and the clean-install gate, which passed
 on `v0.6.0-rc.6` (Phase 10, 2026-11-12). The release, Phase 11:
 `v0.6.0` is that candidate's digest, and a fresh VM installed it from
-the `frostyard` remote (2026-11-13); its Done when waits for the Read
-row of core's plan 0010. This document changes with each phase.
+the `frostyard` remote (2026-11-13), and core's plan 0010 records it
+in Read's row (core#245, 2026-11-13). All 11 phases are done. This
+document changes with each phase.
 
 ```
  feeds, pages, images ──▶ internal/fetch (kit/netguard) ──▶ poller, extract
