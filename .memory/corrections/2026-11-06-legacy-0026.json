@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "desktop",
+  "correction": "The ordered stop's 30 s start after the save holds the mode gate: a deadline computed before the wait for the gate left a save that waited with little or no time to stop readd",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head 565f68e, finding 9",
+  "promoted_to": "web/src-tauri/src/server.rs"
+}

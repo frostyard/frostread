@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "e2e",
+  "correction": "The harness ends the WebKitWebDriver's whole process group, which holds the app, the stand-in launcher and its readd, instead of pid files: a launcher killed between starting readd and writing its pid left a readd that no record named",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head ff43089, finding 6",
+  "promoted_to": "web/e2e/harness-stop.e2e.ts"
+}

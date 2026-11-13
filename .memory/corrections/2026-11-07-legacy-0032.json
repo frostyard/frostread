@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-07",
+  "scope": "release",
+  "correction": "A make recipe never puts a user-given variable such as CANDIDATE into shell source: make exports it and the recipe reads the environment, so quotes or backticks in the value cannot run a command before its format check; make bump is tested in temporary repositories",
+  "evidence": "frostread#65, cross-review (openai/gpt-6.1-sol) of head e78d182, findings 1 and 2",
+  "promoted_to": "internal/workflowcheck/bump_test.go"
+}

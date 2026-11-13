@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "desktop",
+  "correction": "The Server sheet cannot close while a save runs: a close during a save that failed after writing local left the window in its old mode with no reload",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head 2387468, finding 5",
+  "promoted_to": "web/src/server-sheet.test.tsx"
+}

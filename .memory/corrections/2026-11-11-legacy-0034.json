@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-11",
+  "scope": "release",
+  "correction": "A git command in a container job (flatpak.yml's flatpak job runs as root on a workspace the runner owns) needs the workspace in the global safe.directory: actions/checkout's entry is temporary, and scripts/release-version.sh swallows git's dubious-ownership error, so the tag run stamped an empty version",
+  "evidence": "Flatpak tag runs 43084056992 (v0.6.0-rc.1) and 43084061347 (v0.6.0-rc.2): Stamp the release version: release-version holds '', want '0.6.0'",
+  "promoted_to": "internal/workflowcheck/workflows_test.go"
+}

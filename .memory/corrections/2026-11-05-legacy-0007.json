@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-05",
+  "scope": "desktop-bridge",
+  "correction": "A WebSocket write in the bridge races the connection's stop signal, and a connection attempt is kept only while it is the window's current attempt: an await that the stop cannot interrupt, or an attempt that finishes after forget or a newer attempt, leaves a socket that pings lodge for ever",
+  "evidence": "frostread#54, cross-review (openai/gpt-6.1-sol) of head 4552dc9, findings 1 and 2",
+  "promoted_to": "web/src-tauri/src/bridge.rs (pending_lodge_send_stops_on_replacement, forgotten_attempt_is_not_kept, newer_attempt_stays_when_older_attempt_finishes)"
+}

@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-07",
+  "scope": "desktop",
+  "correction": "A window that starts with an unknown mode reads the mode again after its first connection and reloads once when it can, so lodge mode's Open in Notes and local mode's export come back without a manual reload",
+  "evidence": "frostread#63, cross-review (openai/gpt-6.1-sol) of head a17c852, re-review 1, finding 1",
+  "promoted_to": "web/src/desktop-connection.test.tsx"
+}

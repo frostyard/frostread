@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "risk-paths",
+  "correction": "The Flatpak's offline sources files are trusted inputs (download URLs, commits, checksums) that the manifest reads directly, so the risk list names them as well as their generators; the sources check in CI is not a required check",
+  "evidence": "frostread#55, cross-review (openai/gpt-6.1-sol) of head 3f53074, finding 4",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}

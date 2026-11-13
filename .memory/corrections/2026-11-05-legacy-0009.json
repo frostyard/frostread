@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-05",
+  "scope": "desktop-bridge",
+  "correction": "Each bound the lodge connection enforces (the line limit, the WebSocket message and frame limits) has its own lodge-side test; a test of the local socket's limit does not cover the WebSocket path",
+  "evidence": "frostread#54, cross-review (openai/gpt-6.1-sol) of head 4552dc9, finding 4",
+  "promoted_to": "web/src-tauri/src/bridge.rs (lodge_text_over_the_line_limit_ends_with_closed, lodge_websocket_config_has_memory_bounds)"
+}

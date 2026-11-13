@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "desktop",
+  "correction": "The desktop has one retry schedule, the change watcher's, every 10 s from the drop or the failed try; a second interval on the start's own clock made attempts 5 s apart",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head ff43089, finding 4",
+  "promoted_to": "web/src/desktop-connection.test.tsx"
+}

@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-04",
+  "scope": "flatpak-launcher",
+  "correction": "readctl shutdown returns when readd answers, not when readd has gone; the launcher must wait until status fails before it starts the replacement, or an old readd that still answers makes it skip the start",
+  "evidence": "frostread#50, cross-review (openai/gpt-6.1-sol) of head 772d771, finding 1",
+  "promoted_to": "packaging/flatpak/smoke-test.sh"
+}
