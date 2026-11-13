@@ -80,6 +80,11 @@ counterpart of something those repositories do, read their file.
   is the Flatpak's own readd: only the private socket, its own state
   directory, the `flock`, the mode file `app.json`, and `-log`
   ([ADR-0008](docs/adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md)).
+- `internal/gnomesession`: desktop readd's watch of gnome-session's
+  `org.gnome.SessionManager` on the session bus; readd stops when its
+  owner leaves ([ADR-0009](docs/adr/0009-readd-stops-when-the-gnome-session-ends.md)).
+  `internal/bustest` starts a private `dbus-daemon` for the tests, so
+  the Go tests need `dbus-daemon` on the machine.
 - `cmd/readd/problems.go` and `web/src-tauri/src/problems.rs`: the
   problem records in the local journal, readd's 5 codes and the panics of
   readd and the shell, on frostyard/std
@@ -358,8 +363,15 @@ machine. No `CODEOWNERS` file (B15), and no other agent framework's tree
 - One package wraps each heavy dependency: `gofeed` only in
   `internal/feed`, readability only in `internal/extract`, `bluemonday`
   only in `internal/sanitize`, html-to-markdown only in
-  `internal/notes`, and the MCP SDK only in `internal/mcpserver` and
-  `internal/notes`.
+  `internal/notes`, the MCP SDK only in `internal/mcpserver` and
+  `internal/notes`, and godbus only in `internal/gnomesession` and its
+  test helper `internal/bustest`.
+- A bound on the setup of a connection that outlives the setup is a
+  context that closes the connection (`context.AfterFunc`, and its stop
+  function's result decides that the setup succeeded), never a deadline
+  on the socket: a library's reader can meet that deadline after the
+  setup succeeded, and close the connection later
+  (`internal/gnomesession`).
 - API changes start in `schema/rpc`, and `api/` follows it by hand until
   the app adopts a generator.
 

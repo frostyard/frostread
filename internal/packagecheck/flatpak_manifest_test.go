@@ -48,6 +48,7 @@ func TestFlatpakManifest(t *testing.T) {
 		"--share=ipc",
 		"--device=dri",
 		"--share=network",
+		"--talk-name=org.gnome.SessionManager",
 	}
 	if len(m.FinishArgs) != len(wantArgs) {
 		t.Errorf("finish-args = %v, want %v", m.FinishArgs, wantArgs)

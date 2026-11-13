@@ -127,8 +127,14 @@ is built from `packaging/flatpak/` offline
 `/app/bin/frostread` is the launcher (`frostread.sh`), beside `readd`,
 `readctl` and `frostread-request-background`; the Tauri binary is
 `/app/libexec/frostread-app`. The `finish-args` are Wayland, X11 as a
-fallback, IPC, DRI and the network: no file system, no Secret Service
-and no notifications. This is how it runs on a real GNOME desktop, as
+fallback, IPC, DRI, the network, and talk to gnome-session's
+`org.gnome.SessionManager` on the session bus: no file system, no
+Secret Service and no notifications. readd in local mode watches that
+name's owner, through `internal/gnomesession`, and stops when it leaves
+the bus: on GNOME, readd stops at logout also while lingering or
+another session keeps the user's systemd instance
+([ADR-0009](../adr/0009-readd-stops-when-the-gnome-session-ends.md)).
+This is how it runs on a real GNOME desktop, as
 [Phase 5's record](../plans/0002-the-standalone-desktop-flatpak.md#phase-5s-record)
 checked it on a Snow VM:
 
@@ -148,9 +154,11 @@ checked it on a Snow VM:
   --background`. readd polls on after the window closes, until logout;
   at the next login, gnome-session starts readd alone, with no window.
   readd's sandbox lives as long as the user's systemd instance, so with
-  lingering or another session open it polls on after the logout
-  ([frostread#81](https://github.com/frostyard/frostread/issues/81),
-  plan 0002, Phase 10).
+  lingering or another session open it polled on after the logout
+  (plan 0002, Phase 10, finding 3). Since
+  [ADR-0009](../adr/0009-readd-stops-when-the-gnome-session-ends.md),
+  readd stops when gnome-session leaves the session bus; a real
+  desktop has not checked that yet.
 - **Files.** OPML import is the web view's file input: GTK opens the
   FileChooser portal, so the user can pick a file in any folder, such
   as `~/Downloads`, with no file system permission. OPML export goes

@@ -121,6 +121,18 @@
   },
   {
     "type": "file",
+    "url": "https://proxy.golang.org/github.com/godbus/dbus/v5/@v/v5.2.4.mod",
+    "sha256": "d008ac84f404c6fbc7a1f378099dd21794843d10d6cdc129cfc403d39656f5a6",
+    "dest": "goproxy/github.com/godbus/dbus/v5/@v"
+  },
+  {
+    "type": "file",
+    "url": "https://proxy.golang.org/github.com/godbus/dbus/v5/@v/v5.2.4.zip",
+    "sha256": "2a3a2996c274cbb735aa7f634dbcc0b292c0dff154447896d3a95955d078fb83",
+    "dest": "goproxy/github.com/godbus/dbus/v5/@v"
+  },
+  {
+    "type": "file",
     "url": "https://proxy.golang.org/github.com/gogs/chardet/@v/v0.0.0-20211120154057-b7413eaefb8f.mod",
     "sha256": "71297c99695578ce7fda65c2c2a9066941bd038e8fd653d11d451f957a44a3d9",
     "dest": "goproxy/github.com/gogs/chardet/@v"

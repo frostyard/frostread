@@ -20,8 +20,10 @@ import (
 	"time"
 
 	"github.com/frostyard/frostread/api"
+	"github.com/frostyard/frostread/internal/bustest"
 	"github.com/frostyard/frostread/internal/config"
 	"github.com/frostyard/frostread/internal/fetch"
+	"github.com/frostyard/frostread/internal/gnomesession"
 	"github.com/frostyard/frostread/internal/store"
 )
 
@@ -297,6 +299,82 @@ func TestShutdownStopsReadd(t *testing.T) {
 		t.Fatalf("the lock is still held: %v", err)
 	}
 	_ = lock.Close()
+}
+
+// The GNOME session that started the desktop's readd ends: gnome-session
+// leaves the session bus, and readd stops in order and releases its lock
+// (docs/adr/0009-readd-stops-when-the-gnome-session-ends.md).
+func TestDesktopStopsWhenTheGNOMESessionEnds(t *testing.T) {
+	bus := bustest.Start(t)
+	leave := bustest.Own(t, bus.Address(), gnomesession.Name)
+	x := newXDG(t)
+	o := options{getenv: x.env(map[string]string{"DBUS_SESSION_BUS_ADDRESS": bus.Address()})}
+	_, errs, _ := startRead(t, o, "-desktop")
+
+	leave()
+	select {
+	case err := <-errs:
+		if err != nil {
+			t.Fatalf("readd stopped with %v, want a clean stop", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("readd did not stop when the GNOME session ended")
+	}
+	// The lock is free again: nothing holds the directory.
+	lock, err := lockStateDir(x.state(t))
+	if err != nil {
+		t.Fatalf("the lock is still held: %v", err)
+	}
+	_ = lock.Close()
+}
+
+// A session bus without a GNOME session is no reason to stop: readd serves,
+// and stops when it is told to.
+func TestDesktopWithoutAGNOMESessionRuns(t *testing.T) {
+	bus := bustest.Start(t)
+	x := newXDG(t)
+	o := options{getenv: x.env(map[string]string{"DBUS_SESSION_BUS_ADDRESS": bus.Address()})}
+	socket, errs, cancel := startRead(t, o, "-desktop")
+	defer func() { stopRead(t, cancel, errs) }()
+
+	c, _, err := api.Dial(t.Context(), socket, "readctl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	st, err := c.Read().Status(t.Context())
+	if err != nil {
+		t.Fatalf("status = %v, want a daemon that serves", err)
+	}
+	if st.Version != version {
+		t.Fatalf("status = %+v, want this daemon", st)
+	}
+	// The bus ending is not the session ending here, and reads no stop
+	// either: the daemon goes on until stopRead stops it.
+	bus.Stop()
+	if _, err := c.Read().Status(t.Context()); err != nil {
+		t.Fatalf("status after the bus ended = %v, want a daemon that still serves", err)
+	}
+}
+
+// A bus address that cannot be reached is logged without the address: a
+// D-Bus address can name a path, and a net error prints it. Only the warning
+// and a cause this machine names are logged.
+func TestDesktopLogsNoBusAddress(t *testing.T) {
+	const secret = "frostread-secret-bus-path-7f3a"
+	x := newXDG(t)
+	var logged bytes.Buffer
+	o := options{getenv: x.env(map[string]string{
+		"DBUS_SESSION_BUS_ADDRESS": "unix:path=" + filepath.Join(x.root, secret)}), logOut: &logged}
+	_, errs, cancel := startRead(t, o, "-desktop")
+	stopRead(t, cancel, errs)
+
+	if strings.Contains(logged.String(), secret) {
+		t.Fatalf("readd's log carries the bus address: %s", logged.String())
+	}
+	if !strings.Contains(logged.String(), "the session bus could not be watched") {
+		t.Fatalf("readd's log lacks the warning: %s", logged.String())
+	}
 }
 
 // A desktop readd opens no TCP or UDP socket, and its one Unix listener is
