@@ -21,12 +21,17 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-13): **Phases 3 to 10 are done; Phase 11 waits for
-the Read row of core's plan 0010.**
+Status (2026-11-13): **Done.** All 11 phases are done. Core's plan
+0010 gained Read's row and its Phase 5c record in
+[core#245](https://github.com/frostyard/core/pull/245) (merged
+2026-11-13, `a9694f7`), and that closes the last part of the Done whens
+of Phases 1 and 11. No item stays open.
 
-- **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
-  Accepted (frostread#24, 2026-10-28). The other half of its Done when,
-  the Read row of core's plan 0010, waits for Lucilla.
+- **Phase 1** is done (2026-11-13): ADR-0008 records Brian's 3 answers
+  of 2026-10-27 and is Accepted (frostread#24, 2026-10-28), and core's
+  plan 0010 has Read's row since core#245 (2026-11-13). The row names
+  ADR-0008, the ID `org.frostyard.Frostread` and the lodge connection
+  mode, and Phase 5c holds Read's checks.
 - **Phase 2,** readd's desktop mode, is merged (frostread#25,
   2026-10-28).
 - **Phase 3** has its [steps](#phase-3s-steps). 3.0 is done on
@@ -71,7 +76,7 @@ the Read row of core's plan 0010.**
   with an item open marked an unrelated item of the other reader read,
   and `v0.6.0-rc.4` has the same code. frostread#78 fixes it in
   `v0.6.0-rc.6`.
-- **Phase 11,** the release, is open (2026-11-13). Its steps are done:
+- **Phase 11,** the release, is done (2026-11-13). Its steps are done:
   the [v0.6.0 release](https://github.com/frostyard/frostread/releases/tag/v0.6.0)
   is on `v0.6.0-rc.6`'s commit `fb0ba06`; the
   [Promote run](https://github.com/frostyard/frostread/actions/runs/43450798973)
@@ -81,9 +86,10 @@ the Read row of core's plan 0010.**
   lists `org.frostyard.Frostread` (merged 2026-11-13). The first half
   of its Done when holds (2026-11-13): a fresh VM installed that digest
   from the `frostyard` remote, and the app started and added a feed
-  ([Phase 11's record](#phase-11s-record)). The second half, the Read
-  row of core's plan 0010, is not recorded yet, so the Done when stays
-  pending.
+  ([Phase 11's record](#phase-11s-record)). The second half holds
+  since core#245 (merged 2026-11-13, `a9694f7`): plan 0010's Read row
+  names the `v0.6.0` digest, flatpak-index#16 and frostread#86, and its
+  Phase 5c records the install.
 
 ## Who helps
 
@@ -1249,13 +1255,27 @@ refused part's logout, it took the key). Neither blocks the release.
 
 ### Phase 11's record
 
-The first half of Phase 11's Done when holds (2026-11-13): `flatpak
-install` from the public `frostyard` remote on a fresh VM installed
-`v0.6.0-rc.6`'s digest, the digest that passed Phase 10. The second
-half does not hold yet: core's plan 0010 (core `main` `c5a7f2b`) has no
-record of Read's install. Its Read row still says the desktop design is
-"not designed yet", and its Phase 5c has no record. The Done when stays
-pending until that row records it.
+Phase 11's Done when holds (2026-11-13), in 2 halves:
+
+- The install: `flatpak install` from the public `frostyard` remote on
+  a fresh VM installed `v0.6.0-rc.6`'s digest, the digest that passed
+  Phase 10 (frostread#86; the run is below).
+- Plan 0010's record:
+  [core#245](https://github.com/frostyard/core/pull/245), merged
+  2026-11-13 as `a9694f7`, records it in core's
+  [plan 0010](https://github.com/frostyard/core/blob/a9694f7ec745b0bcb1012cf98fdc2cfeb23c64d3/docs/plans/0010-suite-packaging.md).
+  Read's Flatpak row names the `v0.6.0` release, the digest
+  `sha256:20c4f3e7595e107663ecf821e8b61c9df891ef8a9fa06335756b894d96dbb886`
+  of the attested candidate `v0.6.0-rc.6` (commit `fb0ba06`), the
+  listing in [flatpak-index#16](https://github.com/frostyard/flatpak-index/pull/16)
+  and the install on a clean Snow VM
+  ([frostread#86](https://github.com/frostyard/frostread/pull/86)).
+  Phase 5c is marked done on 2026-11-13, and its record names the
+  check, the release, the listing and the install, with this record as
+  its source. Before core#245, the row said "not designed yet" (core
+  `main` `c5a7f2b`).
+
+No item of Phase 11 stays open, so no issue is filed.
 
 The release, before the install:
 

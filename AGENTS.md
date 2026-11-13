@@ -70,8 +70,9 @@ in plan 0002. Phase 11, the release: `v0.6.0` is released on
 `v0.6.0-rc.6`'s commit, Promote moved `v0.6.0` and `latest` to its
 digest, and flatpak-index lists `org.frostyard.Frostread`
 (2026-11-13). A fresh VM installed that digest from the `frostyard`
-remote (2026-11-13); Phase 11's Done when waits for the Read row of
-core's plan 0010.
+remote (2026-11-13), and core's plan 0010 records it in Read's row
+(core#245, 2026-11-13): Phase 11's Done when holds, and plan 0002 is
+done.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
