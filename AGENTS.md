@@ -28,10 +28,10 @@ guarded fetcher, feeds and OPML, extraction and the blob store, polling,
 search, the JSON-RPC API, `readctl`, MCP with scoped tokens, save-as-note,
 the content pages, the units, the development feeds, the web app, save
 from the phone (the save page and the bookmarklet) and the blob sweep.
-Phases 1 to 6 of the [roadmap](docs/plans/0001-roadmap.md) are done.
+All 8 phases of the [roadmap](docs/plans/0001-roadmap.md) are done.
 Phases 7 (save from the phone, frostread#10) and 8 (the blob sweep,
-frostread#12) are built and merged (2026-10-21); Phase 7's Done when waits
-for the owner's check in iOS Safari. frostread runs on lodge's host for the
+frostread#12) are merged (2026-10-21), and Phase 7's owner check in iOS
+Safari passed (2026-11-13). frostread runs on lodge's host for the
 owner's daily use (2026-10-21), at v0.5.0 from its release `.deb` since
 2026-11-05 (packaging/README.md, Update). The founding ADRs, 0001 to
 0005, are Accepted (Brian, 2026-10-21), and ADR-0006, the bookmarklet, and
@@ -66,8 +66,12 @@ a mode change with an item open marked an unrelated item of the other
 reader read, and rc.4 has the same code. frostread#78 fixes it, and the
 full gate on `v0.6.0-rc.6` passed all 7 items on its digest
 (2026-11-12), with an item open at each Server switch; the records are
-in plan 0002. Phase 11, the release, waits for the owner's promotion of
-`v0.6.0-rc.6`.
+in plan 0002. Phase 11, the release: `v0.6.0` is released on
+`v0.6.0-rc.6`'s commit, Promote moved `v0.6.0` and `latest` to its
+digest, and flatpak-index lists `org.frostyard.Frostread`
+(2026-11-13). A fresh VM installed that digest from the `frostyard`
+remote (2026-11-13); Phase 11's Done when waits for the Read row of
+core's plan 0010.
 Lodge, frostnotes and frostmail are sibling checkouts at `../lodge`,
 `../frostnotes` and `../frostmail` when present. Before writing frostread's
 counterpart of something those repositories do, read their file.
