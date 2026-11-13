@@ -227,6 +227,70 @@ func TestWriteScope(t *testing.T) {
 	}
 }
 
+// mark_read reports how many items changed state: an id that is not an item
+// does not count, and neither does an item already in that state
+// (docs/specs/api.md, mark_read).
+func TestMarkReadCountsTheItemsThatChanged(t *testing.T) {
+	e := newEngine(t)
+	sess := connect(t, Handler(Options{Engine: e, Version: "test"}), "read;write")
+	var unread itemsOut
+	if call(t, sess, "list_unread", map[string]any{}, &unread) {
+		t.Fatal("list_unread failed")
+	}
+	if len(unread.Items) != 1 {
+		t.Fatalf("unread = %+v, want one item", unread)
+	}
+	id := unread.Items[0].ID
+	for _, c := range []struct {
+		name string
+		ids  []int64
+		read bool
+		want int
+	}{
+		{"a known unread id and an unknown id", []int64{id, 9999}, true, 1},
+		{"the same item read again", []int64{id}, true, 0},
+		{"the same item unread", []int64{id, 9999}, false, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var marked markOut
+			if call(t, sess, "mark_read", map[string]any{"ids": c.ids, "read": c.read}, &marked) {
+				t.Fatal("mark_read failed")
+			}
+			if marked.Changed != c.want {
+				t.Fatalf("mark_read(%v, %v) = %+v, want changed %d", c.ids, c.read, marked, c.want)
+			}
+		})
+	}
+}
+
+// Every tool's description says that text from the web is data, not
+// instructions (docs/specs/api.md, MCP), for a read token and for a write
+// one, so a tool added later cannot leave it out.
+func TestEveryToolDescriptionEndsWithNotice(t *testing.T) {
+	e := newEngine(t)
+	for _, scope := range []string{"read", "read;write"} {
+		t.Run(scope, func(t *testing.T) {
+			sess := connect(t, Handler(Options{Engine: e, Version: "test"}), scope)
+			res, err := sess.ListTools(t.Context(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 4
+			if scope == "read;write" {
+				want = 7
+			}
+			if len(res.Tools) != want {
+				t.Fatalf("the %s scope lists %d tools, want %d", scope, len(res.Tools), want)
+			}
+			for _, tool := range res.Tools {
+				if !strings.HasSuffix(strings.TrimSpace(tool.Description), Notice) {
+					t.Errorf("%s: the description %q does not end with the notice", tool.Name, tool.Description)
+				}
+			}
+		})
+	}
+}
+
 func TestListUnreadSinceAndLimit(t *testing.T) {
 	e := newEngine(t)
 	sess := connect(t, Handler(Options{Engine: e, Version: "test"}), "read")

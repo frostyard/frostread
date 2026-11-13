@@ -198,7 +198,7 @@ type ListOptions struct {
 // cursor, which is empty on the last page.
 func (d *DB) ListItems(ctx context.Context, o ListOptions) ([]Item, string, error) {
 	if !ValidView(o.View) {
-		return nil, "", fmt.Errorf("view %q is not a view: %w", o.View, ErrNotFound)
+		return nil, "", fmt.Errorf("view %q is not a view: %w", o.View, ErrInvalid)
 	}
 	where, args := viewClause(o.View)
 	if o.SourceID != nil {
@@ -298,38 +298,52 @@ func makeCursor(published time.Time, id int64) string {
 }
 
 // parseCursor reads a cursor makeCursor wrote. A cursor this daemon did
-// not issue is an error wrapping ErrNotFound.
+// not issue is an error wrapping ErrInvalid.
 func parseCursor(c string) (string, int64, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(c)
 	if err != nil {
-		return "", 0, fmt.Errorf("not a cursor: %w", ErrNotFound)
+		return "", 0, fmt.Errorf("not a cursor: %w", ErrInvalid)
 	}
 	published, idText, ok := strings.Cut(string(raw), "|")
 	if !ok || published == "" {
-		return "", 0, fmt.Errorf("not a cursor: %w", ErrNotFound)
+		return "", 0, fmt.Errorf("not a cursor: %w", ErrInvalid)
 	}
 	id, err := strconv.ParseInt(idText, 10, 64)
 	if err != nil || id <= 0 {
-		return "", 0, fmt.Errorf("not a cursor: %w", ErrNotFound)
+		return "", 0, fmt.Errorf("not a cursor: %w", ErrInvalid)
 	}
 	return published, id, nil
 }
 
-// SetRead marks items read, or unread.
-func (d *DB) SetRead(ctx context.Context, ids []int64, read bool) error {
+// SetRead marks items read, or unread, and returns how many of them changed
+// state. An item already in that state, and an id that is not an item,
+// changes nothing and does not count, so a duplicated id counts once.
+func (d *DB) SetRead(ctx context.Context, ids []int64, read bool) (int, error) {
 	var at any
+	query := `UPDATE items SET read_at = ? WHERE id = ? AND read_at IS NOT NULL`
 	if read {
 		at = timeString(d.Now())
+		query = `UPDATE items SET read_at = ? WHERE id = ? AND read_at IS NULL`
 	}
+	changed := 0
 	err := d.Tx(ctx, func(tx *sql.Tx) error {
 		for _, id := range ids {
-			if _, err := tx.ExecContext(ctx, `UPDATE items SET read_at = ? WHERE id = ?`, at, id); err != nil {
+			res, err := tx.ExecContext(ctx, query, at, id)
+			if err != nil {
 				return fmt.Errorf("mark item %d read: %w", id, err)
 			}
+			n, err := res.RowsAffected()
+			if err != nil {
+				return fmt.Errorf("mark item %d read: %w", id, err)
+			}
+			changed += int(n)
 		}
 		return nil
 	})
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return changed, nil
 }
 
 // MarkAllRead marks read every unread item in a view, or in a source or a
@@ -339,7 +353,7 @@ func (d *DB) MarkAllRead(ctx context.Context, view string, sourceID *int64, fold
 		view = ViewAll
 	}
 	if !ValidView(view) {
-		return fmt.Errorf("view %q is not a view: %w", view, ErrNotFound)
+		return fmt.Errorf("view %q is not a view: %w", view, ErrInvalid)
 	}
 	where, args := viewClause(view)
 	where = "(" + where + ") AND read_at IS NULL"

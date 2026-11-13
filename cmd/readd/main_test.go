@@ -233,7 +233,7 @@ func TestHealthBadge(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("unread items = %d, %v; want 1", len(items), err)
 	}
-	if err := eng.SetRead(t.Context(), engine.Scope{Write: true}, []int64{items[0].ID}, true); err != nil {
+	if _, err := eng.SetRead(t.Context(), engine.Scope{Write: true}, []int64{items[0].ID}, true); err != nil {
 		t.Fatal(err)
 	}
 	h, err = l.Health(t.Context())

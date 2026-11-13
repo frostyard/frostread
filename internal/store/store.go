@@ -30,6 +30,9 @@ var migrations embed.FS
 var (
 	// ErrNotFound means the row does not exist.
 	ErrNotFound = errors.New("store: not found")
+	// ErrInvalid means a parameter is not one the store accepts: a cursor
+	// it did not issue, or a view that is not a view.
+	ErrInvalid = errors.New("store: invalid parameter")
 	// ErrConflict means a uniqueness rule rejected the write.
 	ErrConflict = errors.New("store: conflict")
 	// ErrMigrate is wrapped by every error of the schema's migration,

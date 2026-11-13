@@ -97,11 +97,14 @@ func TestSourcesAndItems(t *testing.T) {
 	if err != nil || len(page2) != 1 || page2[0].ID == list[0].ID || next2 == "" {
 		t.Fatalf("second page = %+v, next %q, %v", page2, next2, err)
 	}
-	if _, _, err := d.ListItems(ctx, ListOptions{View: ViewUnread, Cursor: "not-a-cursor", Limit: 1}); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("a bad cursor = %v, want ErrNotFound", err)
+	if _, _, err := d.ListItems(ctx, ListOptions{View: ViewUnread, Cursor: "not-a-cursor", Limit: 1}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a bad cursor = %v, want ErrInvalid", err)
 	}
-	if _, _, err := d.ListItems(ctx, ListOptions{View: "nope", Limit: 1}); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("a bad view = %v, want ErrNotFound", err)
+	if _, _, err := d.ListItems(ctx, ListOptions{View: "nope", Limit: 1}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a bad view = %v, want ErrInvalid", err)
+	}
+	if err := d.MarkAllRead(ctx, "nope", nil, "", time.Time{}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("marking all read in a bad view = %v, want ErrInvalid", err)
 	}
 }
 
@@ -143,7 +146,7 @@ func TestMarksAndCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := d.SetRead(ctx, ids[:2], true); err != nil {
+	if _, err := d.SetRead(ctx, ids[:2], true); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.SetStarred(ctx, ids[2], true); err != nil {
@@ -173,6 +176,79 @@ func TestMarksAndCounts(t *testing.T) {
 	}
 }
 
+// SetRead reports only the items whose read state it changed: an item
+// already in that state, and an id that is not an item, do not count, and
+// a duplicated id counts once.
+func TestSetReadCountsTheItemsItChanged(t *testing.T) {
+	d, now := open(t)
+	ctx := t.Context()
+	src, err := d.AddSource(ctx, Source{URL: "https://example.com/feed.xml", Title: "Example"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := d.AddItems(ctx, src.ID, []NewItem{
+		{GUID: "a", Title: "One", Published: now.Add(-time.Hour)},
+		{GUID: "b", Title: "Two", Published: now.Add(-2 * time.Hour)},
+	})
+	if err != nil || len(ids) != 2 {
+		t.Fatalf("add items = %v, %v; want 2", ids, err)
+	}
+	if n, err := d.SetRead(ctx, ids[:1], true); err != nil || n != 1 {
+		t.Fatalf("marking one read = %d, %v; want 1", n, err)
+	}
+	// The first item is read, the second is unread and 9999 is no item.
+	three := []int64{ids[0], ids[1], 9999}
+	for _, c := range []struct {
+		name string
+		ids  []int64
+		read bool
+		want int
+	}{
+		{"one read, one unread and one unknown, marked read", three, true, 1},
+		{"the same three marked unread", three, false, 2},
+		{"the same three marked unread again", three, false, 0},
+		{"a duplicated id", []int64{ids[0], ids[0]}, true, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if n, err := d.SetRead(ctx, c.ids, c.read); err != nil || n != c.want {
+				t.Fatalf("SetRead(%v, %v) = %d, %v; want %d", c.ids, c.read, n, err, c.want)
+			}
+		})
+	}
+}
+
+// Marking an item read again keeps the read_at it got the first time.
+func TestSetReadKeepsTheFirstReadAt(t *testing.T) {
+	d, now := open(t)
+	ctx := t.Context()
+	src, err := d.AddSource(ctx, Source{URL: "https://example.com/feed.xml", Title: "Example"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := d.AddItems(ctx, src.ID, []NewItem{{GUID: "a", Title: "One", Published: now.Add(-time.Hour)}})
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("add items = %v, %v; want 1", ids, err)
+	}
+	if n, err := d.SetRead(ctx, ids, true); err != nil || n != 1 {
+		t.Fatalf("marking it read = %d, %v; want 1", n, err)
+	}
+	first, err := d.Item(ctx, ids[0])
+	if err != nil || first.ReadAt == nil {
+		t.Fatalf("item after marking it read = %+v, %v", first, err)
+	}
+	// The clock moves on, so a second read_at would be a different time.
+	later := now.Add(time.Hour)
+	d.Now = func() time.Time { return later }
+	if n, err := d.SetRead(ctx, ids, true); err != nil || n != 0 {
+		t.Fatalf("marking it read again = %d, %v; want 0", n, err)
+	}
+	again, err := d.Item(ctx, ids[0])
+	if err != nil || again.ReadAt == nil || !again.ReadAt.Equal(*first.ReadAt) {
+		t.Fatalf("read_at after marking it twice = %v, %v; want the first read_at %v",
+			again.ReadAt, err, *first.ReadAt)
+	}
+}
+
 // UnreadCount counts the Unread view alone: a read item and an archived
 // item do not count.
 func TestUnreadCount(t *testing.T) {
@@ -196,7 +272,7 @@ func TestUnreadCount(t *testing.T) {
 	if n, err := d.UnreadCount(ctx); err != nil || n != 3 {
 		t.Fatalf("unread = %d, %v; want 3", n, err)
 	}
-	if err := d.SetRead(ctx, ids[:1], true); err != nil {
+	if _, err := d.SetRead(ctx, ids[:1], true); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.SetArchived(ctx, ids[1], true); err != nil {
