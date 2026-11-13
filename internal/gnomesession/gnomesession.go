@@ -9,11 +9,12 @@
 //
 // The package dials the Unix socket of the bus itself, so that the address it
 // takes is the one it connects to: a default or autolaunched bus is never
-// reached. The dial and the bus's setup are bounded by a timeout and by the
-// caller's context, because a peer that accepts a connection and never
-// answers would otherwise hold readd, and its state directory's lock, for
-// ever. No error this package returns carries the address or the socket path:
-// a net error prints the path, and the caller logs the error.
+// reached. The dial and the bus's setup are bounded by a context of their own,
+// because a peer that accepts a connection and never answers would otherwise
+// hold readd, and its state directory's lock, for ever. The socket never takes
+// a deadline: the bound closes it, so no deadline can end a connection that a
+// running session needs. No error this package returns carries the address or
+// the socket path: a net error prints the path, and the caller logs the error.
 package gnomesession
 
 import (
@@ -146,63 +147,81 @@ func unescape(value string) string {
 
 // connect dials the bus at path and sets the watch up: authenticating, saying
 // Hello, asking for Name's NameOwnerChanged signals, then asking who owns the
-// name. The setup is bounded by timeout and by ctx: a peer that never answers
-// ends it.
+// name. The setup has a context of its own, timeout or the caller's end at the
+// earliest, and that context closes the socket: a peer that never answers ends
+// it, and godbus's blocked read returns.
 func connect(ctx context.Context, path string, timeout time.Duration) (*dbus.Conn, chan *dbus.Signal, string, error) {
+	setupCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	var dialer net.Dialer
-	raw, err := dialer.DialContext(ctx, "unix", path)
+	raw, err := dialer.DialContext(setupCtx, "unix", path)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("gnomesession: connect: %w", safe(ctx, err))
+		return nil, nil, "", fmt.Errorf("gnomesession: connect: %w", setupCause(ctx, setupCtx, err))
 	}
 	uc, ok := raw.(*net.UnixConn)
 	if !ok {
 		_ = raw.Close()
 		return nil, nil, "", fmt.Errorf("gnomesession: connect: %w", errUnreachable)
 	}
-	// The deadline bounds every read and write of the setup, and ctx ends
-	// them too: 1 January 1970 is in the past, so a blocked call returns.
-	_ = uc.SetDeadline(time.Now().Add(timeout))
-	cancelSetup := context.AfterFunc(ctx, func() { _ = uc.SetDeadline(time.Unix(1, 0)) })
-	conn, err := dbus.ConnectUnix(uc)
-	if err != nil {
+	// A socket takes no deadline: a deadline can fire after the setup
+	// answered, and godbus's reader would then end a connection that a running
+	// session needs. The setup's context closes the socket instead, and the
+	// watch takes the connection back when the setup is done.
+	stopClose := context.AfterFunc(setupCtx, func() { _ = uc.Close() })
+	var conn *dbus.Conn
+	setUp := false
+	defer func() {
+		// Every failure deregisters the close and shuts the socket down; the
+		// watch that started closes its own connection.
+		if setUp {
+			return
+		}
+		stopClose()
+		if conn != nil {
+			_ = conn.Close()
+			return
+		}
 		_ = uc.Close()
-		return nil, nil, "", fmt.Errorf("gnomesession: connect: %w", safe(ctx, err))
+	}()
+	if conn, err = dbus.ConnectUnix(uc); err != nil {
+		return nil, nil, "", fmt.Errorf("gnomesession: connect: %w", setupCause(ctx, setupCtx, err))
 	}
 	// The match rule comes before the owner lookup, so that a change between
 	// the 2 is delivered and never lost.
-	if err := conn.AddMatchSignalContext(ctx, matchOptions()...); err != nil {
-		_ = conn.Close()
-		return nil, nil, "", fmt.Errorf("gnomesession: watch %s: %w", Name, safe(ctx, err))
+	if err := conn.AddMatchSignalContext(setupCtx, matchOptions()...); err != nil {
+		return nil, nil, "", fmt.Errorf("gnomesession: watch %s: %w", Name, setupCause(ctx, setupCtx, err))
 	}
 	// The signals channel is registered after the rule, and before the
 	// lookup: the bus delivers in order, and the buffer holds a burst of
 	// changes.
 	signals := make(chan *dbus.Signal, 16)
 	conn.Signal(signals)
-	owner, err := nameOwner(ctx, conn)
+	owner, err := nameOwner(setupCtx, conn)
 	if err != nil {
-		_ = conn.Close()
 		if errors.Is(err, ErrNoSession) {
 			return nil, nil, "", err
 		}
-		return nil, nil, "", fmt.Errorf("gnomesession: the owner of %s: %w", Name, safe(ctx, err))
+		return nil, nil, "", fmt.Errorf("gnomesession: the owner of %s: %w", Name, setupCause(ctx, setupCtx, err))
 	}
-	if !cancelSetup() {
-		// ctx ended while the setup ran, and its deadline runs the calls
-		// above: this watch never starts.
-		_ = conn.Close()
-		return nil, nil, "", fmt.Errorf("gnomesession: connect: %w", safe(ctx, ctx.Err()))
+	if !stopClose() {
+		// The setup's bound ended, and its close runs or has run: the
+		// connection is gone, so this watch never starts.
+		return nil, nil, "", fmt.Errorf("gnomesession: connect: %w", setupCause(ctx, setupCtx, nil))
 	}
-	// The watch's own reads and writes are not bounded: a stopped readd
-	// closes the connection instead.
-	_ = uc.SetDeadline(time.Time{})
-	// A deadline that passed before it was cleared has ended the connection:
-	// that is a failed setup, not the session's end.
-	if !conn.Connected() {
-		_ = conn.Close()
-		return nil, nil, "", fmt.Errorf("gnomesession: connect: %w", os.ErrDeadlineExceeded)
-	}
+	setUp = true
 	return conn, signals, owner, nil
+}
+
+// setupCause is a failed setup's cause, as far as it can be logged: the
+// caller's own end, the setup's bound, or safe(ctx, err).
+func setupCause(ctx, setupCtx context.Context, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if setupCtx.Err() != nil {
+		return os.ErrDeadlineExceeded
+	}
+	return safe(ctx, err)
 }
 
 // safe is the part of err that can be logged. A bus error's name and this

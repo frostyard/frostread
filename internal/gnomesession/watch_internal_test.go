@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/frostyard/frostread/internal/bustest"
 )
 
 // bounded is the longest a test waits for an outcome before it fails: no test
@@ -214,5 +216,29 @@ func TestUnescape(t *testing.T) {
 		if got := unescape(tc.in); got != tc.want {
 			t.Errorf("unescape(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// The setup's bound ends with the setup: the watch it starts outlives it, so a
+// session that runs on is never reported as ended.
+func TestWatchOutlivesItsSetupBound(t *testing.T) {
+	bus := bustest.Start(t)
+	leave := bustest.Own(t, bus.Address(), Name)
+	ended, err := watch(t.Context(), bus.Address(), 100*time.Millisecond)
+	if err != nil {
+		t.Fatalf("watch = %v, want a watch of a bus that answers", err)
+	}
+	// The setup's bound has passed. Nothing may end the watch in this period:
+	// the check waits, and does not synchronize anything.
+	select {
+	case <-time.After(500 * time.Millisecond):
+	case <-ended:
+		t.Fatal("the watch ended with its setup's bound, and the session runs on")
+	}
+	leave()
+	select {
+	case <-ended:
+	case <-time.After(bounded):
+		t.Fatal("the session's end was not reported")
 	}
 }

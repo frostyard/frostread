@@ -63,11 +63,11 @@ level is talk, which also lets the app call the name's methods.
   `unix:` address, when the name has no owner at start, or when the bus
   cannot be reached, readd logs it once and runs as before: until it is
   stopped, or its session bus ends. readd starts no watch later.
-- **A bounded start.** The connection, its authentication, `Hello`, the
-  match rule and the owner lookup together have 10 s, and readd's own
-  stop ends them sooner. A bus that does not answer in time counts as a
-  bus that cannot be reached. readd's log never names the bus address or
-  its socket path.
+- **A bounded start.** The dial, the authentication, `Hello`, the match
+  rule and the owner lookup together have 10 s, and readd's own stop
+  ends them sooner: the end of that bound closes the socket. A bus that
+  does not answer in time counts as a bus that cannot be reached.
+  readd's log never names the bus address or its socket path.
 - **Only the bus calls readd needs.** readd calls `AddMatch` and
   `GetNameOwner` on the bus itself, and no method of
   `org.gnome.SessionManager`. It does not register as a client of the

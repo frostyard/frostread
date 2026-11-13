@@ -366,6 +366,12 @@ machine. No `CODEOWNERS` file (B15), and no other agent framework's tree
   `internal/notes`, the MCP SDK only in `internal/mcpserver` and
   `internal/notes`, and godbus only in `internal/gnomesession` and its
   test helper `internal/bustest`.
+- A bound on the setup of a connection that outlives the setup is a
+  context that closes the connection (`context.AfterFunc`, and its stop
+  function's result decides that the setup succeeded), never a deadline
+  on the socket: a library's reader can meet that deadline after the
+  setup succeeded, and close the connection later
+  (`internal/gnomesession`).
 - API changes start in `schema/rpc`, and `api/` follows it by hand until
   the app adopts a generator.
 
