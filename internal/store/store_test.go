@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -97,8 +98,14 @@ func TestSourcesAndItems(t *testing.T) {
 	if err != nil || len(page2) != 1 || page2[0].ID == list[0].ID || next2 == "" {
 		t.Fatalf("second page = %+v, next %q, %v", page2, next2, err)
 	}
-	if _, _, err := d.ListItems(ctx, ListOptions{View: ViewUnread, Cursor: "not-a-cursor", Limit: 1}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("a bad cursor = %v, want ErrInvalid", err)
+	for _, bad := range []string{
+		"not-a-cursor",
+		base64.RawURLEncoding.EncodeToString([]byte("not-a-time|1")),
+		base64.RawURLEncoding.EncodeToString([]byte("2026-10-20 12:00:00|1")),
+	} {
+		if _, _, err := d.ListItems(ctx, ListOptions{View: ViewUnread, Cursor: bad, Limit: 1}); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("the bad cursor %q = %v, want ErrInvalid", bad, err)
+		}
 	}
 	if _, _, err := d.ListItems(ctx, ListOptions{View: "nope", Limit: 1}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a bad view = %v, want ErrInvalid", err)

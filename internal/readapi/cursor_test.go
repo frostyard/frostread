@@ -24,6 +24,8 @@ func TestListItemsRefusesAForeignCursor(t *testing.T) {
 		{"decodes but has no time", encoded("|1")},
 		{"decodes but its id is not a number", encoded("2026-10-20T12:00:00.000Z|seven")},
 		{"decodes but its id is not positive", encoded("2026-10-20T12:00:00.000Z|0")},
+		{"decodes but its time is not a time", encoded("not-a-time|1")},
+		{"decodes but its time is not the store's format", encoded("2026-10-20 12:00:00|1")},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			params := `{"view":"all","cursor":"` + c.cursor + `"}`

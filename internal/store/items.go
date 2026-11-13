@@ -308,6 +308,9 @@ func parseCursor(c string) (string, int64, error) {
 	if !ok || published == "" {
 		return "", 0, fmt.Errorf("not a cursor: %w", ErrInvalid)
 	}
+	if _, err := time.Parse(TimeFormat, published); err != nil {
+		return "", 0, fmt.Errorf("not a cursor: %w", ErrInvalid)
+	}
 	id, err := strconv.ParseInt(idText, 10, 64)
 	if err != nil || id <= 0 {
 		return "", 0, fmt.Errorf("not a cursor: %w", ErrInvalid)
