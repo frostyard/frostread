@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-05",
+  "scope": "problem-records",
+  "correction": "A deferred RecoverPanic covers only its own goroutine: every goroutine an engine function starts (extraction workers, polls) defers its own, and a production-only setup such as CrashOutput needs a subprocess test",
+  "evidence": "frostread#52, cross-review (openai/gpt-6.1-sol) of head 3b595ae, findings 1 and 2",
+  "promoted_to": "internal/engine/problems_test.go, cmd/readd/problems_test.go"
+}

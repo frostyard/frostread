@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "dependabot",
+  "correction": "Read a crate's git source from Cargo.lock, not Cargo.toml: a Cargo.toml reader keyed dependencies only by name across sections, skipped root dotted keys, and matched the owner as a URL substring; the lock names each package once with a source URL whose host and first path segment decide the owner",
+  "evidence": "frostread#60, cross-review (openai/gpt-6.1-sol) of head 95b38d1, findings 1 to 3",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}

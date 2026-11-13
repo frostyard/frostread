@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "desktop",
+  "correction": "A writer of app.json keeps every other member as its raw JSON text and refuses a file it cannot read; parsing into serde_json::Value turned an unreadable file into an empty object and dropped a number such as 1e1000 that the shared mode table accepts",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head 2387468, finding 1",
+  "promoted_to": "web/src-tauri/src/server.rs"
+}

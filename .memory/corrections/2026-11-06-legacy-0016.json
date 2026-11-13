@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "dependabot",
+  "correction": "A guard that reads Cargo.toml must read the TOML forms Cargo allows (quoted keys, literal strings, comments, dotted keys, renamed dependencies by their package name, only the dependency sections) or refuse what it cannot read; a regexp line scan missed valid forms and named a renamed crate by its alias",
+  "evidence": "frostread#60, cross-review (openai/gpt-6.1-sol) of head 0f12839, findings 1 to 3",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}

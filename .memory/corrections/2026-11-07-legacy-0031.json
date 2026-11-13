@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-07",
+  "scope": "docs",
+  "correction": "A plan record claims a Done when only when the run showed every outcome it names: Phase 8's first record claimed the same sources after the import had skipped 5 of 7 loopback feeds, and a second VM run with public feeds was needed",
+  "evidence": "frostread#63, cross-review (openai/gpt-6.1-sol) of head c6de21d, re-review 2, finding 1",
+  "promoted_to": "AGENTS.md"
+}

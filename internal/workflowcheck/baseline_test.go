@@ -140,8 +140,8 @@ func relativeSymlink(t *testing.T, name string) (string, bool) {
 	return got, true
 }
 
-// correctionsMember returns the 5 members a line of
-// .memory/corrections.jsonl carries (row B2).
+// correctionsMember returns the 5 members of a correction record, in the order
+// of its canonical form (row B2).
 func correctionsMember() []string {
 	return []string{"date", "scope", "correction", "evidence", "promoted_to"}
 }
@@ -149,10 +149,10 @@ func correctionsMember() []string {
 // datePattern is the form of a correction's date.
 var datePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
-// correctionProblems returns the problems of 1 line of
-// .memory/corrections.jsonl, after frostyard/core scripts/check-corrections.mjs
-// (row B2); no problem means a valid line. promoted_to may be empty, the way an
-// unpromoted correction has it.
+// correctionProblems returns the content problems of 1 correction record, the
+// text of 1 file of .memory/corrections/, after frostyard/core
+// scripts/check-corrections.mjs (row B2); no problem means valid content.
+// promoted_to may be empty, the way an unpromoted correction has it.
 func correctionProblems(line string) []string {
 	if strings.TrimSpace(line) == "" {
 		return []string{"blank line"}
@@ -208,63 +208,7 @@ func correctionProblems(line string) []string {
 	return problems
 }
 
-// correctionsLines returns the lines of .memory/corrections.jsonl that hold
-// content: an empty file gives no line, and the last newline does not give
-// one. A blank line inside the file stays, and it is a problem.
-func correctionsLines(data string) []string {
-	if data == "" {
-		return nil
-	}
-	lines := strings.Split(data, "\n")
-	if n := len(lines); lines[n-1] == "" {
-		lines = lines[:n-1]
-	}
-	return lines
-}
-
-// TestCorrectionsInbox guards row B2 of frostyard/core
-// docs/specs/repository-baseline.md: .memory/corrections.jsonl holds one JSON
-// object per line, with exactly the 5 fields of a correction. An empty file
-// is valid too, as core's scripts/check-corrections.mjs accepts it.
-func TestCorrectionsInbox(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", ".memory", "corrections.jsonl"))
-	if err != nil {
-		t.Fatalf(".memory/corrections.jsonl: %v", err)
-	}
-	lines := correctionsLines(string(data))
-	for i, line := range lines {
-		for _, problem := range correctionProblems(line) {
-			t.Errorf("line %d: %s", i+1, problem)
-		}
-	}
-	t.Logf("%d corrections lines", len(lines))
-}
-
-// TestCorrectionsLines checks that empty content gives no line, and so no
-// problem, and that a blank line inside the content is a problem.
-func TestCorrectionsLines(t *testing.T) {
-	const valid = `{"date": "2026-11-05", "scope": "socket", "correction": "c", "evidence": "e", "promoted_to": ""}`
-	if lines := correctionsLines(""); len(lines) != 0 {
-		t.Errorf("correctionsLines of empty content = %q, want no line", lines)
-	}
-	for i, line := range correctionsLines("") {
-		if problems := correctionProblems(line); len(problems) > 0 {
-			t.Errorf("line %d of empty content: %v, want no problem", i+1, problems)
-		}
-	}
-	if lines := correctionsLines(valid); !slices.Equal(lines, []string{valid}) {
-		t.Errorf("correctionsLines of 1 line without a newline = %q, want 1 line", lines)
-	}
-	lines := correctionsLines(valid + "\n\n")
-	if len(lines) != 2 {
-		t.Fatalf("correctionsLines of 1 line and a blank line = %q, want 2 lines", lines)
-	}
-	if problems := correctionProblems(lines[1]); len(problems) == 0 {
-		t.Errorf("the blank line inside the content gives no problem, want at least 1")
-	}
-}
-
-// TestCorrectionProblems checks the line rules of row B2 on the cases
+// TestCorrectionProblems checks the content rules of row B2 on the cases
 // frostyard/core scripts/check-corrections.mjs names.
 func TestCorrectionProblems(t *testing.T) {
 	const valid = `{"date": "2026-11-05", "scope": "socket", "correction": "c", "evidence": "e", "promoted_to": ""}`

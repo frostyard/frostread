@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "e2e",
+  "correction": "The harness ends the driver and the app before it reads the stand-in launcher's pid file, reads it again, and fails when a recorded readd is left; reading it first let a running launcher start a readd that nothing ended",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head 2387468, finding 6",
+  "promoted_to": "web/e2e/harness.ts"
+}

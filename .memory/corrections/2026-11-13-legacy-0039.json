@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-13",
+  "scope": "gnomesession",
+  "correction": "The session bus watch bounds its whole setup: dbus.Connect ran authentication and Hello with no deadline and no context, so a bus that accepts and never answers held readd's start and its lock; Watch now dials the unix socket itself, sets a 10 s deadline, and lets readd's context end the setup",
+  "evidence": "frostread#83, cross-review (openai/gpt-6.1-sol) of head 151ea63, finding 1",
+  "promoted_to": "internal/gnomesession/gnomesession_test.go"
+}

@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "desktop",
+  "correction": "A mode save and a window's connect share one gate: a connect that read the mode during a save could finish its stop after the save wrote local back, and reach lodge while app.json said local",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head 2387468, finding 2",
+  "promoted_to": "web/src-tauri/src/server.rs"
+}
