@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-13",
+  "scope": "gnomesession",
+  "correction": "An error of the session bus watch never formats its cause's text: a net dial error carries the socket path, so readd's warning named the bus address; Watch's errors keep only an errno, a deadline or a fixed text",
+  "evidence": "frostread#83, cross-review (openai/gpt-6.1-sol) of head 151ea63, finding 2",
+  "promoted_to": "cmd/readd/desktop_test.go"
+}

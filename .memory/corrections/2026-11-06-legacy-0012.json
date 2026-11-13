@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "risk-paths",
+  "correction": "The risk list must name each file that decides what the store deletes (internal/store/blobrefs.go, the sweep's reference checks; internal/store/sources.go, source removal), not only the sweep and the migrations; TestRiskMarkers finds DELETE FROM",
+  "evidence": "frostread#55, cross-review (openai/gpt-6.1-sol) of head 3f53074, finding 2",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}

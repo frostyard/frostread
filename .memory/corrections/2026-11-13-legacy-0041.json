@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-13",
+  "scope": "gnomesession",
+  "correction": "The setup bound of the session bus watch is a context that closes the socket, not a socket deadline: godbus's reader could meet the deadline after the owner lookup answered and close the connection after the setup returned, which read as the session's end; no deterministic test reaches that race, so AGENTS.md holds the rule",
+  "evidence": "frostread#83, cross-review (openai/gpt-6.1-sol) of head 1e77089, finding 1",
+  "promoted_to": "AGENTS.md"
+}

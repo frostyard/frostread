@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "desktop",
+  "correction": "Every network step done under the mode gate has a bound: a lodge connect with no timeout held the gate while a server never finished its handshake, and a save then waited for ever",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head 565f68e, finding 7",
+  "promoted_to": "web/src-tauri/src/bridge.rs"
+}

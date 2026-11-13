@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-04",
+  "scope": "flatpak-smoke",
+  "correction": "A smoke check that reads a /proc observation must fail when the observation is unavailable; an empty value from a missing file or record is no pass",
+  "evidence": "frostread#51, cross-review (openai/gpt-6.1-sol) of head c5d399b, finding 1",
+  "promoted_to": "packaging/flatpak/smoke-test.sh"
+}

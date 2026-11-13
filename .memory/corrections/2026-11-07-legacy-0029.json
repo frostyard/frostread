@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-07",
+  "scope": "desktop",
+  "correction": "The reader offers Export as Markdown only when the window knows it is in local mode: a failed server_get at start leaves the mode unknown, and the reader keeps save as note, because the bridge can still connect to lodge",
+  "evidence": "frostread#63, cross-review (openai/gpt-6.1-sol) of head 6de9dda, finding 1",
+  "promoted_to": "web/src/desktop.test.tsx"
+}

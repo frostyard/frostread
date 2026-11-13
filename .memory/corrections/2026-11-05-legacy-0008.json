@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-05",
+  "scope": "desktop-mode",
+  "correction": "The shell reads app.json as Go's encoding/json/v2 does: a duplicate member name in any object, ignored members included, is an error; the shared table internal/config/testdata/desktop-mode.json holds the cases both languages run",
+  "evidence": "frostread#54, cross-review (openai/gpt-6.1-sol) of head 4552dc9, finding 3",
+  "promoted_to": "internal/config/testdata/desktop-mode.json"
+}

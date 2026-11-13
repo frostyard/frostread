@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-05",
+  "scope": "desktop-mode",
+  "correction": "A check that walks ignored JSON values must not convert them: serde_json deserialize_any reads every number as f64 and refuses 1e1000, which Go's encoding/json/v2 skips; scan member names, not values",
+  "evidence": "frostread#54, re-review 1 (openai/gpt-6.1-sol) of head 8f1fc2f, finding 1",
+  "promoted_to": "internal/config/testdata/desktop-mode.json (large unknown number, nested large numbers)"
+}

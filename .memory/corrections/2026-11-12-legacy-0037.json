@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-12",
+  "scope": "fetch",
+  "correction": "A fetch error never formats its cause's text: net/http's errors can repeat a URL beyond the outer *url.Error (a Location header that does not parse), so Get's network errors name the host and a reason from a fixed list, and Unwrap keeps the cause",
+  "evidence": "frostread#80, cross-review (openai/gpt-6.1-sol) of head bcc6804, finding 1",
+  "promoted_to": "internal/fetch/fetch_test.go"
+}

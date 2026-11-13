@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-12",
+  "scope": "desktop",
+  "correction": "A desktop route never crosses a mode change: location.replace keeps the window's earlier history entries, and after Back into an earlier document its entries are this document's too, so popstate follows an entry's route only when the entry carries this start's mark (startState), and any other entry goes to the unread view",
+  "evidence": "frostread#78, cross-review (openai/gpt-6.1-sol) of head 64929f9, finding 1",
+  "promoted_to": "web/src/desktop.test.tsx"
+}

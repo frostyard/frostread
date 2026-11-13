@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "dependabot",
+  "correction": "A cargo git dependency on a frostyard repository (frostyard-problems from frostyard/std) needs an ignore entry in its cargo Dependabot entry: Dependabot fetches older tags of the repository, std v0.3.0 holds no Cargo.toml, and the whole cargo update job fails",
+  "evidence": "frostread#55 merged at 519e22c; the Dependabot cargo update jobs for /web/src-tauri failed with dependency_file_not_resolvable on frostyard-problems (could not find Cargo.toml in the std checkout at tag v0.3.0)",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}

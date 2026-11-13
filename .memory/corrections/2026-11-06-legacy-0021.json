@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "desktop",
+  "correction": "The desktop shows a lost connection from the transport's close, not only from a failed store call, and reloads the lists when the subscription comes back; an idle window that lost lodge showed nothing and missed the changes made meanwhile",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head 2387468, finding 4",
+  "promoted_to": "web/src/desktop-connection.test.tsx"
+}

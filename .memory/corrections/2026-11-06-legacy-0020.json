@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "e2e",
+  "correction": "An e2e script ends only the processes it started, by process group or recorded pid; the first app-e2e-lodge cleanup killed every notesd, readdev, frostread-app and WebKitWebDriver it found by name",
+  "evidence": "frostread#61, cross-review (openai/gpt-6.1-sol) of head 2387468, finding 3",
+  "promoted_to": "AGENTS.md"
+}
