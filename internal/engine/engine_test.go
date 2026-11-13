@@ -633,7 +633,7 @@ func TestScopeGuardsWrites(t *testing.T) {
 	if _, err := e.SaveURL(t.Context(), read, "https://example.org/later", ""); !errors.Is(err, ErrReadOnly) {
 		t.Fatalf("save with a read scope = %v, want ErrReadOnly", err)
 	}
-	if err := e.SetRead(t.Context(), read, []int64{1}, true); !errors.Is(err, ErrReadOnly) {
+	if _, err := e.SetRead(t.Context(), read, []int64{1}, true); !errors.Is(err, ErrReadOnly) {
 		t.Fatalf("mark read with a read scope = %v", err)
 	}
 	if err := e.SetStarred(t.Context(), read, 1, true); !errors.Is(err, ErrReadOnly) {
@@ -885,7 +885,7 @@ func TestMarksAndSearch(t *testing.T) {
 	}
 	items, _, _ := e.ListItems(t.Context(), store.ListOptions{View: store.ViewUnread, Limit: 50})
 	write := Scope{Write: true}
-	if err := e.SetRead(t.Context(), write, []int64{items[0].ID}, true); err != nil {
+	if _, err := e.SetRead(t.Context(), write, []int64{items[0].ID}, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.SetStarred(t.Context(), write, items[1].ID, true); err != nil {

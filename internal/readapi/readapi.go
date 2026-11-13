@@ -156,9 +156,11 @@ func (s *Service) Search(ctx context.Context, query string, n int) (api.ItemsPag
 	return api.ItemsPage{Items: items}, nil
 }
 
-// SetRead implements items.setRead.
+// SetRead implements items.setRead. Its answer is empty, so the count of
+// items that changed state goes no further.
 func (s *Service) SetRead(ctx context.Context, ids []int64, read bool) error {
-	return s.fail(s.Engine.SetRead(ctx, write, ids, read))
+	_, err := s.Engine.SetRead(ctx, write, ids, read)
+	return s.fail(err)
 }
 
 // MarkAllRead implements items.markAllRead.
@@ -302,6 +304,8 @@ func (s *Service) fail(err error) error {
 		return api.Errorf(api.CodeInvalidParams, "%s", sentence)
 	}
 	switch {
+	case errors.Is(err, store.ErrInvalid):
+		return api.Errorf(api.CodeInvalidParams, "%v", err)
 	case errors.Is(err, store.ErrNotFound):
 		return api.Errorf(api.CodeNotFound, "%v", err)
 	case errors.Is(err, store.ErrConflict):

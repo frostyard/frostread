@@ -482,19 +482,20 @@ func excerpt(it store.Item) string {
 	return text
 }
 
-// SetRead marks items read or unread.
-func (e *Engine) SetRead(ctx context.Context, sc Scope, ids []int64, read bool) error {
+// SetRead marks items read or unread, and returns how many changed state.
+func (e *Engine) SetRead(ctx context.Context, sc Scope, ids []int64, read bool) (int, error) {
 	if !sc.Write {
-		return ErrReadOnly
+		return 0, ErrReadOnly
 	}
 	if len(ids) == 0 {
-		return errors.New("no item ids")
+		return 0, errors.New("no item ids")
 	}
-	if err := e.o.Store.SetRead(ctx, ids, read); err != nil {
-		return err
+	n, err := e.o.Store.SetRead(ctx, ids, read)
+	if err != nil {
+		return 0, err
 	}
 	e.change("unread", "all")
-	return nil
+	return n, nil
 }
 
 // MarkAllRead marks read every unread item in a view, a source or a

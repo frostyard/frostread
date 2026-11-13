@@ -19,10 +19,14 @@ shell over this web bundle, with its own readd in a desktop mode, local by
 default, and lodge as a connection the user chooses.
 [Plan 0002](../plans/0002-the-standalone-desktop-flatpak.md) builds it.
 Built: readd's desktop mode (Phase 2), the shell (Phase 3, done
-2026-11-03), the Flatpak in CI (Phase 4, 2026-11-04), and the local
-reader checked on a real Snow desktop (Phase 5, 2026-11-04). Not built
-yet: the lodge connection and the release (Phases 6 to 11). This
-document changes with each phase.
+2026-11-03), the Flatpak in CI (Phase 4, 2026-11-04), the local
+reader checked on a real Snow desktop (Phase 5, 2026-11-04), the lodge
+connection and its Server sheet (Phase 6, 2026-11-06), "Export as
+Markdown…" in local mode (Phase 7, 2026-11-07), the steps to move from
+lodge (Phase 8, 2026-11-07), the candidate publish and the promotion
+in CI (Phase 9, 2026-11-08), and the clean-install gate, which passed
+on `v0.6.0-rc.6` (Phase 10, 2026-11-12). Not done yet: the release
+(Phase 11). This document changes with each phase.
 
 ```
  feeds, pages, images ──▶ internal/fetch (kit/netguard) ──▶ poller, extract
@@ -143,6 +147,10 @@ checked it on a Snow VM:
   `Exec` is `flatpak run --command=frostread org.frostyard.Frostread
   --background`. readd polls on after the window closes, until logout;
   at the next login, gnome-session starts readd alone, with no window.
+  readd's sandbox lives as long as the user's systemd instance, so with
+  lingering or another session open it polls on after the logout
+  ([frostread#81](https://github.com/frostyard/frostread/issues/81),
+  plan 0002, Phase 10).
 - **Files.** OPML import is the web view's file input: GTK opens the
   FileChooser portal, so the user can pick a file in any folder, such
   as `~/Downloads`, with no file system permission. OPML export goes

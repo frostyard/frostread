@@ -100,7 +100,7 @@ func (h *handler) newServer(scope engine.Scope) *mcp.Server {
 	t := &tools{o: h.o, scope: scope}
 	reads := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(true)}
 	mcp.AddTool(s, &mcp.Tool{Name: "list_sources", Annotations: reads, Description: `List the user's feeds:
-each source's id, its title, its site and how many items it has unread.`},
+each source's id, its title, its site and how many items it has unread. ` + Notice},
 		t.listSources)
 	mcp.AddTool(s, &mcp.Tool{Name: "list_unread", Annotations: reads, Description: `List the user's unread
 articles, newest first: each one's id, title, source, dates and a short
@@ -121,12 +121,13 @@ id: its title, address, source, dates and states, and its text, at most
 	writes := &mcp.ToolAnnotations{DestructiveHint: new(false), OpenWorldHint: new(true)}
 	mcp.AddTool(s, &mcp.Tool{Name: "save_url", Annotations: writes, Description: `Save a web address to the
 user's read-later list. Saving the same address twice returns the item it
-already is. It is fetched and read in the background.`}, t.saveURL)
+already is. It is fetched and read in the background. ` + Notice}, t.saveURL)
 	mcp.AddTool(s, &mcp.Tool{Name: "mark_read", Annotations: writes, Description: `Mark articles read, or
 unread with read false. Ids come from list_unread or search. Returns how
-many changed.`}, t.markRead)
+many items changed state: an unknown id, or an item already in that state,
+does not count. ` + Notice}, t.markRead)
 	mcp.AddTool(s, &mcp.Tool{Name: "star", Annotations: writes, Description: `Star an article, or take its
-star away with starred false.`}, t.star)
+star away with starred false. ` + Notice}, t.star)
 	return s
 }
 
@@ -306,10 +307,11 @@ func (t *tools) markRead(ctx context.Context, _ *mcp.CallToolRequest, in markIn)
 	if len(in.IDs) == 0 || len(in.IDs) > 200 {
 		return nil, markOut{}, fmt.Errorf("ids must name 1 to 200 items")
 	}
-	if err := t.o.Engine.SetRead(ctx, t.scope, in.IDs, read); err != nil {
+	changed, err := t.o.Engine.SetRead(ctx, t.scope, in.IDs, read)
+	if err != nil {
 		return nil, markOut{}, err
 	}
-	return nil, markOut{Changed: len(in.IDs)}, nil
+	return nil, markOut{Changed: changed}, nil
 }
 
 type starIn struct {
