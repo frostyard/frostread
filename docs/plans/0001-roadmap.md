@@ -8,6 +8,12 @@ a live check on lodge's development build. It delivers
 Each phase ends with a demonstrable outcome. A phase's checkboxes are
 ticked as its work lands.
 
+Status (2026-11-13): **Done.** All 8 phases are done. Phase 7's code
+merged in [frostread#10](https://github.com/frostyard/frostread/pull/10)
+(2026-10-21), and its owner check passed, 2026-11-13. Phase 8 merged in
+[frostread#12](https://github.com/frostyard/frostread/pull/12)
+(2026-10-21). Phases 1 to 6 record their evidence in their sections.
+
 The standalone desktop Flatpak, with its own readd and lodge as an
 option, is [plan 0002](0002-the-standalone-desktop-flatpak.md)
 ([ADR-0008](../adr/0008-the-desktop-flatpak-carries-its-own-readd-and-lodge-is-a-connection.md),
@@ -125,8 +131,9 @@ accepted). This roadmap stays the lodge app's.
   saves one page to read later through it.
 - **Built and merged** in frostread#10 (2026-10-21), and
   [ADR-0006](../adr/0006-save-from-another-page-through-a-confirm-page-a-bookmarklet-opens.md)
-  is Accepted (Brian, 2026-10-22). The Done when waits for the owner's
-  check in iOS Safari.
+  is Accepted (Brian, 2026-10-22). The Done when holds: owner check
+  passed, 2026-11-13 (OWNER-REPORTED: the owner saved 1 page to read
+  later through the bookmarklet in iOS Safari).
 
 ## Phase 8 — The blob sweep (built 2026-10-21)
 
