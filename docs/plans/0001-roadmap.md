@@ -12,7 +12,9 @@ Status (2026-11-13): **Done.** All 8 phases are done. Phase 7's code
 merged in [frostread#10](https://github.com/frostyard/frostread/pull/10)
 (2026-10-21), and its owner check passed, 2026-11-13. Phase 8 merged in
 [frostread#12](https://github.com/frostyard/frostread/pull/12)
-(2026-10-21). Phases 1 to 6 record their evidence in their sections.
+(2026-10-21). Phases 1 to 4 are built (2026-10-21), Phase 5's Done when
+is met (OWNER-REPORTED, 2026-10-21), and Phase 6 records its evidence
+[below](#phase-6-evidence-2026-10-21).
 
 The standalone desktop Flatpak, with its own readd and lodge as an
 option, is [plan 0002](0002-the-standalone-desktop-flatpak.md)
