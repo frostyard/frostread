@@ -21,7 +21,7 @@ Flatpak, the lodge connection, and the release gate. It adds no reader
 features. Tests use generated feeds (`cmd/readdev`) and made-up data, and
 no test reaches the network, as AGENTS.md requires.
 
-Status (2026-11-12): **Phases 3 to 10 are done.**
+Status (2026-11-13): **Phases 3 to 10 are done; Phase 11 is open.**
 
 - **Phase 1:** ADR-0008 records Brian's 3 answers of 2026-10-27 and is
   Accepted (frostread#24, 2026-10-28). The other half of its Done when,
@@ -69,8 +69,17 @@ Status (2026-11-12): **Phases 3 to 10 are done.**
   (2026-11-12, [its record](#the-gate-on-v060-rc5)): a mode change
   with an item open marked an unrelated item of the other reader read,
   and `v0.6.0-rc.4` has the same code. frostread#78 fixes it in
-  `v0.6.0-rc.6`. **Phase 11,** the release, waits for Brian's
-  promotion of `v0.6.0-rc.6` and Lucilla's listing.
+  `v0.6.0-rc.6`.
+- **Phase 11,** the release, is open (2026-11-13). Its steps are done:
+  the [v0.6.0 release](https://github.com/frostyard/frostread/releases/tag/v0.6.0)
+  is on `v0.6.0-rc.6`'s commit `fb0ba06`; the
+  [Promote run](https://github.com/frostyard/frostread/actions/runs/43450798973)
+  moved `v0.6.0` and `latest` to `v0.6.0-rc.6`'s digest
+  `sha256:20c4f3e7…b886`, which an anonymous `skopeo inspect` reads;
+  and [flatpak-index#16](https://github.com/frostyard/flatpak-index/pull/16)
+  lists `org.frostyard.Frostread` (merged 2026-11-13). Its Done when
+  has no record yet: an install from the `frostyard` remote on a fresh
+  VM, and the Read row of core's plan 0010.
 
 ## Who helps
 
