@@ -101,6 +101,8 @@ type options struct {
 	getenv func(string) string
 	// out receives lines from -build and -mode; os.Stdout when nil.
 	out io.Writer
+	// logOut receives readd's log; os.Stderr when nil.
+	logOut io.Writer
 	// fetcher fetches the web; the guarded client when nil.
 	fetcher fetch.Fetcher
 	// flatpakInfo is the .flatpak-info file -build and status.build read;
@@ -124,6 +126,9 @@ func run(ctx context.Context, args []string, o options) error {
 	}
 	if o.out == nil {
 		o.out = os.Stdout
+	}
+	if o.logOut == nil {
+		o.logOut = os.Stderr
 	}
 	if v := o.getenv("READ_FLATPAK_INFO"); v != "" {
 		o.flatpakInfo = v
@@ -178,7 +183,7 @@ func run(ctx context.Context, args []string, o options) error {
 	if *debug {
 		level = slog.LevelDebug
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	log := slog.New(slog.NewTextHandler(o.logOut, &slog.HandlerOptions{Level: level}))
 	rec := o.problems
 	if err := rec.Err(); err != nil {
 		log.Debug("problem records are off", "err", err)

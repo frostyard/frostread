@@ -45,9 +45,10 @@ level is talk, which also lets the app call the name's methods.
     machine's power actions (`PowerOff`, `Reboot`, `Suspend`), which
     polkit allows with no password to an active session on most
     distributions.
-  - gnome-session's methods act only on the user's own session.
-    `Logout`, `Shutdown` and `Reboot` are among them, so the permission
-    is not read only; readd calls none of them.
+  - The name is on the user's session bus, but its methods are not all
+    limited to that session: `Logout` ends it, and `Shutdown` and
+    `Reboot` ask for a shutdown or a reboot of the machine. So the
+    permission is not read only; readd calls none of these methods.
   - gnome-session owns its name for the life of the graphical session.
     logind keeps an SSH session as a session, so readd would have to
     tell the sessions' types apart to know that the graphical one ended.
@@ -58,10 +59,15 @@ level is talk, which also lets the app call the name's methods.
   leaves the bus, or the bus connection ends, readd stops as
   `daemon.shutdown` stops it: the poller, the extraction workers and the
   sweep end, then the database closes and the lock goes. It exits 0.
-- **No GNOME session.** When `DBUS_SESSION_BUS_ADDRESS` is empty, when the
-  name has no owner at start, or when the bus cannot be reached, readd
-  logs it once and runs as before: until it is stopped, or its session
-  bus ends. readd starts no watch later.
+- **No GNOME session.** When `DBUS_SESSION_BUS_ADDRESS` is empty or not a
+  `unix:` address, when the name has no owner at start, or when the bus
+  cannot be reached, readd logs it once and runs as before: until it is
+  stopped, or its session bus ends. readd starts no watch later.
+- **A bounded start.** The connection, its authentication, `Hello`, the
+  match rule and the owner lookup together have 10 s, and readd's own
+  stop ends them sooner. A bus that does not answer in time counts as a
+  bus that cannot be reached. readd's log never names the bus address or
+  its socket path.
 - **Only the bus calls readd needs.** readd calls `AddMatch` and
   `GetNameOwner` on the bus itself, and no method of
   `org.gnome.SessionManager`. It does not register as a client of the
@@ -83,7 +89,8 @@ background lifecycle (readd's "until logout" now holds on GNOME).
 - On a desktop that is not GNOME, nothing changes: readd lives as long as
   the user's session bus.
 - The sandbox gains a talk permission to gnome-session. Code in the
-  sandbox can ask the user's session to log out, shut down or reboot.
+  sandbox can ask gnome-session to log the user out, or to shut down or
+  reboot the machine.
   The permission list and `internal/packagecheck`'s test of the manifest
   change together.
 - A restart of gnome-session alone stops readd. The next window, or the

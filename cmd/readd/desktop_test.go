@@ -357,6 +357,26 @@ func TestDesktopWithoutAGNOMESessionRuns(t *testing.T) {
 	}
 }
 
+// A bus address that cannot be reached is logged without the address: a
+// D-Bus address can name a path, and a net error prints it. Only the warning
+// and a cause this machine names are logged.
+func TestDesktopLogsNoBusAddress(t *testing.T) {
+	const secret = "frostread-secret-bus-path-7f3a"
+	x := newXDG(t)
+	var logged bytes.Buffer
+	o := options{getenv: x.env(map[string]string{
+		"DBUS_SESSION_BUS_ADDRESS": "unix:path=" + filepath.Join(x.root, secret)}), logOut: &logged}
+	_, errs, cancel := startRead(t, o, "-desktop")
+	stopRead(t, cancel, errs)
+
+	if strings.Contains(logged.String(), secret) {
+		t.Fatalf("readd's log carries the bus address: %s", logged.String())
+	}
+	if !strings.Contains(logged.String(), "the session bus could not be watched") {
+		t.Fatalf("readd's log lacks the warning: %s", logged.String())
+	}
+}
+
 // A desktop readd opens no TCP or UDP socket, and its one Unix listener is
 // its private socket beside the test's own feed server.
 func TestDesktopListensOnNoNetworkPort(t *testing.T) {
