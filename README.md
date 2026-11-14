@@ -9,7 +9,8 @@ shell, as app `read`, for the people on the tailnet.
 
 **Status:** pre-release.
 
-**Documentation:** [docs/README.md](docs/README.md)
+**Documentation:** [the Read guide on frostyard.org](https://frostyard.org/docs/apps/frostread/)
+for users, and [docs/README.md](docs/README.md) for maintainers.
 
 ## What it does
 

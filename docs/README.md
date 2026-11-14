@@ -9,6 +9,10 @@ Docs are split by the question they answer (frostyard/core ADR-0025):
 | [specs/](specs/) | **What exactly** is the contract? | Precise, testable interface definitions |
 | [plans/](plans/) | **When/in what order** do we build? | Roadmaps and phase plans, updated as work lands |
 
+These docs are for maintainers. The user guide is
+[frostyard.org/docs/apps/frostread](https://frostyard.org/docs/apps/frostread/)
+(frostyard/core ADR-0084).
+
 Org-wide decisions that bind this repository are in
 [org-adrs.md](org-adrs.md). frostread is an app behind
 [lodge](https://github.com/frostyard/lodge), under frostyard/core's
